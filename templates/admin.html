@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель TimeTracker</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+            padding: 24px;
+        }
+        h1, h2 { color: #0f172a; }
+        .section {
+            margin-bottom: 40px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 24px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background-color: #f8fafc;
+            font-weight: 600;
+        }
+        button, .btn {
+            background: #3b82f6;
+            border: none;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            margin-right: 6px;
+        }
+        .btn-danger { background: #ef4444; }
+        .btn-warning { background: #f59e0b; }
+        .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+        form {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 16px 0;
+        }
+        input, select {
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 20px;
+            font-size: 1rem;
+        }
+        .report-table { margin-top: 16px; overflow-x: auto; }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #0f172a;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 40px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+        .date-picker {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover { color: black; }
+        .entry-time {
+            font-family: monospace;
+            background: #f1f5f9;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+        .small-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            margin: 0 4px;
+        }
+        .edit-controls {
+            display: inline-block;
+        }
+        .edit-controls input {
+            margin-right: 4px;
+            padding: 2px 4px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📋 Админ-панель TimeTracker</h1>
+
+    <div class="section">
+        <h2>👥 Сотрудники</h2>
+        <form id="addEmployeeForm">
+            <input type="text" id="fullName" placeholder="ФИО сотрудника" required>
+            <button type="submit">➕ Добавить</button>
+        </form>
+        <table id="employeesTable">
+            <thead><tr><th>ID</th><th>ФИО</th><th>Активен</th><th>Действия</th></tr></thead>
+            <tbody id="employeesTbody"></tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>📅 Отчёт за день</h2>
+        <div class="date-picker">
+            <input type="date" id="reportDate">
+            <button id="loadReportBtn">Показать отчёт</button>
+        </div>
+        <div id="reportContainer"></div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<div id="detailModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2 id="modalTitle">Детали сотрудника</h2>
+        <div id="modalBody">Загрузка...</div>
+        <hr>
+        <h3>➕ Добавить новую отметку</h3>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <select id="newAction">
+                <option value="start">start</option>
+                <option value="break_start">break_start</option>
+                <option value="break_end">break_end</option>
+                <option value="end">end</option>
+            </select>
+            <input type="date" id="newDate">
+            <input type="time" id="newTime" step="60">
+            <button id="addEntryBtn" class="btn">Добавить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showToast(msg, isError = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.style.background = isError ? '#dc2626' : '#10b981';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    async function loadEmployees() {
+        try {
+            const resp = await fetch('/api/employees?active_only=false');
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            const employees = await resp.json();
+            const tbody = document.getElementById('employeesTbody');
+            tbody.innerHTML = '';
+            for (const emp of employees) {
+                const row = tbody.insertRow();
+                row.insertCell(0).innerText = emp.id;
+                row.insertCell(1).innerText = emp.full_name;
+                row.insertCell(2).innerText = emp.is_active ? 'Да' : 'Нет';
+                const actions = row.insertCell(3);
+                
+                const qrBtn = document.createElement('button');
+                qrBtn.textContent = 'Штрих-код';
+                qrBtn.onclick = () => window.open(`/api/employees/${emp.id}/qr?action=start`, '_blank');
+                
+                const editBtn = document.createElement('button');
+                editBtn.textContent = '✏️';
+                editBtn.className = 'btn-warning btn-sm';
+                editBtn.onclick = async () => {
+                    const newName = prompt('Новое ФИО:', emp.full_name);
+                    if (newName && newName !== emp.full_name) {
+                        const resp = await fetch(`/api/employees/${emp.id}`, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ full_name: newName })
+                        });
+                        if (resp.ok) {
+                            showToast('Обновлено');
+                            loadEmployees();
+                        } else showToast('Ошибка', true);
+                    }
+                };
+                
+                const delBtn = document.createElement('button');
+                delBtn.textContent = '🗑️';
+                delBtn.className = 'btn-danger btn-sm';
+                delBtn.onclick = async () => {
+                    if (confirm(`Деактивировать ${emp.full_name}?`)) {
+                        const resp = await fetch(`/api/employees/${emp.id}`, { method: 'DELETE' });
+                        if (resp.ok) {
+                            showToast('Сотрудник деактивирован');
+                            loadEmployees();
+                        } else showToast('Ошибка', true);
+                    }
+                };
+                actions.appendChild(qrBtn);
+                actions.appendChild(editBtn);
+                actions.appendChild(delBtn);
+            }
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    document.getElementById('addEmployeeForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fullName = document.getElementById('fullName').value.trim();
+        if (!fullName) return;
+        try {
+            const resp = await fetch('/api/employees', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ full_name: fullName })
+            });
+            if (resp.ok) {
+                showToast('Сотрудник добавлен');
+                document.getElementById('fullName').value = '';
+                loadEmployees();
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка', true);
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+        }
+    });
+
+    function formatDateTime(isoString) {
+        if (!isoString) return '—';
+        const d = new Date(isoString);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${day}-${month}-${year} ${hours}:${minutes}`;
+    }
+
+    async function loadDailyReport(date) {
+        const container = document.getElementById('reportContainer');
+        container.innerHTML = '<p>Загрузка...</p>';
+        try {
+            const resp = await fetch(`/api/reports/daily?date=${date}`);
+            if (!resp.ok) throw new Error('Ошибка загрузки отчёта');
+            const report = await resp.json();
+            if (!report.length) {
+                container.innerHTML = '<p>Нет данных за этот день</p>';
+                return;
+            }
+            let html = '<table class="report-table"><thead><tr><th>Сотрудник</th><th>Пришёл</th><th>Ушёл</th><th>Перерывы (мин)</th><th>Отработано (ч)</th><th>Детали</th></tr></thead><tbody>';
+            for (const row of report) {
+                html += `<tr>
+                    <td>${escapeHtml(row.full_name)}</td>
+                    <td>${formatDateTime(row.start_time)}</td>
+                    <td>${formatDateTime(row.end_time)}</td>
+                    <td>${row.break_minutes || 0}</td>
+                    <td>${row.worked_hours || 0}</td>
+                    <td><button class="btn-sm" onclick="showEmployeeDetail(${row.employee_id}, '${date}')">📋</button></td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (err) {
+            container.innerHTML = '<p>Ошибка загрузки</p>';
+            showToast(err.message, true);
+        }
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    let currentEmployeeId = null;
+    let currentDate = null;
+    let currentEntries = [];
+
+    window.showEmployeeDetail = async (empId, date) => {
+        currentEmployeeId = empId;
+        currentDate = date;
+        const modal = document.getElementById('detailModal');
+        const modalTitle = document.getElementById('modalTitle');
+        try {
+            const resp = await fetch(`/api/reports/employee/${empId}?date=${date}`);
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            const data = await resp.json();
+            currentEntries = data.entries;
+            modalTitle.innerText = `Сотрудник: ${escapeHtml(data.full_name)} (${date})`;
+            renderEntriesList(currentEntries);
+            modal.style.display = 'block';
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    };
+
+    function renderEntriesList(entries) {
+        const modalBody = document.getElementById('modalBody');
+        if (!entries.length) {
+            modalBody.innerHTML = '<p>Нет отметок за этот день</p>';
+            return;
+        }
+        let html = '<table style="width:100%;"><thead><tr><th>Время</th><th>Действие</th><th>Действия</th></tr></thead><tbody>';
+        for (const entry of entries) {
+            const dateObj = new Date(entry.timestamp);
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const year = dateObj.getFullYear();
+            const hours = String(dateObj.getHours()).padStart(2, '0');
+            const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+            const displayTime = `${day}-${month}-${year} ${hours}:${minutes}`;
+            const isoDate = entry.timestamp.slice(0, 10);
+            const isoTime = entry.timestamp.slice(11, 16);
+            
+            html += `<tr data-id="${entry.id}">
+                <td>
+                    <span class="entry-time">${displayTime}</span>
+                    <div class="edit-controls" style="display:none;">
+                        <input type="date" class="edit-date" value="${isoDate}">
+                        <input type="time" class="edit-time" value="${isoTime}" step="60">
+                    </div>
+                </td>
+                <td>${entry.action}</td>
+                <td>
+                    <button class="small-btn edit-btn" title="Редактировать">✏️</button>
+                    <button class="small-btn save-btn" style="display:none;" title="Сохранить">💾</button>
+                    <button class="small-btn cancel-btn" style="display:none;" title="Отмена">❌</button>
+                    <button class="small-btn delete-btn" title="Удалить">🗑️</button>
+                </td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        modalBody.innerHTML = html;
+        
+        document.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const row = btn.closest('tr');
+                const timeSpan = row.querySelector('.entry-time');
+                const editDiv = row.querySelector('.edit-controls');
+                const editBtn = row.querySelector('.edit-btn');
+                const saveBtn = row.querySelector('.save-btn');
+                const cancelBtn = row.querySelector('.cancel-btn');
+                timeSpan.style.display = 'none';
+                editDiv.style.display = 'inline-block';
+                editBtn.style.display = 'none';
+                saveBtn.style.display = 'inline-block';
+                cancelBtn.style.display = 'inline-block';
+            });
+        });
+        
+        document.querySelectorAll('.save-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const row = btn.closest('tr');
+                const entryId = row.dataset.id;
+                const dateInput = row.querySelector('.edit-date');
+                const timeInput = row.querySelector('.edit-time');
+                const newDate = dateInput.value;
+                const newTime = timeInput.value;
+                if (!newDate || !newTime) {
+                    showToast('Выберите дату и время', true);
+                    return;
+                }
+                const isoDateTime = new Date(`${newDate}T${newTime}:00`).toISOString();
+                try {
+                    const resp = await fetch(`/api/admin/timelog/${entryId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ timestamp: isoDateTime })
+                    });
+                    if (resp.ok) {
+                        showToast('Время обновлено');
+                        await showEmployeeDetail(currentEmployeeId, currentDate);
+                    } else {
+                        const err = await resp.json();
+                        showToast(err.detail || 'Ошибка', true);
+                    }
+                } catch (err) {
+                    showToast('Ошибка сети', true);
+                }
+            });
+        });
+        
+        document.querySelectorAll('.cancel-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const row = btn.closest('tr');
+                const timeSpan = row.querySelector('.entry-time');
+                const editDiv = row.querySelector('.edit-controls');
+                const editBtn = row.querySelector('.edit-btn');
+                const saveBtn = row.querySelector('.save-btn');
+                const cancelBtn = row.querySelector('.cancel-btn');
+                timeSpan.style.display = 'inline-block';
+                editDiv.style.display = 'none';
+                editBtn.style.display = 'inline-block';
+                saveBtn.style.display = 'none';
+                cancelBtn.style.display = 'none';
+                const currentDisplay = timeSpan.innerText;
+                const parts = currentDisplay.split(/[- :]/);
+                if (parts.length === 5) {
+                    const [day, month, year, hours, minutes] = parts;
+                    const isoDate = `${year}-${month}-${day}`;
+                    const isoTime = `${hours}:${minutes}`;
+                    row.querySelector('.edit-date').value = isoDate;
+                    row.querySelector('.edit-time').value = isoTime;
+                }
+            });
+        });
+        
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                if (!confirm('Удалить эту отметку?')) return;
+                const row = btn.closest('tr');
+                const entryId = row.dataset.id;
+                try {
+                    const resp = await fetch(`/api/admin/timelog/${entryId}`, { method: 'DELETE' });
+                    if (resp.ok) {
+                        showToast('Отметка удалена');
+                        await showEmployeeDetail(currentEmployeeId, currentDate);
+                    } else {
+                        showToast('Ошибка удаления', true);
+                    }
+                } catch (err) {
+                    showToast('Ошибка сети', true);
+                }
+            });
+        });
+    }
+    
+    document.getElementById('addEntryBtn').addEventListener('click', async () => {
+        const action = document.getElementById('newAction').value;
+        const newDate = document.getElementById('newDate').value;
+        const newTime = document.getElementById('newTime').value;
+        if (!newDate || !newTime) {
+            showToast('Выберите дату и время', true);
+            return;
+        }
+        const isoDateTime = new Date(`${newDate}T${newTime}:00`).toISOString();
+        try {
+            const resp = await fetch('/api/admin/timelog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    employee_id: currentEmployeeId,
+                    action: action,
+                    timestamp: isoDateTime
+                })
+            });
+            if (resp.ok) {
+                showToast('Отметка добавлена');
+                document.getElementById('newDate').value = '';
+                document.getElementById('newTime').value = '';
+                await showEmployeeDetail(currentEmployeeId, currentDate);
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка', true);
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+        }
+    });
+    
+    const modal = document.getElementById('detailModal');
+    const span = document.getElementsByClassName('close')[0];
+    span.onclick = () => modal.style.display = 'none';
+    window.onclick = (event) => { if (event.target == modal) modal.style.display = 'none'; };
+
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('reportDate').value = today;
+    loadEmployees();
+    loadDailyReport(today);
+    document.getElementById('loadReportBtn').onclick = () => {
+        const date = document.getElementById('reportDate').value;
+        if (date) loadDailyReport(date);
+    };
+</script>
+</body>
+</html>

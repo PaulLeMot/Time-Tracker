@@ -1,5 +1,15 @@
+.env
+.env.*
 venv/
 __pycache__/
 *.pyc
-.env
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.log
+logs/
 .DS_Store
+*.sqlite
+*.db
