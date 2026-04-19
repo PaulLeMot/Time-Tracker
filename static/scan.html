@@ -7,7 +7,7 @@
     <style>
         * {
             box-sizing: border-box;
-            user-select: none; /* чтобы случайно не выделить текст */
+            user-select: none;
         }
         body {
             background: #f0f2f5;
@@ -84,19 +84,6 @@
         .toast.show {
             opacity: 1;
         }
-        button {
-            margin-top: 20px;
-            background: #3b82f6;
-            border: none;
-            color: white;
-            font-size: 1rem;
-            padding: 10px 20px;
-            border-radius: 40px;
-            cursor: pointer;
-        }
-        button:active {
-            background: #2563eb;
-        }
         .employee-info {
             margin-top: 20px;
             background: #f8fafc;
@@ -112,21 +99,20 @@
     <h1>📷 Сканер QR-кода</h1>
     <div class="sub">Наведите камеру на QR-код сотрудника</div>
 
-    <!-- Невидимое поле ввода для захвата сканирования -->
     <input type="text" id="qrInput" class="qr-input" autofocus>
 
-    <div class="status info" id="statusMessage">
-        ✅ Готов к сканированию
-    </div>
+    <div class="status info" id="statusMessage">✅ Готов к сканированию</div>
     <div class="employee-info" id="employeeInfo" style="display: none;">
         👤 <span id="empName"></span> — <span id="empAction"></span>
     </div>
-    <button id="focusButton">🔘 Нажать для фокуса</button>
+
+    <div style="margin-top: 30px;">
+        <a href="/static/login.html" style="display: inline-block; background: #10b981; color: white; padding: 10px 20px; border-radius: 40px; text-decoration: none;">🔐 Войти в личный кабинет</a>
+    </div>
 </div>
 <div id="toast" class="toast"></div>
 
 <script>
-    // DOM элементы
     const input = document.getElementById('qrInput');
     const statusDiv = document.getElementById('statusMessage');
     const employeeInfoDiv = document.getElementById('employeeInfo');
@@ -134,28 +120,21 @@
     const empActionSpan = document.getElementById('empAction');
     const toast = document.getElementById('toast');
 
-    // Функция показа уведомления (всплывающее сообщение)
     function showToast(message, isError = false) {
         toast.textContent = message;
         toast.classList.add('show');
-        if (isError) {
-            toast.style.backgroundColor = '#dc2626';
-        } else {
-            toast.style.backgroundColor = '#10b981';
-        }
+        toast.style.backgroundColor = isError ? '#dc2626' : '#10b981';
         setTimeout(() => {
             toast.classList.remove('show');
             toast.style.backgroundColor = '#1e293b';
         }, 2500);
     }
 
-    // Функция обновления статуса на экране
     function setStatus(text, type = 'info') {
         statusDiv.textContent = text;
         statusDiv.className = 'status ' + type;
     }
 
-    // Показать информацию о сотруднике (опционально, если нужно отображать после сканирования)
     function showEmployeeInfo(name, action) {
         if (name && action) {
             empNameSpan.textContent = name;
@@ -166,11 +145,9 @@
         }
     }
 
-    // Основная функция обработки сканирования
     async function processScan(data) {
         if (!data || data.trim() === '') return;
 
-        // Ожидаемый формат: "ID:action"   например "3:start" или "7:break_start"
         const parts = data.split(':');
         if (parts.length !== 2) {
             setStatus('❌ Неверный формат QR-кода. Ожидается ID:действие', 'error');
@@ -194,26 +171,18 @@
             return;
         }
 
-        // Отправка запроса на сервер
         setStatus(`⏳ Отправка... (${userId}:${action})`, 'info');
 
         try {
             const response = await fetch('/api/timelog', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    user_id: userId,
-                    action: action
-                }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, action: action })
             });
 
             if (response.ok) {
-                const result = await response.json();
                 setStatus(`✅ Отмечено! Действие: ${action}`, 'success');
                 showToast(`✅ ${action} для сотрудника ${userId}`, false);
-                // Можно попробовать получить имя сотрудника, если сервер вернёт, но пока нет
                 showEmployeeInfo(`Сотрудник ${userId}`, action);
             } else {
                 let errorMsg = `Ошибка ${response.status}`;
@@ -231,13 +200,11 @@
             showToast('Нет связи с сервером', true);
             showEmployeeInfo('', '');
         } finally {
-            // Очистка поля и возврат фокуса
             input.value = '';
             input.focus();
         }
     }
 
-    // Обработчик события Enter в поле ввода (сканер отправляет Enter после строки)
     input.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -245,39 +212,16 @@
             if (rawData) {
                 processScan(rawData);
             } else {
-                // Пустое сканирование — просто фокус
                 input.focus();
             }
         }
     });
 
-    // Дополнительно: обрабатываем потерю фокуса, чтобы не упустить
     input.addEventListener('blur', () => {
-        // Возвращаем фокус через 100 мс, если только не кликнули по кнопке
-        setTimeout(() => {
-            if (document.activeElement !== input && document.activeElement !== focusButton) {
-                input.focus();
-            }
-        }, 100);
+        setTimeout(() => input.focus(), 100);
     });
 
-    // Кнопка для ручного фокуса (на случай, если что-то перехватило фокус)
-    const focusButton = document.getElementById('focusButton');
-    focusButton.addEventListener('click', () => {
-        input.focus();
-        setStatus('✅ Готов к сканированию', 'info');
-        showToast('Фокус восстановлен', false);
-    });
-
-    // Инициализация: фокус на поле
     input.focus();
-
-    // Небольшой трюк: если пользователь кликнул вне поля и не по кнопке, вернуть фокус
-    document.body.addEventListener('click', (e) => {
-        if (e.target !== input && e.target !== focusButton && !focusButton.contains(e.target)) {
-            input.focus();
-        }
-    });
 </script>
 </body>
 </html>

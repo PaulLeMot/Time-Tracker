@@ -3,6 +3,8 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from models import Employee, TimeEntry
+import secrets
+import string
 
 async def create_employee(db: AsyncSession, full_name: str) -> Employee:
     qr_secret = str(uuid.uuid4()).replace('-', '')[:16]
@@ -119,3 +121,20 @@ async def delete_time_entry(
     stmt = delete(TimeEntry).where(TimeEntry.id == entry_id)
     await db.execute(stmt)
     await db.commit()
+
+def generate_random_password(length: int = 6) -> str:
+    return ''.join(secrets.choice(string.digits) for _ in range(length))
+
+async def set_employee_password(db: AsyncSession, employee_id: int, plain_password: str) -> Employee:
+    employee = await get_employee_by_id(db, employee_id)
+    if not employee:
+        raise ValueError("Employee not found")
+    employee.password = plain_password
+    await db.commit()
+    await db.refresh(employee)
+    return employee
+
+async def get_employee_by_full_name(db: AsyncSession, full_name: str):
+    stmt = select(Employee).where(Employee.full_name == full_name)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()

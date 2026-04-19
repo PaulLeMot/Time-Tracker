@@ -17,10 +17,12 @@ class EmployeeResponse(BaseModel):
     full_name: str
     qr_code_secret: str
     is_active: int
+    password: Optional[str] = None
 
 class EmployeeUpdate(BaseModel):
     full_name: Optional[str] = None
     is_active: Optional[int] = None
+    password: Optional[str] = None
 
 class TimeEntryCreateAdmin(BaseModel):
     employee_id: int
@@ -69,8 +71,15 @@ async def update_employee(employee_id: int, update_data: EmployeeUpdate, db: Asy
     employee = await crud.get_employee_by_id(db, employee_id)
     if not employee:
         raise HTTPException(404, detail="Employee not found")
-    updated = await crud.update_employee(db, employee_id, full_name=update_data.full_name, is_active=update_data.is_active)
-    return updated
+    if update_data.full_name is not None:
+        employee.full_name = update_data.full_name
+    if update_data.is_active is not None:
+        employee.is_active = update_data.is_active
+    if update_data.password is not None:
+        employee.password = update_data.password
+    await db.commit()
+    await db.refresh(employee)
+    return employee
 
 @router.delete("/{employee_id}", status_code=204)
 async def delete_employee(employee_id: int, permanent: bool = False, db: AsyncSession = Depends(get_db)):
@@ -107,6 +116,44 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
         })
     return result
 
+@public_router.get("/api/reports/weekly")
+async def weekly_report(start_date: str, db: AsyncSession = Depends(get_db)):
+    from datetime import timedelta, date as date_type
+    start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    if start.weekday() != 0:
+        raise HTTPException(400, "Дата начала должна быть понедельником")
+    end = start + timedelta(days=6)
+    employees = await crud.get_employees(db, active_only=True)
+    
+    result = []
+    weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    
+    for emp in employees:
+        emp_data = {
+            "employee_id": emp.id,
+            "full_name": emp.full_name,
+            "days": [],
+            "total_worked_hours": 0,
+            "total_break_minutes": 0
+        }
+        for i in range(7):
+            day_date = start + timedelta(days=i)
+            start_of_day = datetime.combine(day_date, datetime.min.time())
+            end_of_day = datetime.combine(day_date, datetime.max.time())
+            entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=start_of_day, end_date=end_of_day)
+            worked_min, break_min, _, _ = calculate_work_stats(entries)
+            worked_hours = round(worked_min / 60, 2)
+            emp_data["days"].append({
+                "date": day_date.isoformat(),
+                "weekday": weekdays[i],
+                "worked_hours": worked_hours,
+                "break_minutes": break_min
+            })
+            emp_data["total_worked_hours"] += worked_hours
+            emp_data["total_break_minutes"] += break_min
+        result.append(emp_data)
+    return result
+
 @public_router.get("/api/reports/employee/{employee_id}")
 async def employee_detail(employee_id: int, date: str, db: AsyncSession = Depends(get_db)):
     emp = await crud.get_employee_by_id(db, employee_id)
@@ -116,7 +163,7 @@ async def employee_detail(employee_id: int, date: str, db: AsyncSession = Depend
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     entries = await crud.get_time_entries(db, employee_id=employee_id, start_date=start_of_day, end_date=end_of_day)
-    entries_list = [{"timestamp": e.timestamp.isoformat(), "action": e.action} for e in entries]
+    entries_list = [{"id": e.id, "timestamp": e.timestamp.isoformat(), "action": e.action} for e in entries]  # добавлено id
     worked, breaks, _, _ = calculate_work_stats(entries)
     return {
         "employee_id": employee_id,
@@ -133,9 +180,7 @@ async def admin_create_timelog(data: TimeEntryCreateAdmin, db: AsyncSession = De
     if not employee:
         raise HTTPException(404, "Employee not found")
     try:
-        dt = datetime.fromisoformat(data.timestamp.replace('Z', '+00:00'))
-        if dt.tzinfo is not None:
-            dt = dt.replace(tzinfo=None)
+        dt = datetime.fromisoformat(data.timestamp)
     except ValueError:
         raise HTTPException(400, "Invalid timestamp format. Use ISO format.")
     entry = await crud.create_time_entry_admin(db, data.employee_id, data.action, dt, source="admin")
@@ -144,9 +189,7 @@ async def admin_create_timelog(data: TimeEntryCreateAdmin, db: AsyncSession = De
 @public_router.put("/api/admin/timelog/{entry_id}")
 async def admin_update_timelog(entry_id: int, data: TimeEntryUpdateAdmin, db: AsyncSession = Depends(get_db)):
     try:
-        dt = datetime.fromisoformat(data.timestamp.replace('Z', '+00:00'))
-        if dt.tzinfo is not None:
-            dt = dt.replace(tzinfo=None)
+        dt = datetime.fromisoformat(data.timestamp)
     except ValueError:
         raise HTTPException(400, "Invalid timestamp format. Use ISO format.")
     try:
@@ -162,6 +205,18 @@ async def admin_delete_timelog(entry_id: int, db: AsyncSession = Depends(get_db)
     except ValueError:
         raise HTTPException(404, "Entry not found")
     return Response(status_code=204)
+
+class PasswordResetResponse(BaseModel):
+    new_password: str
+
+@router.post("/{employee_id}/reset-password", response_model=PasswordResetResponse)
+async def reset_employee_password(employee_id: int, db: AsyncSession = Depends(get_db)):
+    employee = await crud.get_employee_by_id(db, employee_id)
+    if not employee:
+        raise HTTPException(404, "Employee not found")
+    new_password = crud.generate_random_password(6)
+    await crud.set_employee_password(db, employee_id, new_password)
+    return {"new_password": new_password}
 
 def calculate_work_stats(entries):
     if not entries:

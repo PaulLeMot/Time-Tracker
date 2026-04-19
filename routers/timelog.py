@@ -18,7 +18,6 @@ async def get_last_entry(db: AsyncSession, employee_id: int):
     return result.scalar_one_or_none()
 
 def is_action_valid(current_action: str, last_action: str | None) -> bool:
-#всякая бредовая логика пока что
     if last_action is None:
         return current_action == "start"
     
@@ -27,7 +26,7 @@ def is_action_valid(current_action: str, last_action: str | None) -> bool:
     elif last_action == "break_start":
         return current_action == "break_end"
     elif last_action == "break_end":
-        return current_action in ("start", "end")
+        return current_action in ("break_start", "end")
     elif last_action == "end":
         return current_action == "start"
     else:
@@ -67,7 +66,7 @@ def get_allowed_next(last_action: str | None) -> list:
     transitions = {
         "start": ["break_start", "end"],
         "break_start": ["break_end"],
-        "break_end": ["start", "end"],
+        "break_end": ["break_start", "end"],
         "end": ["start"]
     }
     return transitions.get(last_action, [])

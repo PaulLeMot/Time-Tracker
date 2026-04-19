@@ -6,3 +6,4 @@ python-dotenv
 pydantic
 python-barcode
 pillow
+itsdangerous

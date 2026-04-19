@@ -7,7 +7,8 @@ class Employee(Base):
     full_name = Column(String, nullable=False)
     qr_code_secret = Column(String, unique=True, nullable=False)
     is_active = Column(Integer, default=1)
-
+    password = Column(String, nullable=True)
+    
 class TimeEntry(Base):
     __tablename__ = "time_entries"
     id = Column(Integer, primary_key=True, index=True)

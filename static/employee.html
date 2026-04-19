@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Личный кабинет сотрудника</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        }
+        h1, h2 { color: #0f172a; }
+        .info { background: #f8fafc; padding: 16px; border-radius: 16px; margin-bottom: 24px; }
+        .buttons {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 32px;
+            justify-content: center;
+        }
+        .action-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 16px 24px;
+            border-radius: 60px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+            min-width: 140px;
+        }
+        .action-btn:active { transform: scale(0.97); }
+        .action-btn.break { background: #f59e0b; }
+        .action-btn.end { background: #ef4444; }
+        .logout {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            float: right;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0; }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #0f172a;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 40px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <button id="logoutBtn" class="logout">Выйти</button>
+    <h1>Личный кабинет</h1>
+    <div id="profileInfo" class="info">Загрузка...</div>
+
+    <div class="buttons">
+        <button id="startBtn" class="action-btn">🚀 Начать работу</button>
+        <button id="breakStartBtn" class="action-btn break">☕ Перерыв (начало)</button>
+        <button id="breakEndBtn" class="action-btn break">✅ Перерыв (конец)</button>
+        <button id="endBtn" class="action-btn end">🏁 Завершить работу</button>
+    </div>
+
+    <h2>Мои отметки за сегодня</h2>
+    <div id="entriesContainer">Загрузка...</div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+    function formatDateTime(isoString) {
+        if (!isoString) return '—';
+        let str = isoString.slice(0, 19).replace('T', ' ');
+        const [datePart, timePart] = str.split(' ');
+        if (!datePart || !timePart) return str;
+        const [year, month, day] = datePart.split('-');
+        const [hours, minutes] = timePart.split(':');
+        return `${day}-${month}-${year} ${hours}:${minutes}`;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    async function fetchWithAuth(url, options = {}) {
+        const resp = await fetch(url, { ...options, credentials: 'include' });
+        if (resp.status === 401) {
+            window.location.href = '/static/login.html';
+            throw new Error('Unauthorized');
+        }
+        return resp;
+    }
+
+    function showToast(message, isError = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.style.background = isError ? '#dc2626' : '#10b981';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    let currentEmployeeId = null;
+
+    async function loadProfile() {
+        try {
+            const resp = await fetchWithAuth('/api/auth/profile');
+            const data = await resp.json();
+            document.getElementById('profileInfo').innerHTML = `
+                <strong>Сотрудник:</strong> ${escapeHtml(data.full_name)} (ID: ${data.id})<br>
+                <strong>Статус:</strong> ${data.is_active ? 'Активен' : 'Неактивен'}
+            `;
+            currentEmployeeId = data.id;
+            return data.id;
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async function loadTodayEntries(employeeId) {
+        const today = new Date().toISOString().split('T')[0];
+        try {
+            const resp = await fetchWithAuth(`/api/reports/employee/${employeeId}?date=${today}`);
+            const data = await resp.json();
+            const container = document.getElementById('entriesContainer');
+            if (!data.entries.length) {
+                container.innerHTML = '<p>Нет отметок за сегодня</p>';
+                return;
+            }
+            let html = '<table><thead><tr><th>Время</th><th>Действие</th></tr></thead><tbody>';
+            for (const entry of data.entries) {
+                const formattedTime = formatDateTime(entry.timestamp);
+                html += `<tr><td>${formattedTime}</td><td>${escapeHtml(entry.action)}</td></tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (err) {
+            console.error(err);
+            document.getElementById('entriesContainer').innerHTML = '<p>Ошибка загрузки отметок</p>';
+        }
+    }
+
+    async function sendAction(action) {
+        if (!currentEmployeeId) {
+            showToast('Ошибка: не удалось определить сотрудника', true);
+            return;
+        }
+        try {
+            const resp = await fetchWithAuth('/api/timelog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: currentEmployeeId, action: action })
+            });
+            if (resp.ok) {
+                showToast(`✅ ${action} успешно`, false);
+                await loadTodayEntries(currentEmployeeId);
+            } else {
+                let errorMsg = `Ошибка ${resp.status}`;
+                try {
+                    const err = await resp.json();
+                    errorMsg = err.detail || errorMsg;
+                } catch(e) {}
+                showToast(errorMsg, true);
+            }
+        } catch (err) {
+            showToast('Ошибка соединения с сервером', true);
+        }
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+        window.location.href = '/static/login.html';
+    });
+
+    document.getElementById('startBtn').addEventListener('click', () => sendAction('start'));
+    document.getElementById('breakStartBtn').addEventListener('click', () => sendAction('break_start'));
+    document.getElementById('breakEndBtn').addEventListener('click', () => sendAction('break_end'));
+    document.getElementById('endBtn').addEventListener('click', () => sendAction('end'));
+
+    loadProfile().then(empId => {
+        if (empId) loadTodayEntries(empId);
+    });
+</script>
+</body>
+</html>
