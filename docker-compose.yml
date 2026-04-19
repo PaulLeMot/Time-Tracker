@@ -24,6 +24,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     volumes:
       - .:/app
     restart: unless-stopped

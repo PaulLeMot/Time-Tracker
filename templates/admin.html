@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Админ-панель TimeTracker</title>
     <style>
         * { box-sizing: border-box; }
@@ -140,6 +143,9 @@
 </head>
 <body>
 <div class="container">
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
+        <button id="logoutAdminBtn" class="btn" style="background: #ef4444;">🚪 Выйти</button>
+    </div>
     <h1>📋 Админ-панель TimeTracker</h1>
 
     <div class="section">
@@ -198,6 +204,18 @@
 </div>
 
 <script>
+    async function checkAdmin() {
+        try {
+            const resp = await fetch('/api/auth/admin/check', { credentials: 'include' });
+            const data = await resp.json();
+            if (!data.is_admin) {
+                window.location.replace('/static/admin_login.html');
+            }
+        } catch (err) {
+            window.location.replace('/static/admin_login.html');
+        }
+    }
+    checkAdmin();
     function showToast(msg, isError = false) {
         const toast = document.getElementById('toast');
         toast.textContent = msg;
@@ -697,6 +715,18 @@
             }
         };
     }
+    document.getElementById('logoutAdminBtn').addEventListener('click', async () => {
+        try {
+            const resp = await fetch('/api/auth/admin/logout', { method: 'POST', credentials: 'include' });
+            if (resp.ok) {
+                window.location.replace('/static/admin_login.html');
+            } else {
+                showToast('Ошибка выхода', true);
+            }
+        } catch (err) {
+            showToast('Ошибка соединения', true);
+        }
+    });
 </script>
 </body>
 </html>

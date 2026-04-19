@@ -9,6 +9,7 @@ from database import get_db
 import crud
 from fastapi.responses import FileResponse
 from datetime import datetime
+from routers.auth import admin_required
 class EmployeeCreate(BaseModel):
     full_name: str
 
@@ -33,8 +34,8 @@ class TimeEntryUpdateAdmin(BaseModel):
     timestamp: str
 
 page_router = APIRouter(tags=["pages"])
-router = APIRouter(prefix="/api/employees", tags=["employees"])
-public_router = APIRouter(tags=["public"])
+router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(admin_required)])
+public_router = APIRouter(tags=["public"], dependencies=[Depends(admin_required)])
 
 @router.get("/", response_model=List[EmployeeResponse])
 async def list_employees(active_only: bool = True, db: AsyncSession = Depends(get_db)):
@@ -94,7 +95,14 @@ async def delete_employee(employee_id: int, permanent: bool = False, db: AsyncSe
 
 @page_router.get("/admin", include_in_schema=False)
 async def admin_page(request: Request):
-    return FileResponse("templates/admin.html")
+    return FileResponse(
+        "templates/admin.html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 @public_router.get("/api/reports/daily")
 async def daily_report(date: str, db: AsyncSession = Depends(get_db)):

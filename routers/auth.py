@@ -1,10 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from database import get_db
 import crud
+import os
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+class AdminLoginData(BaseModel):
+    password: str
+
+async def admin_required(request: Request):
+    if not request.session.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
 
 class LoginData(BaseModel):
     full_name: str
@@ -41,3 +49,21 @@ async def get_profile(request: Request, db: AsyncSession = Depends(get_db)):
         "full_name": employee.full_name,
         "is_active": employee.is_active
     }
+
+@router.post("/admin/login")
+async def admin_login(login_data: AdminLoginData, request: Request):
+    admin_password = os.getenv("ADMIN_PASSWORD", "default_admin_password")
+    if login_data.password == admin_password:
+        request.session["is_admin"] = True
+        return {"message": "Admin login successful"}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid admin password")
+
+@router.post("/admin/logout")
+async def admin_logout(request: Request):
+    request.session.pop("is_admin", None)
+    return {"message": "Admin logged out"}
+
+@router.get("/admin/check")
+async def admin_check(request: Request):
+    return {"is_admin": request.session.get("is_admin", False)}
