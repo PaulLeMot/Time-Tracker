@@ -9,4 +9,4 @@ ADMIN_PASSWORD=youradminpassword
 
 If you need to restore the database from a dump, run the following command (on the host):
 
-docker exec -i timetrek-db-1 psql -U admin timetracker < backups/имя_файла.sql
+docker exec -i timetrek-db-1 psql -U admin timetracker < backups/filename.sql
