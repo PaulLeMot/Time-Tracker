@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Личный кабинет сотрудника</title>
     <style>
         body {
@@ -112,7 +115,7 @@
     async function fetchWithAuth(url, options = {}) {
         const resp = await fetch(url, { ...options, credentials: 'include' });
         if (resp.status === 401) {
-            window.location.href = '/static/login.html';
+            window.location.replace('/static/login.html');
             throw new Error('Unauthorized');
         }
         return resp;
@@ -127,6 +130,22 @@
     }
 
     let currentEmployeeId = null;
+
+    async function checkEmployee() {
+        try {
+            const resp = await fetch('/api/auth/profile', { credentials: 'include' });
+            if (!resp.ok) {
+                window.location.replace('/static/login.html');
+                return false;
+            }
+            const data = await resp.json();
+            currentEmployeeId = data.id;
+            return true;
+        } catch (err) {
+            window.location.replace('/static/login.html');
+            return false;
+        }
+    }
 
     async function loadProfile() {
         try {
@@ -194,8 +213,12 @@
     }
 
     document.getElementById('logoutBtn').addEventListener('click', async () => {
-        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-        window.location.href = '/static/login.html';
+        try {
+            await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+            window.location.replace('/static/login.html');
+        } catch (err) {
+            showToast('Ошибка выхода', true);
+        }
     });
 
     document.getElementById('startBtn').addEventListener('click', () => sendAction('start'));
@@ -203,9 +226,13 @@
     document.getElementById('breakEndBtn').addEventListener('click', () => sendAction('break_end'));
     document.getElementById('endBtn').addEventListener('click', () => sendAction('end'));
 
-    loadProfile().then(empId => {
-        if (empId) loadTodayEntries(empId);
-    });
+    (async () => {
+        const ok = await checkEmployee();
+        if (ok) {
+            const empId = await loadProfile();
+            if (empId) loadTodayEntries(empId);
+        }
+    })();
 </script>
 </body>
 </html>

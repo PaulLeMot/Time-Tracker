@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Вход сотрудника</title>
     <style>
         body {
@@ -27,22 +30,8 @@
         input { width: 100%; padding: 12px; margin: 8px 0 16px; border: 1px solid #cbd5e1; border-radius: 20px; font-size: 1rem; }
         button { width: 100%; background: #3b82f6; color: white; border: none; padding: 12px; border-radius: 40px; font-size: 1rem; cursor: pointer; }
         .error { color: #dc2626; margin-top: 12px; font-size: 0.9rem; }
-        .back-link {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .back-link a {
-            display: inline-block;
-            background: #e2e8f0;
-            color: #1e293b;
-            padding: 8px 16px;
-            border-radius: 40px;
-            text-decoration: none;
-            font-size: 0.9rem;
-        }
-        .back-link a:hover {
-            background: #cbd5e1;
-        }
+        .back-link { text-align: center; margin-top: 20px; }
+        .back-link a { display: inline-block; background: #e2e8f0; color: #1e293b; padding: 8px 16px; border-radius: 40px; text-decoration: none; font-size: 0.9rem; }
     </style>
 </head>
 <body>
@@ -61,30 +50,28 @@
     </div>
 </div>
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const form = document.getElementById('loginForm');
-        const errorDiv = document.getElementById('errorMessage');
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const fullName = document.getElementById('fullName').value.trim();
-            const password = document.getElementById('password').value;
-            errorDiv.innerText = '';
-            try {
-                const resp = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ full_name: fullName, password: password })
-                });
-                if (resp.ok) {
-                    window.location.href = '/static/employee.html';
-                } else {
-                    const err = await resp.json();
-                    errorDiv.innerText = err.detail || 'Ошибка входа';
-                }
-            } catch (err) {
-                errorDiv.innerText = 'Ошибка соединения с сервером';
+    const form = document.getElementById('loginForm');
+    const errorDiv = document.getElementById('errorMessage');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fullName = document.getElementById('fullName').value.trim();
+        const password = document.getElementById('password').value;
+        errorDiv.innerText = '';
+        try {
+            const resp = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ full_name: fullName, password: password })
+            });
+            if (resp.ok) {
+                window.location.replace('/static/employee.html');
+            } else {
+                const err = await resp.json();
+                errorDiv.innerText = err.detail || 'Ошибка входа';
             }
-        });
+        } catch (err) {
+            errorDiv.innerText = 'Ошибка соединения с сервером';
+        }
     });
 </script>
 </body>

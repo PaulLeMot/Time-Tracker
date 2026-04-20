@@ -5,11 +5,13 @@ from database import engine, Base
 from routers import timelog, admin, auth
 from starlette.middleware.sessions import SessionMiddleware
 import os
+from backup import schedule_backup
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    schedule_backup()
     yield
 
 app = FastAPI(title="TimeTracker API", lifespan=lifespan)
