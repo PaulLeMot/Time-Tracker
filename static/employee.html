@@ -99,7 +99,7 @@
         if (!datePart || !timePart) return str;
         const [year, month, day] = datePart.split('-');
         const [hours, minutes] = timePart.split(':');
-        return `${day}-${month}-${year} ${hours}:${minutes}`;
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
     }
 
     function escapeHtml(str) {

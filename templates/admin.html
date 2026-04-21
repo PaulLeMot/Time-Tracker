@@ -380,14 +380,21 @@
 
     function formatDateTime(isoString) {
         if (!isoString) return '—';
-        let str = isoString.replace('T', ' ');
+        let str = isoString.slice(0, 19).replace('T', ' ');
         const [datePart, timePart] = str.split(' ');
         if (!datePart || !timePart) return str;
         const [year, month, day] = datePart.split('-');
         const [hours, minutes] = timePart.split(':');
-        return `${day}-${month}-${year} ${hours}:${minutes}`;
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
     }
 
+    function formatWorkedHours(workedHours) {
+        if (!workedHours && workedHours !== 0) return '—';
+        const totalMinutes = Math.round(workedHours * 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return `${hours}ч ${minutes.toString().padStart(2, '0')}мин`;
+    }
     async function loadDailyReport(date) {
         const container = document.getElementById('reportContainer');
         container.innerHTML = '<p>Загрузка...</p>';
@@ -405,8 +412,8 @@
                     <td>${escapeHtml(row.full_name)}</td>
                     <td>${formatDateTime(row.start_time)}</td>
                     <td>${formatDateTime(row.end_time)}</td>
-                    <td>${row.break_minutes || 0}</td>
-                    <td>${row.worked_hours || 0}</td>
+                    <td>${formatWorkedHours(row.break_minutes)}</td>
+                    <td>${formatWorkedHours(row.worked_hours)}</td>
                     <td><button class="btn-sm" onclick="showEmployeeDetail(${row.employee_id}, '${date}')">📋</button></td>
                 </tr>`;
             }
@@ -443,10 +450,10 @@
             for (const emp of report) {
                 html += `<tr><td>${escapeHtml(emp.full_name)}</td>`;
                 for (const day of emp.days) {
-                    html += `<td>${day.worked_hours}</td><td>${day.break_minutes}</td>`;
+                    html += `<td>${formatWorkedHours(day.worked_hours)}</td><td>${formatWorkedHours(day.break_minutes)}</td>`;
                 }
-                html += `<td><strong>${emp.total_worked_hours}</strong></td>
-                         <td><strong>${emp.total_break_minutes}</strong></td>
+                html += `<td><strong>${formatWorkedHours(emp.total_worked_hours)}</strong></td>
+                         <td><strong>${formatWorkedHours(emp.total_break_minutes)}</strong></td>
                         </tr>`;
             }
             html += '</tbody></table>';
@@ -505,7 +512,7 @@
             if (datePart && timePart) {
                 const [year, month, day] = datePart.split('-');
                 const [hours, minutes] = timePart.split(':');
-                formattedDisplay = `${day}-${month}-${year} ${hours}:${minutes}`;
+                formattedDisplay = `${year}-${month}-${day} ${hours}:${minutes}`;
             }
             html += `<tr data-id="${entry.id}">
                         <td>

@@ -35,7 +35,7 @@ class TimeEntryUpdateAdmin(BaseModel):
 
 page_router = APIRouter(tags=["pages"])
 router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(admin_required)])
-public_router = APIRouter(tags=["public"], dependencies=[Depends(admin_required)])
+public_router = APIRouter(tags=["public"])
 
 @router.get("/", response_model=List[EmployeeResponse])
 async def list_employees(active_only: bool = True, db: AsyncSession = Depends(get_db)):
@@ -105,7 +105,9 @@ async def admin_page(request: Request):
     )
 
 @public_router.get("/api/reports/daily")
-async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
+async def daily_report(date: str, request: Request, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("is_admin", False):
+        raise HTTPException(403, "Admin access required")
     employees = await crud.get_employees(db, active_only=True)
     target_date = datetime.strptime(date, "%Y-%m-%d").date()
     start_of_day = datetime.combine(target_date, datetime.min.time())
@@ -125,7 +127,9 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
     return result
 
 @public_router.get("/api/reports/weekly")
-async def weekly_report(start_date: str, db: AsyncSession = Depends(get_db)):
+async def weekly_report(start_date: str, request: Request, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("is_admin", False):
+        raise HTTPException(403, "Admin access required")
     from datetime import timedelta, date as date_type
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     if start.weekday() != 0:
@@ -163,7 +167,11 @@ async def weekly_report(start_date: str, db: AsyncSession = Depends(get_db)):
     return result
 
 @public_router.get("/api/reports/employee/{employee_id}")
-async def employee_detail(employee_id: int, date: str, db: AsyncSession = Depends(get_db)):
+async def employee_detail(employee_id: int, date: str, request: Request, db: AsyncSession = Depends(get_db)):
+    session_employee_id = request.session.get("employee_id")
+    is_admin = request.session.get("is_admin", False)
+    if not is_admin and session_employee_id != employee_id:
+        raise HTTPException(403, "You can only view your own reports")
     emp = await crud.get_employee_by_id(db, employee_id)
     if not emp:
         raise HTTPException(404, "Employee not found")

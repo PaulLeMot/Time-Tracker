@@ -41,6 +41,11 @@ async def create_timelog(entry: schemas.TimeLogCreate, db: AsyncSession = Depend
     
     last_entry = await get_last_entry(db, entry.user_id)
     last_action = last_entry.action if last_entry else None
+    if last_action == "start" and last_entry:
+        time_diff = (datetime.utcnow() - last_entry.timestamp).total_seconds()
+        if time_diff > 12 * 3600:  #12 часов
+            #Игнорируем старый start, разрешаем новый
+            last_action = None
     
     if not is_action_valid(entry.action, last_action):
         raise HTTPException(
@@ -51,7 +56,7 @@ async def create_timelog(entry: schemas.TimeLogCreate, db: AsyncSession = Depend
     db_entry = models.TimeEntry(
         employee_id=entry.user_id,
         action=entry.action,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(),
         source="qr"
     )
     db.add(db_entry)

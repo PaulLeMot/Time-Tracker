@@ -96,8 +96,8 @@
 </head>
 <body>
 <div class="container">
-    <h1>📷 Сканер QR-кода</h1>
-    <div class="sub">Наведите камеру на QR-код сотрудника</div>
+    <h1>Сканер Штрих-кода</h1>
+    <div class="sub">Отсканируй штрих-код сотрудника</div>
 
     <input type="text" id="qrInput" class="qr-input" autofocus>
 
@@ -150,8 +150,8 @@
 
         const parts = data.split(':');
         if (parts.length !== 2) {
-            setStatus('❌ Неверный формат QR-кода. Ожидается ID:действие', 'error');
-            showToast('Неверный формат QR-кода', true);
+            setStatus('❌ Неверный формат штрих-кода. Ожидается ID:действие', 'error');
+            showToast('Неверный формат штрих-кода', true);
             return;
         }
 
