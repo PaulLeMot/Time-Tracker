@@ -139,6 +139,12 @@
             padding: 2px 4px;
             font-size: 0.9rem;
         }
+        @media (max-width: 768px) {
+            .report-table th, .report-table td {
+                padding: 6px 4px;
+                font-size: 0.7rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -436,27 +442,33 @@
                 container.innerHTML = '<p>Нет данных за эту неделю</p>';
                 return;
             }
-            let html = '<table class="report-table" style="min-width: 800px;"><thead>';
+            let html = '<div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">';
+            html += '<table class="report-table" style="min-width: 650px;">';
+            html += '<thead>';
             html += '<tr><th>Сотрудник</th>';
             for (let i = 0; i < 7; i++) {
                 const dayName = report[0].days[i].weekday;
                 html += `<th colspan="2">${dayName}</th>`;
             }
-            html += '<th>Всего часов</th><th>Всего перерывов (мин)</th></tr>';
+            html += '<th>Всего часов</th><th>Всего перерывов (мин)</th>';
+            html += '</tr>';
             html += '<tr><th></th>';
             for (let i = 0; i < 7; i++) html += '<th>часы</th><th>првы</th>';
-            html += '<th></th><th></th></tr></thead><tbody>';
+            html += '<th></th><th></th>';
+            html += '</tr>';
+            html += '</thead><tbody>';
 
             for (const emp of report) {
                 html += `<tr><td>${escapeHtml(emp.full_name)}</td>`;
                 for (const day of emp.days) {
-                    html += `<td>${formatWorkedHours(day.worked_hours)}</td><td>${formatWorkedHours(day.break_minutes)}</td>`;
+                    html += `<td>${formatWorkedHours(day.worked_hours)}</td>`;
+                    html += `<td>${formatWorkedHours(day.break_minutes)}</td>`;
                 }
-                html += `<td><strong>${formatWorkedHours(emp.total_worked_hours)}</strong></td>
-                         <td><strong>${formatWorkedHours(emp.total_break_minutes)}</strong></td>
-                        </tr>`;
+                html += `<td><strong>${formatWorkedHours(emp.total_worked_hours)}</strong></td>`;
+                html += `<td><strong>${formatWorkedHours(emp.total_break_minutes)}</strong></td>`;
+                html += `</tr>`;
             }
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             container.innerHTML = html;
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';

@@ -71,6 +71,17 @@
             z-index: 1000;
         }
         .toast.show { opacity: 1; }
+        @media (max-width: 768px) {
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
+            th, td {
+                padding: 8px 6px;
+                font-size: 0.75rem;
+            }
+        }
     </style>
 </head>
 <body>
