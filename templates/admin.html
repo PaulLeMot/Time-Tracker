@@ -948,14 +948,18 @@
             let html = '<div class="recent-table"><table><thead><tr><th>Время</th><th>Сотрудник</th><th>Действие</th><th>Источник</th></tr></thead><tbody>';
             for (const entry of entries) {
                 const time = formatDateTime(entry.timestamp);
+                let actionDisplay = escapeHtml(entry.action);
+                if (entry.action === 'Конец перерыва' && entry.break_number) {
+                    actionDisplay = `${actionDisplay} №${entry.break_number} (${entry.break_duration})`;
+                }
                 html += `<tr>
                             <td>${time}</td>
-                            <td>${escapeHtml(entry.full_name)} (${escapeHtml(entry.username)})</td>
-                            <td>${escapeHtml(entry.action)}</td>
-                            <td>${entry.source === 'qr' ? 'Сотрудник' : (entry.source === 'admin' ? 'Админ' : entry.source)}</td>
+                            <td>${escapeHtml(entry.full_name)}</td>
+                            <td>${actionDisplay}</td>
+                            <td>${entry.source === 'qr' ? 'Штрих-код' : (entry.source === 'admin' ? 'Админ' : entry.source)}</td>
                         </tr>`;
             }
-            html += '</tbody><tr></div>';
+            html += '</tbody></table></div>';
             container.innerHTML = html;
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';

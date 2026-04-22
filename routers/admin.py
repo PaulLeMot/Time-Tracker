@@ -456,6 +456,7 @@ async def get_recent_entries(
     
     stmt = select(
         models.TimeEntry.id,
+        models.TimeEntry.employee_id,
         models.TimeEntry.timestamp,
         models.TimeEntry.action,
         models.TimeEntry.source,
@@ -468,6 +469,45 @@ async def get_recent_entries(
     result = await db.execute(stmt)
     rows = result.all()
     
+    # Преобразуем в список словарей для удобства
+    entries = []
+    for row in rows:
+        entries.append({
+            "id": row.id,
+            "employee_id": row.employee_id,
+            "timestamp": row.timestamp,
+            "action": row.action,
+            "source": row.source,
+            "full_name": row.full_name,
+            "username": row.username
+        })
+    
+    from collections import defaultdict
+    by_employee = defaultdict(list)
+    for e in entries:
+        by_employee[e["employee_id"]].append(e)
+    
+    for emp_entries in by_employee.values():
+        emp_entries.sort(key=lambda x: x["timestamp"])
+        break_counter = 0
+        last_break_start = None
+        for e in emp_entries:
+            if e["action"] == "break_start":
+                break_counter += 1
+                last_break_start = e["timestamp"]
+            elif e["action"] == "break_end" and last_break_start:
+                duration = e["timestamp"] - last_break_start
+                minutes = int(duration.total_seconds() // 60)
+                hours = minutes // 60
+                minutes_rem = minutes % 60
+                duration_str = f"{hours:02d}:{minutes_rem:02d}" if hours > 0 else f"{minutes} мин"
+                e["break_number"] = break_counter
+                e["break_duration"] = duration_str
+                last_break_start = None
+    
+    entries.sort(key=lambda x: x["timestamp"], reverse=True)
+    entries = entries[:limit]
+    
     action_map = {
         "start": "Начало рабочего дня",
         "break_start": "Начало перерыва",
@@ -475,14 +515,19 @@ async def get_recent_entries(
         "end": "Конец рабочего дня"
     }
     
-    entries = []
-    for row in rows:
-        entries.append({
-            "id": row.id,
-            "timestamp": row.timestamp.isoformat(),
-            "action": action_map.get(row.action, row.action),
-            "source": row.source,
-            "full_name": row.full_name,
-            "username": row.username
-        })
-    return entries
+    result_list = []
+    for e in entries:
+        item = {
+            "id": e["id"],
+            "timestamp": e["timestamp"].isoformat(),
+            "action": action_map.get(e["action"], e["action"]),
+            "source": e["source"],
+            "full_name": e["full_name"],
+            "username": e["username"]
+        }
+        if e.get("break_number"):
+            item["break_number"] = e["break_number"]
+            item["break_duration"] = e["break_duration"]
+        result_list.append(item)
+    
+    return result_list
