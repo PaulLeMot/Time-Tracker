@@ -527,7 +527,7 @@
             html += '<th>Детали</th>';
             html += '</tr></thead><tbody>';
             for (const row of report) {
-                let lastBreakDisplay = row.last_break_start ? formatDateTime(row.last_break_start) : '—';
+                let lastBreakDisplay = row.last_break_start ? row.last_break_start.slice(11, 16) : '—';
                 html += `<tr>
                             <td>${escapeHtml(row.full_name)}</td>
                             <td>${escapeHtml(row.status_day)}</td>
@@ -956,7 +956,7 @@
                             <td>${time}</td>
                             <td>${escapeHtml(entry.full_name)}</td>
                             <td>${actionDisplay}</td>
-                            <td>${entry.source === 'qr' ? 'Штрих-код' : (entry.source === 'admin' ? 'Админ' : entry.source)}</td>
+                            <td>${entry.source === 'qr' ? 'Сотрудник' : (entry.source === 'admin' ? 'Админ' : entry.source)}</td>
                         </tr>`;
             }
             html += '</tbody></table></div>';
