@@ -145,44 +145,120 @@
                 font-size: 0.7rem;
             }
         }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            padding: 8px 20px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            border-radius: 40px;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover {
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+        .tab-btn.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .tab-content {
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .recent-table {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .recent-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .recent-table th, .recent-table td {
+            padding: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .recent-table th {
+            position: sticky;
+            top: 0;
+            background: #f8fafc;
+        }
     </style>
 </head>
 <body>
 <div class="container">
     <div style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
-        <button id="logoutAdminBtn" class="btn" style="background: #ef4444;">🚪 Выйти</button>
+        <button id="logoutAdminBtn" class="btn" style="background: #ef4444;">Выйти</button>
     </div>
     <h1>📋 Админ-панель TimeTracker</h1>
 
     <div class="section">
         <h2>👥 Сотрудники</h2>
         <form id="addEmployeeForm">
-            <input type="text" id="fullName" placeholder="ФИО сотрудника" required>
+            <input type="text" id="username" placeholder="Логин" required>
+            <input type="text" id="fullName" placeholder="ФИО" required>
             <button type="submit">➕ Добавить</button>
         </form>
         <table id="employeesTable">
-            <thead><tr><th>ID</th><th>ФИО</th><th>Пароль</th><th>Активен</th><th>Действия</th></tr></thead>
+            <thead>
+                <th>ID</th>
+                <th>Логин</th>
+                <th>ФИО</th>
+                <th>Пароль</th>
+                <th>Активен</th>
+                <th>Действия</th>
+            </thead>
             <tbody id="employeesTbody"></tbody>
         </table>
     </div>
 
     <div class="section">
-        <h2>📅 Отчёт за день</h2>
-        <div class="date-picker">
-            <input type="date" id="reportDate">
-            <button id="loadReportBtn">Показать отчёт</button>
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="daily">📅 Отчёт за день</button>
+            <button class="tab-btn" data-tab="weekly">📆 Отчёт за неделю</button>
+            <button class="tab-btn" data-tab="recent">📋 Последние отметки</button>
         </div>
-        <div id="reportContainer"></div>
-    </div>
-
-    <!-- НОВЫЙ БЛОК: ОТЧЁТ ЗА НЕДЕЛЮ -->
-    <div class="section">
-        <h2>📅 Отчёт за неделю</h2>
-        <div class="date-picker">
-            <input type="week" id="weekPicker">
-            <button id="loadWeeklyReportBtn">Показать отчёт</button>
+        <div class="tab-content" id="daily-tab">
+            <div class="date-picker">
+                <input type="date" id="reportDate">
+                <button id="loadReportBtn">Показать отчёт</button>
+            </div>
+            <div id="reportContainer"></div>
         </div>
-        <div id="weeklyReportContainer"></div>
+        <div class="tab-content" id="weekly-tab" style="display: none;">
+            <div class="date-picker">
+                <input type="week" id="weekPicker">
+                <button id="loadWeeklyReportBtn">Показать отчёт</button>
+            </div>
+            <div id="weeklyReportContainer"></div>
+        </div>
+        <div class="tab-content" id="recent-tab" style="display: none;">
+            <div style="margin-bottom: 16px;">
+                <label>Показывать: 
+                    <select id="recentLimit">
+                        <option value="50">50</option>
+                        <option value="100" selected>100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                    <button id="refreshRecentBtn" class="btn">Обновить</button>
+                </label>
+            </div>
+            <div id="recentContainer">Загрузка...</div>
+        </div>
     </div>
 </div>
 
@@ -210,6 +286,15 @@
 </div>
 
 <script>
+
+    function getLocalDate() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     async function checkAdmin() {
         try {
             const resp = await fetch('/api/auth/admin/check', { credentials: 'include' });
@@ -240,12 +325,12 @@
             for (const emp of employees) {
                 const row = tbody.insertRow();
                 row.insertCell(0).innerText = emp.id;
-                row.insertCell(1).innerText = emp.full_name;
-                const passwordCell = row.insertCell(2);
+                row.insertCell(1).innerText = emp.username;
+                row.insertCell(2).innerText = emp.full_name;
+                const passwordCell = row.insertCell(3);
                 passwordCell.innerText = emp.password || 'не задан';
-                passwordCell.style.fontFamily = 'monospace';
-                row.insertCell(3).innerText = emp.is_active ? 'Да' : 'Нет';
-                const actions = row.insertCell(4);
+                row.insertCell(4).innerText = emp.is_active ? 'Да' : 'Нет';
+                const actions = row.insertCell(5);
 
                 const qrBtn = document.createElement('button');
                 qrBtn.textContent = 'Штрих-код';
@@ -363,13 +448,14 @@
 
     document.getElementById('addEmployeeForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const username = document.getElementById('username').value.trim();
         const fullName = document.getElementById('fullName').value.trim();
         if (!fullName) return;
         try {
             const resp = await fetch('/api/employees', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ full_name: fullName })
+                body: JSON.stringify({ username: username, full_name: fullName })
             });
             if (resp.ok) {
                 showToast('Сотрудник добавлен');
@@ -399,8 +485,24 @@
         const totalMinutes = Math.round(workedHours * 60);
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
-        return `${hours}ч ${minutes.toString().padStart(2, '0')}мин`;
+        return `${hours}:${minutes.toString().padStart(2, '0')}`;
     }
+
+    function formatHoursToHHMM(hoursDecimal) {
+        if (hoursDecimal === undefined || hoursDecimal === null) return '—';
+        const totalMinutes = Math.round(hoursDecimal * 60);
+        const hh = Math.floor(totalMinutes / 60);
+        const mm = totalMinutes % 60;
+        return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    }
+
+    function formatMinutesToHHMM(minutes) {
+        if (minutes === undefined || minutes === null) return '—';
+        const hh = Math.floor(minutes / 60);
+        const mm = minutes % 60;
+        return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    }
+
     async function loadDailyReport(date) {
         const container = document.getElementById('reportContainer');
         container.innerHTML = '<p>Загрузка...</p>';
@@ -412,16 +514,28 @@
                 container.innerHTML = '<p>Нет данных за этот день</p>';
                 return;
             }
-            let html = '<table class="report-table"><thead><tr><th>Сотрудник</th><th>Пришёл</th><th>Ушёл</th><th>Перерывы (мин)</th><th>Отработано (ч)</th><th>Детали</th></tr></thead><tbody>';
+            let html = '<table class="report-table"><thead><tr>';
+            html += '<th>Сотрудник</th>';
+            html += '<th>Статус дня</th>';
+            html += '<th>Статус перерыва</th>';
+            html += '<th>Начало последнего перерыва</th>';
+            html += '<th>Отработано</th>';
+            html += '<th>Перерывы</th>';
+            html += '<th>Кол-во перерывов</th>';
+            html += '<th>Детали</th>';
+            html += '</tr></thead><tbody>';
             for (const row of report) {
+                let lastBreakDisplay = row.last_break_start ? formatDateTime(row.last_break_start) : '—';
                 html += `<tr>
-                    <td>${escapeHtml(row.full_name)}</td>
-                    <td>${formatDateTime(row.start_time)}</td>
-                    <td>${formatDateTime(row.end_time)}</td>
-                    <td>${formatWorkedHours(row.break_minutes)}</td>
-                    <td>${formatWorkedHours(row.worked_hours)}</td>
-                    <td><button class="btn-sm" onclick="showEmployeeDetail(${row.employee_id}, '${date}')">📋</button></td>
-                </tr>`;
+                            <td>${escapeHtml(row.full_name)}</td>
+                            <td>${escapeHtml(row.status_day)}</td>
+                            <td>${escapeHtml(row.status_break)}</td>
+                            <td>${lastBreakDisplay}</td>
+                            <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
+                            <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
+                            <td>${row.break_count}</td>
+                            <td><button class="btn-sm" onclick="showEmployeeDetail(${row.employee_id}, '${date}')">📋</button></td>
+                        </tr>`;
             }
             html += '</tbody></table>';
             container.innerHTML = html;
@@ -698,10 +812,6 @@
         return getMonday(date);
     }
 
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('reportDate').value = today;
-    loadEmployees();
-    loadDailyReport(today);
     document.getElementById('loadReportBtn').onclick = () => {
         const date = document.getElementById('reportDate').value;
         if (date) loadDailyReport(date);
@@ -719,7 +829,6 @@
         const m = String(monday.getMonth() + 1).padStart(2, '0');
         const d = String(monday.getDate()).padStart(2, '0');
         const mondayStr = `${y}-${m}-${d}`;
-        loadWeeklyReport(mondayStr);
         
         document.getElementById('loadWeeklyReportBtn').onclick = () => {
             const weekValue = weekPicker.value;
@@ -746,6 +855,97 @@
             showToast('Ошибка соединения', true);
         }
     });
+    //tabs
+    function initTabs() {
+        const tabs = document.querySelectorAll('.tab-btn');
+        const dailyTab = document.getElementById('daily-tab');
+        const weeklyTab = document.getElementById('weekly-tab');
+        const recentTab = document.getElementById('recent-tab');
+
+        tabs.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabId = btn.dataset.tab;
+                tabs.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Скрыть все вкладки
+                dailyTab.style.display = 'none';
+                weeklyTab.style.display = 'none';
+                if (recentTab) recentTab.style.display = 'none';
+
+                if (tabId === 'daily') {
+                    dailyTab.style.display = 'block';
+                    if (!document.getElementById('reportDate').value) {
+                        const today = getLocalDate();
+                        document.getElementById('reportDate').value = today;
+                        loadDailyReport(today);
+                    }
+                } else if (tabId === 'weekly') {
+                    weeklyTab.style.display = 'block';
+                    const weekPicker = document.getElementById('weekPicker');
+                    if (!weekPicker.value) {
+                        const now = new Date();
+                        const year = now.getFullYear();
+                        const weekNumber = getWeekNumber(now);
+                        weekPicker.value = `${year}-W${weekNumber.toString().padStart(2, '0')}`;
+                        const monday = getMonday(now);
+                        const y = monday.getFullYear();
+                        const m = String(monday.getMonth() + 1).padStart(2, '0');
+                        const d = String(monday.getDate()).padStart(2, '0');
+                        const mondayStr = `${y}-${m}-${d}`;
+                        loadWeeklyReport(mondayStr);
+                    }
+                } else if (tabId === 'recent' && recentTab) {
+                    recentTab.style.display = 'block';
+                    const limit = document.getElementById('recentLimit').value;
+                    loadRecentEntries(parseInt(limit));
+                }
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initTabs();
+        const refreshRecentBtn = document.getElementById('refreshRecentBtn');
+        if (refreshRecentBtn) {
+            refreshRecentBtn.addEventListener('click', () => {
+                const limit = document.getElementById('recentLimit').value;
+                loadRecentEntries(parseInt(limit));
+            });
+        }
+        loadEmployees();
+        const today = getLocalDate();
+        document.getElementById('reportDate').value = today;
+        loadDailyReport(today);
+    });
+    async function loadRecentEntries(limit = 100) {
+        const container = document.getElementById('recentContainer');
+        container.innerHTML = '<p>Загрузка...</p>';
+        try {
+            const resp = await fetch(`/api/admin/recent-entries?limit=${limit}`);
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            const entries = await resp.json();
+            if (!entries.length) {
+                container.innerHTML = '<p>Нет записей</p>';
+                return;
+            }
+            let html = '<div class="recent-table"><table><thead><tr><th>Время</th><th>Сотрудник</th><th>Действие</th><th>Источник</th></tr></thead><tbody>';
+            for (const entry of entries) {
+                const time = formatDateTime(entry.timestamp);
+                html += `<tr>
+                            <td>${time}</td>
+                            <td>${escapeHtml(entry.full_name)} (${escapeHtml(entry.username)})</td>
+                            <td>${escapeHtml(entry.action)}</td>
+                            <td>${entry.source === 'qr' ? 'Сотрудник' : (entry.source === 'admin' ? 'Админ' : entry.source)}</td>
+                        </tr>`;
+            }
+            html += '</tbody><tr></div>';
+            container.innerHTML = html;
+        } catch (err) {
+            container.innerHTML = '<p>Ошибка загрузки</p>';
+            showToast(err.message, true);
+        }
+    }
 </script>
 </body>
 </html>

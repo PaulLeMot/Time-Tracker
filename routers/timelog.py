@@ -75,3 +75,11 @@ def get_allowed_next(last_action: str | None) -> list:
         "end": ["start"]
     }
     return transitions.get(last_action, [])
+
+@router.get("/last/{employee_id}")
+async def get_last_action(employee_id: int, db: AsyncSession = Depends(get_db)):
+    employee = await crud.get_employee_by_id(db, employee_id)
+    if not employee:
+        raise HTTPException(404, "Employee not found")
+    last_entry = await get_last_entry(db, employee_id)
+    return {"last_action": last_entry.action if last_entry else None}

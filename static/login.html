@@ -38,8 +38,8 @@
 <div class="login-card">
     <h1>Вход в систему</h1>
     <form id="loginForm">
-        <label>ФИО сотрудника</label>
-        <input type="text" id="fullName" required>
+        <label>Логин</label>
+        <input type="text" id="username" required>
         <label>Пароль</label>
         <input type="password" id="password" required>
         <button type="submit">Войти</button>
@@ -54,14 +54,14 @@
     const errorDiv = document.getElementById('errorMessage');
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const fullName = document.getElementById('fullName').value.trim();
+        const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
         errorDiv.innerText = '';
         try {
             const resp = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ full_name: fullName, password: password })
+                body: JSON.stringify({ username: username, password: password })
             });
             if (resp.ok) {
                 window.location.replace('/static/employee.html');

@@ -5,6 +5,7 @@ class Employee(Base):
     __tablename__ = "employees"
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
+    username = Column(String, unique=True, nullable=False)
     qr_code_secret = Column(String, unique=True, nullable=False)
     is_active = Column(Integer, default=1)
     password = Column(String, nullable=True)

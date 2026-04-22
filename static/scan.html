@@ -46,6 +46,29 @@
             width: 1px;
             height: 1px;
         }
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+        .action-btn {
+            background: #e2e8f0;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #1e293b;
+        }
+        .action-btn.selected {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 2px 8px rgba(59,130,246,0.3);
+        }
         .status {
             margin-top: 24px;
             padding: 12px;
@@ -96,16 +119,25 @@
 </head>
 <body>
 <div class="container">
-    <h1>Сканер Штрих-кода</h1>
-    <div class="sub">Отсканируй штрих-код сотрудника</div>
+    <h1>📷 Сканер штрих-кода</h1>
+    <div class="sub">Выберите действие, затем отсканируйте штрих-код сотрудника</div>
 
+    <!-- Невидимое поле ввода для захвата сканирования -->
     <input type="text" id="qrInput" class="qr-input" autofocus>
 
-    <div class="status info" id="statusMessage">✅ Готов к сканированию</div>
+    <div class="action-buttons">
+        <button class="action-btn" data-action="start">🚀 Начать работу</button>
+        <button class="action-btn" data-action="break_start">☕ Перерыв (начало)</button>
+        <button class="action-btn" data-action="break_end">✅ Перерыв (конец)</button>
+        <button class="action-btn" data-action="end">🏁 Завершить работу</button>
+    </div>
+
+    <div class="status info" id="statusMessage">
+        ✅ Готов к сканированию
+    </div>
     <div class="employee-info" id="employeeInfo" style="display: none;">
         👤 <span id="empName"></span> — <span id="empAction"></span>
     </div>
-
     <div style="margin-top: 30px;">
         <a href="/static/login.html" style="display: inline-block; background: #10b981; color: white; padding: 10px 20px; border-radius: 40px; text-decoration: none;">🔐 Войти в личный кабинет</a>
     </div>
@@ -119,6 +151,17 @@
     const empNameSpan = document.getElementById('empName');
     const empActionSpan = document.getElementById('empAction');
     const toast = document.getElementById('toast');
+    let currentAction = 'start';
+
+    const actionBtns = document.querySelectorAll('.action-btn');
+    actionBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            actionBtns.forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            currentAction = btn.dataset.action;
+        });
+    });
+    if (actionBtns.length) actionBtns[0].classList.add('selected');
 
     function showToast(message, isError = false) {
         toast.textContent = message;
@@ -148,42 +191,26 @@
     async function processScan(data) {
         if (!data || data.trim() === '') return;
 
-        const parts = data.split(':');
-        if (parts.length !== 2) {
-            setStatus('❌ Неверный формат штрих-кода. Ожидается ID:действие', 'error');
-            showToast('Неверный формат штрих-кода', true);
-            return;
-        }
-
-        const userId = parseInt(parts[0], 10);
-        const action = parts[1];
-
+        const userId = parseInt(data, 10);
         if (isNaN(userId)) {
-            setStatus('❌ ID сотрудника должен быть числом', 'error');
+            setStatus('❌ Штрих-код должен содержать ID сотрудника (число)', 'error');
             showToast('Ошибка: ID не число', true);
             return;
         }
 
-        const validActions = ['start', 'break_start', 'break_end', 'end'];
-        if (!validActions.includes(action)) {
-            setStatus(`❌ Недопустимое действие: ${action}`, 'error');
-            showToast(`Недопустимое действие: ${action}`, true);
-            return;
-        }
-
-        setStatus(`⏳ Отправка... (${userId}:${action})`, 'info');
+        setStatus(`⏳ Отправка... (${userId}:${currentAction})`, 'info');
 
         try {
             const response = await fetch('/api/timelog', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: userId, action: action })
+                body: JSON.stringify({ user_id: userId, action: currentAction })
             });
 
             if (response.ok) {
-                setStatus(`✅ Отмечено! Действие: ${action}`, 'success');
-                showToast(`✅ ${action} для сотрудника ${userId}`, false);
-                showEmployeeInfo(`Сотрудник ${userId}`, action);
+                setStatus(`✅ Отмечено! Действие: ${currentAction}`, 'success');
+                showToast(`✅ ${currentAction} для сотрудника ${userId}`, false);
+                showEmployeeInfo(`Сотрудник ${userId}`, currentAction);
             } else {
                 let errorMsg = `Ошибка ${response.status}`;
                 try {

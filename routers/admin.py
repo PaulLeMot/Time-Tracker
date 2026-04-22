@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, delete, desc
 from pydantic import BaseModel
 import barcode
 from barcode.writer import ImageWriter
@@ -10,17 +11,22 @@ import crud
 from fastapi.responses import FileResponse
 from datetime import datetime
 from routers.auth import admin_required
+from routers.auth import get_current_employee
+import models
 class EmployeeCreate(BaseModel):
+    username: str
     full_name: str
 
 class EmployeeResponse(BaseModel):
     id: int
+    username: str
     full_name: str
     qr_code_secret: str
     is_active: int
     password: Optional[str] = None
 
 class EmployeeUpdate(BaseModel):
+    username: Optional[str] = None
     full_name: Optional[str] = None
     is_active: Optional[int] = None
     password: Optional[str] = None
@@ -44,7 +50,7 @@ async def list_employees(active_only: bool = True, db: AsyncSession = Depends(ge
 
 @router.post("/", response_model=EmployeeResponse, status_code=201)
 async def create_employee(emp_data: EmployeeCreate, db: AsyncSession = Depends(get_db)):
-    employee = await crud.create_employee(db, full_name=emp_data.full_name)
+    employee = await crud.create_employee(db, username=emp_data.username, full_name=emp_data.full_name)
     return employee
 
 @router.get("/{employee_id}/qr")
@@ -52,7 +58,7 @@ async def get_employee_qr(employee_id: int, action: str = "start", db: AsyncSess
     employee = await crud.get_employee_by_id(db, employee_id)
     if not employee:
         raise HTTPException(404, detail="Employee not found")
-    barcode_data = f"{employee_id}:{action}"
+    barcode_data = str(employee_id)
     barcode_class = barcode.get_barcode_class('code128')
     my_barcode = barcode_class(barcode_data, writer=ImageWriter())
     barcode_options = {
@@ -72,6 +78,8 @@ async def update_employee(employee_id: int, update_data: EmployeeUpdate, db: Asy
     employee = await crud.get_employee_by_id(db, employee_id)
     if not employee:
         raise HTTPException(404, detail="Employee not found")
+    if update_data.username is not None:
+        employee.username = update_data.username
     if update_data.full_name is not None:
         employee.full_name = update_data.full_name
     if update_data.is_active is not None:
@@ -105,24 +113,89 @@ async def admin_page(request: Request):
     )
 
 @public_router.get("/api/reports/daily")
-async def daily_report(date: str, request: Request, db: AsyncSession = Depends(get_db)):
-    if not request.session.get("is_admin", False):
-        raise HTTPException(403, "Admin access required")
+async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
     employees = await crud.get_employees(db, active_only=True)
     target_date = datetime.strptime(date, "%Y-%m-%d").date()
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
+    
     result = []
     for emp in employees:
         entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=start_of_day, end_date=end_of_day)
-        worked, breaks, start_time, end_time = calculate_work_stats(entries)
+        entries_sorted = sorted(entries, key=lambda x: x.timestamp)
+        
+        status_day = "not_started"
+        status_break = "not_on_break"
+        total_work_sec = 0
+        total_break_sec = 0
+        break_count = 0
+        last_break_start = None
+        last_start_time = None
+        in_shift = False
+        in_break = False
+        
+        for entry in entries_sorted:
+            if entry.action == "start":
+                if not in_shift:
+                    in_shift = True
+                    last_start_time = entry.timestamp
+                    status_day = "started"
+            elif entry.action == "end":
+                if in_shift:
+                    in_shift = False
+                    if last_start_time and not in_break:
+                        total_work_sec += (entry.timestamp - last_start_time).total_seconds()
+                    last_start_time = None
+                    status_day = "ended"
+            elif entry.action == "break_start":
+                if in_shift and not in_break:
+                    in_break = True
+                    last_break_start = entry.timestamp
+                    status_break = "on_break"
+                    break_count += 1
+                    if last_start_time:
+                        total_work_sec += (entry.timestamp - last_start_time).total_seconds()
+                        last_start_time = None
+            elif entry.action == "break_end":
+                if in_break:
+                    in_break = False
+                    status_break = "not_on_break"
+                    if last_break_start:
+                        total_break_sec += (entry.timestamp - last_break_start).total_seconds()
+                        last_break_start = None
+                    last_start_time = entry.timestamp
+        
+        # Если смена активна, завершаем её в конце дня
+        if in_shift and last_start_time:
+            if not in_break:
+                total_work_sec += (end_of_day - last_start_time).total_seconds()
+            else:
+                total_break_sec += (end_of_day - last_break_start).total_seconds()
+            status_day = "ended"
+        
+        worked_hours = round(total_work_sec / 3600, 2)
+        break_minutes = round(total_break_sec / 60, 0)
+        
+        status_day_text = {
+            "not_started": "❌ не начал",
+            "started": "✅ работает",
+            "ended": "🏁 завершил"
+        }.get(status_day, "неизвестно")
+        
+        status_break_text = {
+            "not_on_break": "🔵 не в перерыве",
+            "on_break": "☕ в перерыве"
+        }.get(status_break, "неизвестно")
+        
         result.append({
             "employee_id": emp.id,
             "full_name": emp.full_name,
-            "start_time": start_time,
-            "end_time": end_time,
-            "break_minutes": breaks,
-            "worked_hours": round(worked / 60, 2)
+            "status_day": status_day_text,
+            "status_break": status_break_text,
+            "last_break_start": last_break_start.isoformat() if last_break_start else None,
+            "worked_hours_current": worked_hours,
+            "break_minutes_current": break_minutes,
+            "break_count": break_count
         })
     return result
 
@@ -179,7 +252,7 @@ async def employee_detail(employee_id: int, date: str, request: Request, db: Asy
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     entries = await crud.get_time_entries(db, employee_id=employee_id, start_date=start_of_day, end_date=end_of_day)
-    entries_list = [{"id": e.id, "timestamp": e.timestamp.isoformat(), "action": e.action} for e in entries]  # добавлено id
+    entries_list = [{"id": e.id, "timestamp": e.timestamp.isoformat(), "action": e.action} for e in entries]F
     worked, breaks, _, _ = calculate_work_stats(entries)
     return {
         "employee_id": employee_id,
@@ -188,6 +261,82 @@ async def employee_detail(employee_id: int, date: str, request: Request, db: Asy
         "entries": entries_list,
         "worked_hours": round(worked / 60, 2),
         "break_minutes": breaks
+    }
+
+@public_router.get("/api/employee/daily-summary")
+async def employee_daily_summary(
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db)
+):
+    target_date = datetime.now().date()
+    start_of_day = datetime.combine(target_date, datetime.min.time())
+    end_of_day = datetime.combine(target_date, datetime.max.time())
+    entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=start_of_day, end_date=end_of_day)
+    entries_sorted = sorted(entries, key=lambda x: x.timestamp)
+    
+    status_day = "not_started"
+    status_break = "not_on_break"
+    last_break_start = None
+    total_work_sec = 0
+    total_break_sec = 0
+    break_count = 0
+    last_start_time = None
+    in_shift = False
+    in_break = False
+    now = datetime.now()
+    
+    for entry in entries_sorted:
+        if entry.action == "start":
+            if not in_shift:
+                in_shift = True
+                last_start_time = entry.timestamp
+                status_day = "started"
+        elif entry.action == "end":
+            if in_shift:
+                in_shift = False
+                if last_start_time:
+                    total_work_sec += (entry.timestamp - last_start_time).total_seconds()
+                    last_start_time = None
+                status_day = "ended"
+        elif entry.action == "break_start":
+            if in_shift and not in_break:
+                in_break = True
+                last_break_start = entry.timestamp
+                status_break = "on_break"
+                break_count += 1
+        elif entry.action == "break_end":
+            if in_break:
+                in_break = False
+                if last_break_start:
+                    total_break_sec += (entry.timestamp - last_break_start).total_seconds()
+                    last_break_start = None
+                status_break = "not_on_break"
+    
+    if in_shift and last_start_time:
+        total_work_sec += (now - last_start_time).total_seconds()
+    if in_break and last_break_start:
+        total_break_sec += (now - last_break_start).total_seconds()
+    
+    worked_hours = round(total_work_sec / 3600, 2)
+    break_minutes = round(total_break_sec / 60, 0)
+    
+    status_day_text = {
+        "not_started": "❌ Рабочий день не начат",
+        "started": "✅ Работаю",
+        "ended": "🏁 Рабочий день завершён"
+    }.get(status_day, "неизвестно")
+    
+    status_break_text = {
+        "not_on_break": "🔵 Не в перерыве",
+        "on_break": "☕ В перерыве"
+    }.get(status_break, "неизвестно")
+    
+    return {
+        "status_day": status_day_text,
+        "status_break": status_break_text,
+        "worked_hours_current": worked_hours,
+        "break_minutes_current": break_minutes,
+        "break_count": break_count
     }
 
 @public_router.post("/api/admin/timelog", status_code=201)
@@ -245,6 +394,7 @@ def calculate_work_stats(entries):
     in_break = False
     last_start = None
     last_break_start = None
+    
     for entry in entries:
         ts = entry.timestamp
         action = entry.action
@@ -258,18 +408,75 @@ def calculate_work_stats(entries):
             if in_shift:
                 in_shift = False
                 end_time = ts
-                total_work_sec += (ts - last_start).total_seconds()
+                if last_start and not in_break:
+                    total_work_sec += (ts - last_start).total_seconds()
                 last_start = None
         elif action == "break_start":
             if in_shift and not in_break:
                 in_break = True
                 last_break_start = ts
+                if last_start:
+                    total_work_sec += (ts - last_start).total_seconds()
+                    last_start = None
         elif action == "break_end":
             if in_break:
                 in_break = False
-                total_break_sec += (ts - last_break_start).total_seconds()
+                if last_break_start:
+                    total_break_sec += (ts - last_break_start).total_seconds()
+                    last_break_start = None
+                last_start = ts
+    
+    if in_shift and not in_break and last_start:
+        now = datetime.now()
+        total_work_sec += (now - last_start).total_seconds()
+    if in_break and last_break_start:
+        now = datetime.now()
+        total_break_sec += (now - last_break_start).total_seconds()
+    
     worked_min = total_work_sec // 60
     break_min = total_break_sec // 60
     start_str = start_time.isoformat() if start_time else None
     end_str = end_time.isoformat() if end_time else None
     return worked_min, break_min, start_str, end_str
+
+@public_router.get("/api/admin/recent-entries")
+async def get_recent_entries(
+    request: Request,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db)
+):
+    if not request.session.get("is_admin", False):
+        raise HTTPException(403, "Admin access required")
+    
+    stmt = select(
+        models.TimeEntry.id,
+        models.TimeEntry.timestamp,
+        models.TimeEntry.action,
+        models.TimeEntry.source,
+        models.Employee.full_name,
+        models.Employee.username
+    ).join(
+        models.Employee, models.TimeEntry.employee_id == models.Employee.id
+    ).order_by(desc(models.TimeEntry.timestamp)).limit(limit)
+    
+    result = await db.execute(stmt)
+    rows = result.all()
+    
+    action_map = {
+        "start": "Начало рабочего дня",
+        "break_start": "Начало перерыва",
+        "break_end": "Конец перерыва",
+        "end": "Конец рабочего дня"
+    }
+    
+    entries = []
+    for row in rows:
+        entries.append({
+            "id": row.id,
+            "timestamp": row.timestamp.isoformat(),
+            "action": action_map.get(row.action, row.action),
+            "source": row.source,
+            "full_name": row.full_name,
+            "username": row.username
+        })
+    return entries

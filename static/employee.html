@@ -8,6 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>Личный кабинет сотрудника</title>
     <style>
+        * { box-sizing: border-box; }
         body {
             font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             background: #f1f5f9;
@@ -15,55 +16,69 @@
             padding: 20px;
         }
         .container {
-            max-width: 1000px;
+            max-width: 800px;
             margin: 0 auto;
             background: white;
-            border-radius: 24px;
-            padding: 24px;
+            border-radius: 32px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+            padding: 24px;
         }
         h1, h2 { color: #0f172a; }
-        .info { background: #f8fafc; padding: 16px; border-radius: 16px; margin-bottom: 24px; }
+        .info {
+            background: #f8fafc;
+            padding: 16px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+        }
         .buttons {
             display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
+            flex-direction: column;
+            gap: 12px;
             margin-bottom: 32px;
-            justify-content: center;
         }
         .action-btn {
             background: #3b82f6;
-            color: white;
             border: none;
-            padding: 16px 24px;
+            color: white;
+            padding: 14px;
             border-radius: 60px;
-            font-size: 1.2rem;
-            font-weight: bold;
+            font-size: 1rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: 0.2s;
-            min-width: 140px;
+            transition: all 0.2s;
+            width: 100%;
+            text-align: center;
         }
-        .action-btn:active { transform: scale(0.97); }
+        .action-btn:active { transform: scale(0.98); }
         .action-btn.break { background: #f59e0b; }
         .action-btn.end { background: #ef4444; }
+        .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .logout {
             background: #ef4444;
             color: white;
             border: none;
             padding: 8px 16px;
-            border-radius: 20px;
+            border-radius: 40px;
             cursor: pointer;
             float: right;
         }
-        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
         .toast {
             position: fixed;
             bottom: 20px;
             right: 20px;
             background: #0f172a;
             color: white;
-            padding: 12px 20px;
+            padding: 12px 24px;
             border-radius: 40px;
             opacity: 0;
             transition: opacity 0.3s;
@@ -71,38 +86,147 @@
             z-index: 1000;
         }
         .toast.show { opacity: 1; }
-        @media (max-width: 768px) {
-            table {
-                display: block;
-                overflow-x: auto;
-                white-space: nowrap;
-            }
-            th, td {
-                padding: 8px 6px;
-                font-size: 0.75rem;
-            }
+        @media (max-width: 480px) {
+            .container { padding: 16px; }
+        }
+        /* Стили для вкладок */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            padding: 8px 20px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            border-radius: 40px;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover {
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+        .tab-btn.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .tab-content {
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .date-picker {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background: white;
+            margin: 20% auto;
+            padding: 20px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 400px;
+        }
+        .modal-content input {
+            width: 100%;
+            margin: 8px 0;
+            padding: 8px;
+        }
+        .modal-content button {
+            margin-top: 12px;
+        }
+        .close {
+            float: right;
+            font-size: 24px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <button id="logoutBtn" class="logout">Выйти</button>
     <h1>Личный кабинет</h1>
-    <div id="profileInfo" class="info">Загрузка...</div>
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-bottom: 16px;">
+        <button id="logoutBtn" class="logout">Выйти</button>
+        <button id="changePasswordBtn" class="logout">Сменить пароль</button>
+    </div>
+    
 
-    <div class="buttons">
-        <button id="startBtn" class="action-btn">🚀 Начать работу</button>
-        <button id="breakStartBtn" class="action-btn break">☕ Перерыв (начало)</button>
-        <button id="breakEndBtn" class="action-btn break">✅ Перерыв (конец)</button>
-        <button id="endBtn" class="action-btn end">🏁 Завершить работу</button>
+    <!-- Вкладки -->
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="daily">📅 Сегодня</button>
+        <button class="tab-btn" data-tab="weekly">📆 Статистика по неделям</button>
     </div>
 
-    <h2>Мои отметки за сегодня</h2>
-    <div id="entriesContainer">Загрузка...</div>
+    <!-- Содержимое вкладки "Сегодня" -->
+    <div id="daily-tab" class="tab-content">
+        <div id="employeeName" class="info">Загрузка...</div>
+        <div id="statusInfo" class="info">
+            <strong>Статус дня:</strong> <span id="statusDay">—</span><br>
+            <strong>Статус перерыва:</strong> <span id="statusBreak">—</span><br>
+            <strong>Отработано сегодня:</strong> <span id="workedToday">—</span><br>
+            <strong>Перерывы сегодня:</strong> <span id="breakToday">—</span><br>
+            <strong>Количество перерывов:</strong> <span id="breakCountToday">—</span>
+        </div>
+
+        <div class="buttons" id="buttonsContainer"></div>
+
+        <h2>Мои отметки за сегодня</h2>
+        <div id="entriesContainer">Загрузка...</div>
+    </div>
+
+    <!-- Содержимое вкладки "Недельная статистика" -->
+    <div id="weekly-tab" class="tab-content" style="display: none;">
+        <div class="date-picker">
+            <input type="week" id="weekPicker">
+            <button id="loadWeeklyBtn">Показать</button>
+        </div>
+        <div id="weeklyContainer">Загрузка...</div>
+    </div>
+
+    <div id="changePasswordModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Смена пароля</h3>
+            <input type="password" id="oldPassword" placeholder="Старый пароль">
+            <input type="password" id="newPassword" placeholder="Новый пароль">
+            <input type="password" id="confirmPassword" placeholder="Подтвердите новый пароль">
+            <button id="savePasswordBtn" class="action-btn">Сохранить</button>
+            <div id="passwordError" style="color:red; margin-top:8px;"></div>
+        </div>
+    </div>
 </div>
-<div id="toast" class="toast"></div>
+<div id="toast" class="toast">
 
 <script>
+    // ========== Вспомогательные функции ==========
+    function getLocalDate() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     function formatDateTime(isoString) {
         if (!isoString) return '—';
         let str = isoString.slice(0, 19).replace('T', ' ');
@@ -110,7 +234,22 @@
         if (!datePart || !timePart) return str;
         const [year, month, day] = datePart.split('-');
         const [hours, minutes] = timePart.split(':');
-        return `${year}-${month}-${day} ${hours}:${minutes}`;
+        return `${day}-${month}-${year} ${hours}:${minutes}`;
+    }
+
+    function formatHoursToHHMM(hoursDecimal) {
+        if (hoursDecimal === undefined || hoursDecimal === null) return '—';
+        const totalMinutes = Math.round(hoursDecimal * 60);
+        const hh = Math.floor(totalMinutes / 60);
+        const mm = totalMinutes % 60;
+        return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    }
+
+    function formatMinutesToHHMM(minutes) {
+        if (minutes === undefined || minutes === null) return '—';
+        const hh = Math.floor(minutes / 60);
+        const mm = minutes % 60;
+        return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     }
 
     function escapeHtml(str) {
@@ -123,6 +262,15 @@
         });
     }
 
+    function showToast(message, isError = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.style.background = isError ? '#dc2626' : '#10b981';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    // ========== API ==========
     async function fetchWithAuth(url, options = {}) {
         const resp = await fetch(url, { ...options, credentials: 'include' });
         if (resp.status === 401) {
@@ -132,75 +280,88 @@
         return resp;
     }
 
-    function showToast(message, isError = false) {
-        const toast = document.getElementById('toast');
-        toast.textContent = message;
-        toast.style.background = isError ? '#dc2626' : '#10b981';
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2500);
-    }
-
-    let currentEmployeeId = null;
-
-    async function checkEmployee() {
-        try {
-            const resp = await fetch('/api/auth/profile', { credentials: 'include' });
-            if (!resp.ok) {
-                window.location.replace('/static/login.html');
-                return false;
-            }
-            const data = await resp.json();
-            currentEmployeeId = data.id;
-            return true;
-        } catch (err) {
-            window.location.replace('/static/login.html');
-            return false;
-        }
-    }
-
-    async function loadProfile() {
+    async function loadEmployeeNameAndId() {
         try {
             const resp = await fetchWithAuth('/api/auth/profile');
             const data = await resp.json();
-            document.getElementById('profileInfo').innerHTML = `
-                <strong>Сотрудник:</strong> ${escapeHtml(data.full_name)} (ID: ${data.id})<br>
-                <strong>Статус:</strong> ${data.is_active ? 'Активен' : 'Неактивен'}
+            document.getElementById('employeeName').innerHTML = `
+                <strong>Сотрудник:</strong> ${escapeHtml(data.full_name)}<br>
+                <strong>Логин:</strong> ${escapeHtml(data.username)} (ID: ${data.id})
             `;
-            currentEmployeeId = data.id;
             return data.id;
         } catch (err) {
             console.error(err);
+            return null;
+        }
+    }
+
+    async function loadEmployeeSummary() {
+        try {
+            const resp = await fetchWithAuth('/api/auth/daily-summary');
+            const data = await resp.json();
+            document.getElementById('statusDay').innerText = data.status_day;
+            document.getElementById('statusBreak').innerText = data.status_break;
+            document.getElementById('workedToday').innerText = formatHoursToHHMM(data.worked_hours_current);
+            document.getElementById('breakToday').innerText = formatMinutesToHHMM(data.break_minutes_current);
+            document.getElementById('breakCountToday').innerText = data.break_count;
+        } catch (err) {
+            console.error(err);
+            document.getElementById('statusDay').innerText = 'Ошибка загрузки';
         }
     }
 
     async function loadTodayEntries(employeeId) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getLocalDate();
         try {
             const resp = await fetchWithAuth(`/api/reports/employee/${employeeId}?date=${today}`);
             const data = await resp.json();
             const container = document.getElementById('entriesContainer');
             if (!data.entries.length) {
                 container.innerHTML = '<p>Нет отметок за сегодня</p>';
-                return;
+                return [];
             }
-            let html = '<table><thead><tr><th>Время</th><th>Действие</th></tr></thead><tbody>';
+            let html = '<table style="width:100%; border-collapse: collapse;"><thead><tr><th>Время</th><th>Действие</th></tr></thead><tbody>';
             for (const entry of data.entries) {
                 const formattedTime = formatDateTime(entry.timestamp);
                 html += `<tr><td>${formattedTime}</td><td>${escapeHtml(entry.action)}</td></tr>`;
             }
             html += '</tbody></table>';
             container.innerHTML = html;
+            return data.entries;
         } catch (err) {
             console.error(err);
             document.getElementById('entriesContainer').innerHTML = '<p>Ошибка загрузки отметок</p>';
+            return [];
         }
     }
 
+    async function getLastAction(employeeId) {
+        try {
+            const resp = await fetchWithAuth(`/api/timelog/last/${employeeId}`);
+            const data = await resp.json();
+            return data.last_action;
+        } catch (err) {
+            console.error(err);
+            return null;
+        }
+    }
+
+    let isSending = false;
+    let currentEmployeeId = null;
+
     async function sendAction(action) {
+        if (isSending) {
+            showToast('Подождите, предыдущий запрос обрабатывается', true);
+            return;
+        }
         if (!currentEmployeeId) {
             showToast('Ошибка: не удалось определить сотрудника', true);
             return;
         }
+        isSending = true;
+        const btns = document.querySelectorAll('.action-btn');
+        btns.forEach(btn => btn.disabled = true);
+
         try {
             const resp = await fetchWithAuth('/api/timelog', {
                 method: 'POST',
@@ -209,7 +370,7 @@
             });
             if (resp.ok) {
                 showToast(`✅ ${action} успешно`, false);
-                await loadTodayEntries(currentEmployeeId);
+                await refreshState();
             } else {
                 let errorMsg = `Ошибка ${resp.status}`;
                 try {
@@ -220,9 +381,171 @@
             }
         } catch (err) {
             showToast('Ошибка соединения с сервером', true);
+        } finally {
+            isSending = false;
+            setTimeout(() => {
+                btns.forEach(btn => btn.disabled = false);
+            }, 500);
         }
     }
 
+    function getAvailableActions(lastAction) {
+        if (!lastAction) return ['start'];
+        switch (lastAction) {
+            case 'start': return ['break_start', 'end'];
+            case 'break_start': return ['break_end'];
+            case 'break_end': return ['break_start', 'end'];
+            case 'end': return ['start'];
+            default: return ['start'];
+        }
+    }
+
+    function renderButtons(availableActions) {
+        const container = document.getElementById('buttonsContainer');
+        container.innerHTML = '';
+        const buttonConfig = {
+            'start': { text: '🚀 Начать работу', class: '' },
+            'break_start': { text: '☕ Перерыв (начало)', class: 'break' },
+            'break_end': { text: '✅ Перерыв (конец)', class: 'break' },
+            'end': { text: '🏁 Завершить работу', class: 'end' }
+        };
+        for (const action of availableActions) {
+            const config = buttonConfig[action];
+            if (!config) continue;
+            const btn = document.createElement('button');
+            btn.textContent = config.text;
+            btn.className = `action-btn ${config.class}`;
+            btn.onclick = () => sendAction(action);
+            container.appendChild(btn);
+        }
+    }
+
+    async function refreshState() {
+        const empId = await loadEmployeeNameAndId();
+        if (!empId) return;
+        currentEmployeeId = empId;
+        await loadEmployeeSummary();
+        await loadTodayEntries(empId);
+        const lastAction = await getLastAction(empId);
+        const availableActions = getAvailableActions(lastAction);
+        renderButtons(availableActions);
+    }
+
+    // ========== Недельный отчёт ==========
+    function getWeekNumber(date) {
+        const firstJan = new Date(date.getFullYear(), 0, 1);
+        const days = Math.floor((date - firstJan) / (24 * 60 * 60 * 1000));
+        return Math.ceil((days + firstJan.getDay() + 1) / 7);
+    }
+
+    function getMonday(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = (day === 0 ? -6 : 1) - day;
+        d.setDate(d.getDate() + diff);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+
+    function getMondayOfWeek(year, week) {
+        const date = new Date(year, 0, 1);
+        const days = (week - 1) * 7;
+        date.setDate(date.getDate() + days);
+        return getMonday(date);
+    }
+
+    async function loadWeeklyReport(weekStart) {
+        const container = document.getElementById('weeklyContainer');
+        container.innerHTML = '<p>Загрузка...</p>';
+        try {
+            const resp = await fetchWithAuth(`/api/auth/weekly-summary?start_date=${weekStart}`);
+            const data = await resp.json();
+            if (!data.days.length) {
+                container.innerHTML = '<p>Нет данных за эту неделю</p>';
+                return;
+            }
+            let html = '<table style="width:100%;"><thead><tr><th>День</th><th>Отработано</th><th>Перерывы</th></tr></thead><tbody>';
+            for (const day of data.days) {
+                html += `<tr>
+                            <td>${escapeHtml(day.weekday)} (${day.date})</td>
+                            <td>${formatHoursToHHMM(day.worked_hours)}</td>
+                            <td>${formatMinutesToHHMM(day.break_minutes)}</td>
+                         </tr>`;
+            }
+            html += `<tr style="border-top: 2px solid #cbd5e1;">
+                        <td><strong>Итого</strong></td>
+                        <td><strong>${formatHoursToHHMM(data.total_worked_hours)}</strong></td>
+                        <td><strong>${formatMinutesToHHMM(data.total_break_minutes)}</strong></td>
+                     </tr>`;
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (err) {
+            container.innerHTML = '<p>Ошибка загрузки</p>';
+            showToast(err.message, true);
+        }
+    }
+
+    // ========== Переключение вкладок ==========
+    function initTabs() {
+        const tabs = document.querySelectorAll('.tab-btn');
+        const dailyTab = document.getElementById('daily-tab');
+        const weeklyTab = document.getElementById('weekly-tab');
+        const weekPicker = document.getElementById('weekPicker');
+        const loadWeeklyBtn = document.getElementById('loadWeeklyBtn');
+
+        tabs.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabId = btn.dataset.tab;
+                tabs.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                dailyTab.style.display = 'none';
+                weeklyTab.style.display = 'none';
+                if (tabId === 'daily') {
+                    dailyTab.style.display = 'block';
+                    refreshState();
+                } else {
+                    weeklyTab.style.display = 'block';
+                    if (!weekPicker.value) {
+                        const now = new Date();
+                        const year = now.getFullYear();
+                        const weekNumber = getWeekNumber(now);
+                        weekPicker.value = `${year}-W${weekNumber.toString().padStart(2, '0')}`;
+                        const monday = getMonday(now);
+                        const y = monday.getFullYear();
+                        const m = String(monday.getMonth() + 1).padStart(2, '0');
+                        const d = String(monday.getDate()).padStart(2, '0');
+                        const mondayStr = `${y}-${m}-${d}`;
+                        loadWeeklyReport(mondayStr);
+                    } else {
+                        const weekValue = weekPicker.value;
+                        if (weekValue) {
+                            const [year, week] = weekValue.split('-W');
+                            const monday = getMondayOfWeek(parseInt(year), parseInt(week));
+                            const y = monday.getFullYear();
+                            const m = String(monday.getMonth() + 1).padStart(2, '0');
+                            const d = String(monday.getDate()).padStart(2, '0');
+                            const mondayStr = `${y}-${m}-${d}`;
+                            loadWeeklyReport(mondayStr);
+                        }
+                    }
+                }
+            });
+        });
+
+        loadWeeklyBtn.addEventListener('click', () => {
+            const weekValue = weekPicker.value;
+            if (weekValue) {
+                const [year, week] = weekValue.split('-W');
+                const monday = getMondayOfWeek(parseInt(year), parseInt(week));
+                const y = monday.getFullYear();
+                const m = String(monday.getMonth() + 1).padStart(2, '0');
+                const d = String(monday.getDate()).padStart(2, '0');
+                const mondayStr = `${y}-${m}-${d}`;
+                loadWeeklyReport(mondayStr);
+            }
+        });
+    }
+
+    // ========== Выход ==========
     document.getElementById('logoutBtn').addEventListener('click', async () => {
         try {
             await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -232,18 +555,60 @@
         }
     });
 
-    document.getElementById('startBtn').addEventListener('click', () => sendAction('start'));
-    document.getElementById('breakStartBtn').addEventListener('click', () => sendAction('break_start'));
-    document.getElementById('breakEndBtn').addEventListener('click', () => sendAction('break_end'));
-    document.getElementById('endBtn').addEventListener('click', () => sendAction('end'));
+    // ========== Инициализация ==========
+    initTabs();
+    refreshState();
 
-    (async () => {
-        const ok = await checkEmployee();
-        if (ok) {
-            const empId = await loadProfile();
-            if (empId) loadTodayEntries(empId);
+    const modal = document.getElementById('changePasswordModal');
+    const changePwdBtn = document.getElementById('changePasswordBtn');
+    const closeModal = document.querySelector('#changePasswordModal .close');
+    const savePwdBtn = document.getElementById('savePasswordBtn');
+
+    changePwdBtn.onclick = () => {
+        modal.style.display = 'block';
+        document.getElementById('oldPassword').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmPassword').value = '';
+        document.getElementById('passwordError').innerText = '';
+    };
+
+    closeModal.onclick = () => modal.style.display = 'none';
+    window.onclick = (event) => {
+        if (event.target === modal) modal.style.display = 'none';
+    };
+
+    savePwdBtn.onclick = async () => {
+        const oldPwd = document.getElementById('oldPassword').value;
+        const newPwd = document.getElementById('newPassword').value;
+        const confirmPwd = document.getElementById('confirmPassword').value;
+        const errorSpan = document.getElementById('passwordError');
+        errorSpan.innerText = '';
+
+        if (newPwd !== confirmPwd) {
+            errorSpan.innerText = 'Новые пароли не совпадают';
+            return;
         }
-    })();
+        if (newPwd.length < 4) {
+            errorSpan.innerText = 'Пароль должен содержать минимум 4 символа';
+            return;
+        }
+        try {
+            const resp = await fetchWithAuth('/api/auth/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
+            });
+            if (resp.ok) {
+                showToast('Пароль успешно изменён', false);
+                modal.style.display = 'none';
+            } else {
+                const err = await resp.json();
+                errorSpan.innerText = err.detail || 'Ошибка смены пароля';
+            }
+        } catch (err) {
+            errorSpan.innerText = 'Ошибка соединения с сервером';
+        }
+    };
 </script>
 </body>
 </html>

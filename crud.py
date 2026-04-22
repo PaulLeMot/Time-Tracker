@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from models import Employee, TimeEntry
@@ -138,3 +138,37 @@ async def get_employee_by_full_name(db: AsyncSession, full_name: str):
     stmt = select(Employee).where(Employee.full_name == full_name)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+async def create_employee(db: AsyncSession, username: str, full_name: str) -> Employee:
+    qr_secret = str(uuid.uuid4()).replace('-', '')[:16]
+    new_employee = Employee(
+        full_name=full_name,
+        username=username,
+        qr_code_secret=qr_secret,
+        is_active=1
+    )
+    db.add(new_employee)
+    await db.commit()
+    await db.refresh(new_employee)
+    return new_employee
+
+async def get_employee_by_username(db: AsyncSession, username: str):
+    stmt = select(Employee).where(Employee.username == username)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+async def update_employee(db: AsyncSession, employee_id: int, username: str = None, full_name: str = None, is_active: int = None) -> Employee:
+    stmt = update(Employee).where(Employee.id == employee_id)
+    updates = {}
+    if username is not None:
+        updates['username'] = username
+    if full_name is not None:
+        updates['full_name'] = full_name
+    if is_active is not None:
+        updates['is_active'] = is_active
+    if not updates:
+        return await get_employee_by_id(db, employee_id)
+    stmt = stmt.values(**updates).returning(Employee)
+    result = await db.execute(stmt)
+    await db.commit()
+    return result.scalar_one()
