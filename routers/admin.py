@@ -118,6 +118,7 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
     target_date = datetime.strptime(date, "%Y-%m-%d").date()
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
+    now = datetime.now()
     
     result = []
     for emp in employees:
@@ -165,13 +166,18 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
                         last_break_start = None
                     last_start_time = entry.timestamp
         
-        # Если смена активна, завершаем её в конце дня
-        if in_shift and last_start_time:
-            if not in_break:
+        if target_date == now.date():
+            if in_shift and not in_break and last_start_time:
+                total_work_sec += (now - last_start_time).total_seconds()
+            if in_break and last_break_start:
+                total_break_sec += (now - last_break_start).total_seconds()
+        else:
+            if in_shift and not in_break and last_start_time:
                 total_work_sec += (end_of_day - last_start_time).total_seconds()
-            else:
+            if in_break and last_break_start:
                 total_break_sec += (end_of_day - last_break_start).total_seconds()
-            status_day = "ended"
+            if in_shift:
+                status_day = "ended"
         
         worked_hours = round(total_work_sec / 3600, 2)
         break_minutes = round(total_break_sec / 60, 0)
