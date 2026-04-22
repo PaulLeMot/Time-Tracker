@@ -327,7 +327,7 @@ async def employee_daily_summary(
     }.get(status_day, "неизвестно")
     
     status_break_text = {
-        "not_on_break": "🔵 Не в перерыве",
+        "not_on_break": "❌ Не в перерыве",
         "on_break": "☕ В перерыве"
     }.get(status_break, "неизвестно")
     

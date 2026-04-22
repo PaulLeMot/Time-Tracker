@@ -109,6 +109,7 @@ async def employee_daily_summary(
     last_start_time = None
     in_shift = False
     in_break = False
+    now = datetime.now()
     
     for entry in entries_sorted:
         if entry.action == "start":
@@ -141,13 +142,11 @@ async def employee_daily_summary(
                     last_break_start = None
                 last_start_time = entry.timestamp
     
-    # Если смена активна, завершаем её в конце дня
-    if in_shift and last_start_time:
-        if not in_break:
-            total_work_sec += (end_of_day - last_start_time).total_seconds()
-        else:
-            total_break_sec += (end_of_day - last_break_start).total_seconds()
-        status_day = "ended"
+    if in_shift and not in_break and last_start_time:
+        total_work_sec += (now - last_start_time).total_seconds()
+
+    if in_break and last_break_start:
+        total_break_sec += (now - last_break_start).total_seconds()
     
     worked_hours = round(total_work_sec / 3600, 2)
     break_minutes = round(total_break_sec / 60, 0)
@@ -159,7 +158,7 @@ async def employee_daily_summary(
     }.get(status_day, "неизвестно")
     
     status_break_text = {
-        "not_on_break": "🔵 Не в перерыве",
+        "not_on_break": "❌ Не в перерыве",
         "on_break": "☕ В перерыве"
     }.get(status_break, "неизвестно")
     
