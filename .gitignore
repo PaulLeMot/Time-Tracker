@@ -13,3 +13,4 @@ logs/
 .DS_Store
 *.sqlite
 *.db
+backups/
