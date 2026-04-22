@@ -252,7 +252,7 @@ async def employee_detail(employee_id: int, date: str, request: Request, db: Asy
     start_of_day = datetime.combine(target_date, datetime.min.time())
     end_of_day = datetime.combine(target_date, datetime.max.time())
     entries = await crud.get_time_entries(db, employee_id=employee_id, start_date=start_of_day, end_date=end_of_day)
-    entries_list = [{"id": e.id, "timestamp": e.timestamp.isoformat(), "action": e.action} for e in entries]F
+    entries_list = [{"id": e.id, "timestamp": e.timestamp.isoformat(), "action": e.action} for e in entries]
     worked, breaks, _, _ = calculate_work_stats(entries)
     return {
         "employee_id": employee_id,
