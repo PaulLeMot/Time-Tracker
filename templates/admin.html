@@ -196,6 +196,96 @@
             top: 0;
             background: #f8fafc;
         }
+        .row-not-started { background-color: #f1f5f9; }
+        .row-working { background-color: #dcfce7; }
+        .row-on-break { background-color: #fef9c3; }
+        .row-ended { background-color: #dbeafe; }
+        .worked-hours-cell { background-color: #dbeafe; }
+        .break-minutes-cell { background-color: #fef9c3; }
+        .break-minutes-cell { border-right: 1px solid #292929; }
+        .highlight-fio {
+            background-color: #e0f2fe !important;  /* светло-голубая подсветка */
+        }
+        .highlight-day {
+            background-color: #e0f2fe !important;
+        }
+        .break-minutes-cell {
+            border-right: 1px solid #292929;
+        }
+        .break-minutes-cell:last-child {
+            border-right: none;
+        }
+
+        .highlight-fio {
+            background-color: #e0f2fe !important;
+        }
+        .highlight-day-header {
+            background-color: #e0f2fe !important;
+        }
+        .highlight-hour-header {
+            background-color: #e0f2fe !important;
+        }
+        #weeklyReportContainer {
+            max-height: 70vh;
+            overflow-y: auto;
+            margin-top: 16px;
+        }
+
+        #weeklyReportContainer .report-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        #weeklyReportContainer .report-table thead tr:first-child th {
+            position: sticky;
+            top: 0;
+            background-color: #f8fafc;
+            z-index: 10;
+            box-shadow: inset 0 -1px 0 #e2e8f0;
+        }
+
+        #weeklyReportContainer .report-table thead tr:nth-child(2) th {
+            position: sticky;
+            top: 42px;
+            background-color: #f8fafc;
+            z-index: 5;
+            box-shadow: inset 0 -1px 0 #e2e8f0;
+        }
+        #weeklyReportContainer .report-table thead th {
+            line-height: 40px;
+            vertical-align: middle;
+        }
+        .sortable-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 8px 0;
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            background: #f8fafc;
+            border-radius: 60px;
+            padding: 8px 12px;
+            flex-wrap: wrap;
+        }
+        .sortable-list li {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 40px;
+            padding: 6px 16px;
+            cursor: grab;
+            user-select: none;
+            transition: background 0.2s;
+            display: inline-block;
+        }
+        .sortable-list li:last-child {
+            border-bottom: none;
+        }
+        .sortable-list li:active {
+            cursor: grabbing;
+        }
+        .sortable-list li.dragging {
+            opacity: 0.5;
+        }
     </style>
 </head>
 <body>
@@ -216,6 +306,19 @@
             <div class="date-picker">
                 <input type="date" id="reportDate">
                 <button id="loadReportBtn">Показать отчёт</button>
+            </div>
+            <div>
+                <button id="toggleFilterBtn" class="btn" style="margin-bottom: 8px;">🎛️ Фильтр по статусам</button>
+            </div>
+            <div id="statusOrderSettings" style="margin-bottom: 16px; display: none;">
+                <h3>Порядок статусов в отчёте</h3>
+                <ul id="statusOrderList" class="sortable-list">
+                    <li data-status="working">✅ Работает</li>
+                    <li data-status="onbreak">☕ В перерыве</li>
+                    <li data-status="notstarted">❌ Не начал</li>
+                    <li data-status="ended">🏁 Завершил</li>
+                </ul>
+                <button id="saveStatusOrderBtn" class="btn">Сохранить порядок</button>
             </div>
             <div id="reportContainer"></div>
         </div>
@@ -286,7 +389,40 @@
         </div>
     </div>
 </div>
-
+<div id="editEntryModal" class="modal">
+    <div class="modal-content">
+        <span class="close-edit">&times;</span>
+        <h3>Редактирование отметки</h3>
+        <select id="editAction">
+            <option value="start">Начало рабочего дня</option>
+            <option value="break_start">Начало перерыва</option>
+            <option value="break_end">Конец перерыва</option>
+            <option value="end">Конец рабочего дня</option>
+        </select>
+        <input type="date" id="editDate">
+        <input type="time" id="editTime" step="60">
+        <button id="saveEditBtn" class="btn">Сохранить</button>
+        <div id="editError" style="color:red; margin-top:8px;"></div>
+    </div>
+</div>
+<div id="editUsernameModal" class="modal">
+    <div class="modal-content">
+        <span class="close-username">&times;</span>
+        <h3>Редактирование логина</h3>
+        <input type="text" id="newUsername" placeholder="Новый логин">
+        <button id="saveUsernameBtn" class="btn">Сохранить</button>
+        <div id="usernameError" style="color:red;"></div>
+    </div>
+</div>
+<div id="editFullnameModal" class="modal">
+    <div class="modal-content">
+        <span class="close-fullname">&times;</span>
+        <h3>Редактирование ФИО</h3>
+        <input type="text" id="newFullname" placeholder="Новое ФИО">
+        <button id="saveFullnameBtn" class="btn">Сохранить</button>
+        <div id="fullnameError" style="color:red;"></div>
+    </div>
+</div>
 <script>
 
     function getLocalDate() {
@@ -309,6 +445,7 @@
         }
     }
     checkAdmin();
+    let isFilterEnabled = localStorage.getItem('statusFilterEnabled') === 'true';
     function showToast(msg, isError = false) {
         const toast = document.getElementById('toast');
         toast.textContent = msg;
@@ -321,108 +458,38 @@
         try {
             const resp = await fetch('/api/employees?active_only=false');
             if (!resp.ok) throw new Error('Ошибка загрузки');
-            const employees = await resp.json();
+            let employees = await resp.json();
+            employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
             const tbody = document.getElementById('employeesTbody');
             tbody.innerHTML = '';
             for (const emp of employees) {
                 const row = tbody.insertRow();
+                
                 row.insertCell(0).innerText = emp.id;
-                row.insertCell(1).innerText = emp.username;
-                row.insertCell(2).innerText = emp.full_name;
+                
+                const loginCell = row.insertCell(1);
+                loginCell.innerHTML = `${escapeHtml(emp.username)} <button class="small-btn edit-username-btn" data-id="${emp.id}" data-username="${escapeHtml(emp.username)}" title="Редактировать логин">✏️</button>`;
+                
+                const nameCell = row.insertCell(2);
+                nameCell.innerHTML = `${escapeHtml(emp.full_name)} <button class="small-btn edit-fullname-btn" data-id="${emp.id}" data-fullname="${escapeHtml(emp.full_name)}" title="Редактировать ФИО">✏️</button>`;
+                
                 const passwordCell = row.insertCell(3);
-                passwordCell.innerText = emp.password || 'не задан';
-                row.insertCell(4).innerText = emp.is_active ? 'Да' : 'Нет';
-                const actions = row.insertCell(5);
-
+                passwordCell.innerHTML = `
+                    <span style="font-family: monospace;">${emp.password || 'не задан'}</span>
+                    <button class="small-btn reset-pass-btn" data-id="${emp.id}" title="Сбросить пароль">🔑</button>
+                    <button class="small-btn edit-pass-btn" data-id="${emp.id}" data-password="${emp.password || ''}" title="Изменить пароль">✏️</button>
+                `;
+                
+                const activeCell = row.insertCell(4);
+                activeCell.innerHTML = `
+                    ${emp.is_active ? 'Да' : 'Нет'}
+                    <button class="small-btn toggle-active-btn" data-id="${emp.id}" data-active="${emp.is_active}" title="Изменить статус">🔄</button>
+                `;
+                
+                const actionsCell = row.insertCell(5);
                 const qrBtn = document.createElement('button');
                 qrBtn.textContent = 'Штрих-код';
                 qrBtn.onclick = () => window.open(`/api/employees/${emp.id}/qr?action=start`, '_blank');
-
-                const editBtn = document.createElement('button');
-                editBtn.textContent = '✏️';
-                editBtn.className = 'btn-warning btn-sm';
-                editBtn.onclick = async () => {
-                    const newName = prompt('Новое ФИО:', emp.full_name);
-                    if (newName && newName !== emp.full_name) {
-                        const resp = await fetch(`/api/employees/${emp.id}`, {
-                            method: 'PUT',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ full_name: newName })
-                        });
-                        if (resp.ok) {
-                            showToast('Обновлено');
-                            loadEmployees();
-                        } else showToast('Ошибка', true);
-                    }
-                };
-
-                const resetPassBtn = document.createElement('button');
-                resetPassBtn.textContent = '🔑 Сбросить пароль';
-                resetPassBtn.className = 'btn-sm';
-                resetPassBtn.style.backgroundColor = '#8b5cf6';
-                resetPassBtn.onclick = async () => {
-                    if (confirm(`Сбросить пароль для ${emp.full_name}?`)) {
-                        const resp = await fetch(`/api/employees/${emp.id}/reset-password`, { method: 'POST' });
-                        if (resp.ok) {
-                            const data = await resp.json();
-                            alert(`Новый пароль для ${emp.full_name}: ${data.new_password}`);
-                            passwordCell.innerText = data.new_password;
-                            showToast('Пароль сброшен', false);
-                        } else {
-                            showToast('Ошибка сброса пароля', true);
-                        }
-                    }
-                };
-
-                const editPassBtn = document.createElement('button');
-                editPassBtn.textContent = '✏️ Пароль';
-                editPassBtn.className = 'btn-warning btn-sm';
-                editPassBtn.onclick = async () => {
-                    const newPass = prompt(`Введите новый пароль для ${emp.full_name}:`, emp.password || '');
-                    if (newPass !== null) {
-                        const resp = await fetch(`/api/employees/${emp.id}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ password: newPass })
-                        });
-                        if (resp.ok) {
-                            showToast('Пароль обновлён');
-                            passwordCell.innerText = newPass;
-                        } else {
-                            showToast('Ошибка', true);
-                        }
-                    }
-                };
-
-                const toggleActiveBtn = document.createElement('button');
-                if (emp.is_active) {
-                    toggleActiveBtn.textContent = '❌ Деактивировать';
-                    toggleActiveBtn.className = 'btn-danger btn-sm';
-                    toggleActiveBtn.onclick = async () => {
-                        if (confirm(`Деактивировать ${emp.full_name}?`)) {
-                            const resp = await fetch(`/api/employees/${emp.id}`, { method: 'DELETE' });
-                            if (resp.ok) {
-                                showToast('Сотрудник деактивирован');
-                                loadEmployees();
-                            } else showToast('Ошибка', true);
-                        }
-                    };
-                } else {
-                    toggleActiveBtn.textContent = '✅ Активировать';
-                    toggleActiveBtn.className = 'btn-success btn-sm';
-                    toggleActiveBtn.onclick = async () => {
-                        const resp = await fetch(`/api/employees/${emp.id}`, {
-                            method: 'PUT',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ is_active: 1 })
-                        });
-                        if (resp.ok) {
-                            showToast('Сотрудник активирован');
-                            loadEmployees();
-                        } else showToast('Ошибка', true);
-                    };
-                }
-
                 const delBtn = document.createElement('button');
                 delBtn.textContent = '🗑️ Удалить навсегда';
                 delBtn.className = 'btn-danger btn-sm';
@@ -435,14 +502,59 @@
                         } else showToast('Ошибка', true);
                     }
                 };
-
-                actions.appendChild(qrBtn);
-                actions.appendChild(editBtn);
-                actions.appendChild(resetPassBtn);
-                actions.appendChild(editPassBtn);
-                actions.appendChild(toggleActiveBtn);
-                actions.appendChild(delBtn);
+                actionsCell.appendChild(qrBtn);
+                actionsCell.appendChild(delBtn);
             }
+
+            document.querySelectorAll('.edit-username-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = btn.dataset.id;
+                    const username = btn.dataset.username;
+                    openEditUsernameModal(id, username);
+                });
+            });
+            document.querySelectorAll('.edit-fullname-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = btn.dataset.id;
+                    const fullname = btn.dataset.fullname;
+                    openEditFullnameModal(id, fullname);
+                });
+            });
+            document.querySelectorAll('.reset-pass-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = btn.dataset.id;
+                    if (confirm('Сбросить пароль?')) {
+                        const resp = await fetch(`/api/employees/${id}/reset-password`, { method: 'POST' });
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            alert(`Новый пароль: ${data.new_password}`);
+                            loadEmployees();
+                        } else showToast('Ошибка', true);
+                    }
+                });
+            });
+            document.querySelectorAll('.edit-pass-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = btn.dataset.id;
+                    openEditPasswordModal(id);
+                });
+            });
+            document.querySelectorAll('.toggle-active-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = btn.dataset.id;
+                    const isActive = btn.dataset.active === '1' || btn.dataset.active === true;
+                    const newStatus = isActive ? 0 : 1;
+                    const resp = await fetch(`/api/employees/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ is_active: newStatus })
+                    });
+                    if (resp.ok) {
+                        showToast(`Сотрудник ${newStatus ? 'активирован' : 'деактивирован'}`);
+                        loadEmployees();
+                    } else showToast('Ошибка', true);
+                });
+            });
         } catch (err) {
             showToast(err.message, true);
         }
@@ -505,41 +617,111 @@
         return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     }
 
+    function toggleFilter() {
+        isFilterEnabled = !isFilterEnabled;
+        localStorage.setItem('statusFilterEnabled', isFilterEnabled);
+        const settingsDiv = document.getElementById('statusOrderSettings');
+        const toggleBtn = document.getElementById('toggleFilterBtn');
+        if (isFilterEnabled) {
+            settingsDiv.style.display = 'block';
+            toggleBtn.textContent = '🎛️ Скрыть фильтр статусов';
+            loadStatusOrder();
+            initDragAndDrop();
+        } else {
+            settingsDiv.style.display = 'none';
+            toggleBtn.textContent = '🎛️ Фильтр по статусам';
+        }
+        const currentDate = document.getElementById('reportDate').value;
+        if (currentDate) loadDailyReport(currentDate);
+    }
+
     async function loadDailyReport(date) {
         const container = document.getElementById('reportContainer');
         container.innerHTML = '<p>Загрузка...</p>';
         try {
             const resp = await fetch(`/api/reports/daily?date=${date}`);
             if (!resp.ok) throw new Error('Ошибка загрузки отчёта');
-            const report = await resp.json();
+            let report = await resp.json();
             if (!report.length) {
                 container.innerHTML = '<p>Нет данных за этот день</p>';
                 return;
             }
+
+        if (isFilterEnabled) {
+            const getStatusPriority = (row) => {
+                let key;
+                if (row.status_break === '☕ в перерыве') key = 'onbreak';
+                else if (row.status_day === '✅ работает') key = 'working';
+                else if (row.status_day === '❌ не начал') key = 'notstarted';
+                else if (row.status_day === '🏁 завершил') key = 'ended';
+                else return 99;
+                const idx = statusOrder.indexOf(key);
+                return idx !== -1 ? idx : 99;
+            };
+            report.sort((a, b) => {
+                const priorityA = getStatusPriority(a);
+                const priorityB = getStatusPriority(b);
+                if (priorityA !== priorityB) return priorityA - priorityB;
+                return a.full_name.localeCompare(b.full_name, 'ru');
+            });
+        } else {
+            report.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+        }
+
             let html = '<table class="report-table"><thead><tr>';
             html += '<th>Сотрудник</th>';
             html += '<th>Статус дня</th>';
+            html += '<th>Начало рабочего дня</th>';
             html += '<th>Статус перерыва</th>';
-            html += '<th>Начало последнего перерыва</th>';
+            html += '<th>Последняя отметка</th>';
             html += '<th>Отработано</th>';
             html += '<th>Перерывы</th>';
             html += '<th>Кол-во перерывов</th>';
             html += '<th>Детали</th>';
             html += '</tr></thead><tbody>';
+            
             for (const row of report) {
-                let lastBreakDisplay = row.last_break_start ? row.last_break_start.slice(11, 16) : '—';
-                html += `<tr>
+                let rowClass = '';
+                if (row.status_day === '❌ не начал') {
+                    rowClass = 'row-not-started';
+                } else if (row.status_break === '☕ в перерыве') {
+                    rowClass = 'row-on-break';
+                } else if (row.status_day === '✅ работает') {
+                    rowClass = 'row-working';
+                } else if (row.status_day === '🏁 завершил') {
+                    rowClass = 'row-ended';
+                }
+                
+                let lastEntryDisplay = '';
+                if (row.last_entry_time) {
+                    const timePart = row.last_entry_time.slice(11, 16);
+                    let actionText = '';
+                    switch (row.last_entry_action) {
+                        case 'start': actionText = 'Начало рабочего дня'; break;
+                        case 'break_start': actionText = 'Начало перерыва'; break;
+                        case 'break_end': actionText = 'Конец перерыва'; break;
+                        case 'end': actionText = 'Конец рабочего дня'; break;
+                        default: actionText = row.last_entry_action;
+                    }
+                    lastEntryDisplay = `${timePart} - ${actionText}`;
+                }
+                let startTimeDisplay = '';
+                if (row.first_start_time) {
+                    startTimeDisplay = row.first_start_time.slice(11, 16);
+                }
+                html += `<tr class="${rowClass}">
                             <td>${escapeHtml(row.full_name)}</td>
                             <td>${escapeHtml(row.status_day)}</td>
+                            <td>${startTimeDisplay}</td>
                             <td>${escapeHtml(row.status_break)}</td>
-                            <td>${lastBreakDisplay}</td>
+                            <td>${lastEntryDisplay}</td>
                             <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
                             <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
                             <td>${row.break_count}</td>
                             <td><button class="btn-sm" onclick="showEmployeeDetail(${row.employee_id}, '${date}')">📋</button></td>
                         </tr>`;
             }
-            html += '</tbody></table>';
+            html += '</tbody><td>';
             container.innerHTML = html;
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';
@@ -558,34 +740,73 @@
                 container.innerHTML = '<p>Нет данных за эту неделю</p>';
                 return;
             }
-            let html = '<div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">';
-            html += '<table class="report-table" style="min-width: 650px;">';
-            html += '<thead>';
+            let html = '<table class="report-table" style="min-width: 800px;"><thead>';
             html += '<tr><th>Сотрудник</th>';
             for (let i = 0; i < 7; i++) {
                 const dayName = report[0].days[i].weekday;
-                html += `<th colspan="2">${dayName}</th>`;
+                html += `<th colspan="2" data-day-header-index="${i}" class="day-header-cell">${dayName}</th>`;
             }
-            html += '<th>Всего часов</th><th>Всего перерывов (мин)</th>';
-            html += '</tr>';
+            html += '<th>Всего часов</th><th>Всего п-вы</th></tr>';
             html += '<tr><th></th>';
-            for (let i = 0; i < 7; i++) html += '<th>часы</th><th>првы</th>';
-            html += '<th></th><th></th>';
-            html += '</tr>';
-            html += '</thead><tbody>';
+            for (let i = 0; i < 7; i++) {
+                html += `<th class="hour-header-cell" data-day-index="${i}">часы</th>`;
+                html += `<th class="break-minutes-cell break-header-cell" data-day-index="${i}">п-вы</th>`;
+            }
+            html += '<th></th><th></th></tr></thead><tbody>';
 
             for (const emp of report) {
-                html += `<tr><td>${escapeHtml(emp.full_name)}</td>`;
-                for (const day of emp.days) {
-                    html += `<td>${formatWorkedHours(day.worked_hours)}</td>`;
-                    html += `<td>${formatWorkedHours(day.break_minutes)}</td>`;
+                html += `<tr><td class="fio-cell">${escapeHtml(emp.full_name)}</td>`;
+                for (let i = 0; i < emp.days.length; i++) {
+                    const day = emp.days[i];
+                    html += `<td class="worked-hours-cell" data-day-index="${i}">${formatHoursToHHMM(day.worked_hours)}</td>`;
+                    html += `<td class="break-minutes-cell" data-day-index="${i}">${formatMinutesToHHMM(day.break_minutes)}</td>`;
                 }
-                html += `<td><strong>${formatWorkedHours(emp.total_worked_hours)}</strong></td>`;
-                html += `<td><strong>${formatWorkedHours(emp.total_break_minutes)}</strong></td>`;
+                html += `<td class="worked-hours-cell"><strong>${formatHoursToHHMM(emp.total_worked_hours)}</strong></td>`;
+                html += `<td class="break-minutes-cell"><strong>${formatMinutesToHHMM(emp.total_break_minutes)}</strong></td>`;
                 html += `</tr>`;
             }
-            html += '</tbody></table></div>';
+            html += '</tbody></table>';
             container.innerHTML = html;
+
+            const table = container.querySelector('table');
+            const rows = table.querySelectorAll('tbody tr');
+            
+            rows.forEach(row => {
+                const fioCell = row.querySelector('.fio-cell');
+                const cells = row.querySelectorAll('td.worked-hours-cell, td.break-minutes-cell');
+                
+                cells.forEach(cell => {
+                    cell.addEventListener('mouseenter', () => {
+                        if (fioCell) fioCell.classList.add('highlight-fio');
+                        
+                        const dayIndex = cell.dataset.dayIndex;
+                        if (dayIndex !== undefined) {
+                            const dayHeader = table.querySelector(`th.day-header-cell[data-day-header-index="${dayIndex}"]`);
+                            if (dayHeader) dayHeader.classList.add('highlight-day-header');
+                            
+                            const hourHeader = table.querySelector(`th.hour-header-cell[data-day-index="${dayIndex}"]`);
+                            const breakHeader = table.querySelector(`th.break-header-cell[data-day-index="${dayIndex}"]`);
+                            if (hourHeader) hourHeader.classList.add('highlight-hour-header');
+                            if (breakHeader) breakHeader.classList.add('highlight-day-header');
+                        }
+                    });
+                    
+                    cell.addEventListener('mouseleave', () => {
+                        if (fioCell) fioCell.classList.remove('highlight-fio');
+                        
+                        const dayIndex = cell.dataset.dayIndex;
+                        if (dayIndex !== undefined) {
+                            const dayHeader = table.querySelector(`th.day-header-cell[data-day-header-index="${dayIndex}"]`);
+                            if (dayHeader) dayHeader.classList.remove('highlight-day-header');
+                            
+                            const hourHeader = table.querySelector(`th.hour-header-cell[data-day-index="${dayIndex}"]`);
+                            const breakHeader = table.querySelector(`th.break-header-cell[data-day-index="${dayIndex}"]`);
+                            if (hourHeader) hourHeader.classList.remove('highlight-hour-header');
+                            if (breakHeader) breakHeader.classList.remove('highlight-day-header');
+                        }
+                    });
+                });
+            });
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';
             showToast(err.message, true);
@@ -650,7 +871,7 @@
                                 <input type="time" class="edit-time" value="${isoTime}" step="60">
                             </div>
                         </td>
-                        <td>${entry.action}</td>
+                        <td>${escapeHtml(entry.action)}</td>
                         <td>
                             <button class="small-btn edit-btn" title="Редактировать">✏️</button>
                             <button class="small-btn save-btn" style="display:none;" title="Сохранить">💾</button>
@@ -791,7 +1012,15 @@
     const modal = document.getElementById('detailModal');
     const span = document.getElementsByClassName('close')[0];
     span.onclick = () => modal.style.display = 'none';
-    window.onclick = (event) => { if (event.target == modal) modal.style.display = 'none'; };
+    window.onclick = (event) => {
+        const detailModal = document.getElementById('detailModal');
+        if (event.target === detailModal) detailModal.style.display = 'none';
+        const editModal = document.getElementById('editEntryModal');
+        if (event.target === editModal) editModal.style.display = 'none';
+    };
+    document.querySelector('#editEntryModal .close-edit').addEventListener('click', () => {
+        document.getElementById('editEntryModal').style.display = 'none';
+    });
 
     function getWeekNumber(date) {
         const firstJan = new Date(date.getFullYear(), 0, 1);
@@ -933,6 +1162,19 @@
         const today = getLocalDate();
         document.getElementById('reportDate').value = today;
         loadDailyReport(today);
+        const toggleBtn = document.getElementById('toggleFilterBtn');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', toggleFilter);
+            if (isFilterEnabled) {
+                document.getElementById('statusOrderSettings').style.display = 'block';
+                toggleBtn.textContent = '🎛️ Убрать фильтр статусов';
+                loadStatusOrder();
+                initDragAndDrop();
+            } else {
+                document.getElementById('statusOrderSettings').style.display = 'none';
+                toggleBtn.textContent = '🎛️ Фильтр по статусам';
+            }
+        }
     });
     async function loadRecentEntries(limit = 100) {
         const container = document.getElementById('recentContainer');
@@ -945,27 +1187,285 @@
                 container.innerHTML = '<p>Нет записей</p>';
                 return;
             }
-            let html = '<div class="recent-table"><table><thead><tr><th>Время</th><th>Сотрудник</th><th>Действие</th><th>Источник</th></tr></thead><tbody>';
+            let html = '<div class="recent-table"><table><thead><tr><th>Время</th><th>Сотрудник</th><th>Действие</th><th>Источник</th><th>Действия</th></tr></thead><tbody>';
             for (const entry of entries) {
                 const time = formatDateTime(entry.timestamp);
                 let actionDisplay = escapeHtml(entry.action);
-                if (entry.action === 'Конец перерыва' && entry.break_number) {
-                    actionDisplay = `${actionDisplay} №${entry.break_number} (${entry.break_duration})`;
+                if (entry.action === 'Начало перерыва' && entry.break_number) {
+                    actionDisplay = `Начало перерыва №${entry.break_number}`;
+                } else if (entry.action === 'Конец перерыва' && entry.break_number) {
+                    actionDisplay = `Конец перерыва №${entry.break_number} (${entry.break_duration})`;
                 }
+                let sourceDisplay = entry.source;
+                if (sourceDisplay === 'qr') sourceDisplay = 'Сотрудник';
+                else if (sourceDisplay === 'admin') sourceDisplay = 'Админ';
+                else if (sourceDisplay === 'auto') sourceDisplay = 'Авто';
+                else sourceDisplay = escapeHtml(sourceDisplay);
+
                 html += `<tr>
                             <td>${time}</td>
-                            <td>${escapeHtml(entry.full_name)}</td>
+                            <td>${escapeHtml(entry.full_name)} (${escapeHtml(entry.username)})</td>
                             <td>${actionDisplay}</td>
-                            <td>${entry.source === 'qr' ? 'Сотрудник' : (entry.source === 'admin' ? 'Админ' : entry.source)}</td>
+                            <td>${sourceDisplay}</td>
+                            <td>
+                                <button class="small-btn edit-entry-btn" data-id="${entry.id}" data-timestamp="${entry.timestamp}" data-action="${entry.action_code}" title="Редактировать">✏️</button>
+                                <button class="small-btn delete-entry-btn" data-id="${entry.id}" title="Удалить">🗑️</button>
+                            </td>
                         </tr>`;
             }
             html += '</tbody></table></div>';
             container.innerHTML = html;
+
+            document.querySelectorAll('.edit-entry-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const entryId = btn.dataset.id;
+                    const timestamp = btn.dataset.timestamp;
+                    const actionCode = btn.dataset.action;
+                    openEditModal(entryId, timestamp);
+                });
+            });
+            document.querySelectorAll('.delete-entry-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const entryId = btn.dataset.id;
+                    if (!confirm('Удалить эту отметку?')) return;
+                    try {
+                        const resp = await fetch(`/api/admin/timelog/${entryId}`, { method: 'DELETE' });
+                        if (resp.ok) {
+                            showToast('Отметка удалена');
+                            const limit = document.getElementById('recentLimit').value;
+                            loadRecentEntries(parseInt(limit));
+                        } else {
+                            showToast('Ошибка удаления', true);
+                        }
+                    } catch (err) {
+                        showToast('Ошибка сети', true);
+                    }
+                });
+            });
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';
             showToast(err.message, true);
         }
     }
+
+    let currentEditEntryId = null;
+
+    function openEditModal(entryId, timestamp, actionCode) {
+        currentEditEntryId = entryId;
+        const modal = document.getElementById('editEntryModal');
+        const dateInput = document.getElementById('editDate');
+        const timeInput = document.getElementById('editTime');
+        const actionSelect = document.getElementById('editAction');
+        const [datePart, timePart] = timestamp.split('T');
+        dateInput.value = datePart;
+        timeInput.value = timePart.slice(0, 5);
+        actionSelect.value = actionCode;
+        document.getElementById('editError').innerText = '';
+        modal.style.display = 'block';
+    }
+
+    document.getElementById('saveEditBtn').addEventListener('click', async () => {
+        const newDate = document.getElementById('editDate').value;
+        const newTime = document.getElementById('editTime').value;
+        const newAction = document.getElementById('editAction').value;
+        if (!newDate || !newTime) {
+            document.getElementById('editError').innerText = 'Выберите дату и время';
+            return;
+        }
+        const isoDateTime = `${newDate}T${newTime}:00`;
+        try {
+            const resp = await fetch(`/api/admin/timelog/${currentEditEntryId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ timestamp: isoDateTime, action: newAction })
+            });
+            if (resp.ok) {
+                showToast('Отметка обновлена');
+                document.getElementById('editEntryModal').style.display = 'none';
+                const limit = document.getElementById('recentLimit').value;
+                loadRecentEntries(parseInt(limit));
+            } else {
+                const err = await resp.json();
+                document.getElementById('editError').innerText = err.detail || 'Ошибка обновления';
+            }
+        } catch (err) {
+            document.getElementById('editError').innerText = 'Ошибка соединения';
+        }
+    });
+
+    let currentEditId = null;
+
+    function openEditUsernameModal(id, currentUsername) {
+        currentEditId = id;
+        document.getElementById('newUsername').value = currentUsername;
+        document.getElementById('usernameError').innerText = '';
+        document.getElementById('editUsernameModal').style.display = 'block';
+    }
+
+    function openEditFullnameModal(id, currentFullname) {
+        currentEditId = id;
+        document.getElementById('newFullname').value = currentFullname;
+        document.getElementById('fullnameError').innerText = '';
+        document.getElementById('editFullnameModal').style.display = 'block';
+    }
+
+    function openEditPasswordModal(id) {
+        const newPass = prompt('Введите новый пароль:');
+        if (newPass !== null && newPass.trim() !== '') {
+            fetch(`/api/employees/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: newPass })
+            })
+            .then(resp => {
+                if (resp.ok) {
+                    showToast('Пароль обновлён');
+                    loadEmployees();
+                } else {
+                    showToast('Ошибка обновления пароля', true);
+                }
+            })
+            .catch(() => showToast('Ошибка сети', true));
+        }
+    }
+
+    document.getElementById('saveUsernameBtn').addEventListener('click', async () => {
+        const newUsername = document.getElementById('newUsername').value.trim();
+        if (!newUsername) {
+            document.getElementById('usernameError').innerText = 'Логин не может быть пустым';
+            return;
+        }
+        try {
+            const resp = await fetch(`/api/employees/${currentEditId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: newUsername })
+            });
+            if (resp.ok) {
+                showToast('Логин обновлён');
+                document.getElementById('editUsernameModal').style.display = 'none';
+                loadEmployees();
+            } else {
+                const err = await resp.json();
+                document.getElementById('usernameError').innerText = err.detail || 'Ошибка';
+            }
+        } catch (err) {
+            document.getElementById('usernameError').innerText = 'Ошибка сети';
+        }
+    });
+
+    document.getElementById('saveFullnameBtn').addEventListener('click', async () => {
+        const newFullname = document.getElementById('newFullname').value.trim();
+        if (!newFullname) {
+            document.getElementById('fullnameError').innerText = 'ФИО не может быть пустым';
+            return;
+        }
+        try {
+            const resp = await fetch(`/api/employees/${currentEditId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ full_name: newFullname })
+            });
+            if (resp.ok) {
+                showToast('ФИО обновлено');
+                document.getElementById('editFullnameModal').style.display = 'none';
+                loadEmployees();
+            } else {
+                const err = await resp.json();
+                document.getElementById('fullnameError').innerText = err.detail || 'Ошибка';
+            }
+        } catch (err) {
+            document.getElementById('fullnameError').innerText = 'Ошибка сети';
+        }
+    });
+
+    document.querySelector('#editUsernameModal .close-username').onclick = () => {
+        document.getElementById('editUsernameModal').style.display = 'none';
+    };
+    document.querySelector('#editFullnameModal .close-fullname').onclick = () => {
+        document.getElementById('editFullnameModal').style.display = 'none';
+    };
+    window.addEventListener('click', (event) => {
+        if (event.target === document.getElementById('editUsernameModal')) {
+            document.getElementById('editUsernameModal').style.display = 'none';
+        }
+        if (event.target === document.getElementById('editFullnameModal')) {
+            document.getElementById('editFullnameModal').style.display = 'none';
+        }
+    });
+
+    let statusOrder = [];
+    let dragSrcElement = null;
+
+    function loadStatusOrder() {
+        const saved = localStorage.getItem('dailyReportStatusOrder');
+        if (saved) {
+            statusOrder = JSON.parse(saved);
+        } else {
+            statusOrder = ['working', 'onbreak', 'notstarted', 'ended'];
+        }
+        applyOrderToUI();
+    }
+
+    function applyOrderToUI() {
+        const container = document.getElementById('statusOrderList');
+        const items = Array.from(container.children);
+        items.sort((a, b) => {
+            const aIdx = statusOrder.indexOf(a.dataset.status);
+            const bIdx = statusOrder.indexOf(b.dataset.status);
+            return aIdx - bIdx;
+        });
+        container.innerHTML = '';
+        items.forEach(item => container.appendChild(item));
+    }
+
+    function saveStatusOrder() {
+        const items = document.querySelectorAll('#statusOrderList li');
+        statusOrder = Array.from(items).map(li => li.dataset.status);
+        localStorage.setItem('dailyReportStatusOrder', JSON.stringify(statusOrder));
+        showToast('Порядок статусов сохранён');
+        const currentDate = document.getElementById('reportDate').value;
+        if (currentDate) loadDailyReport(currentDate);
+    }
+
+    function initDragAndDrop() {
+        const list = document.getElementById('statusOrderList');
+        const items = list.querySelectorAll('li');
+        items.forEach(item => item.setAttribute('draggable', 'true'));
+        let dragItem = null;
+        
+        list.addEventListener('dragstart', (e) => {
+            dragItem = e.target.closest('li');
+            if (!dragItem) return;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', '');
+            dragItem.classList.add('dragging');
+        });
+        
+        list.addEventListener('dragend', (e) => {
+            if (dragItem) dragItem.classList.remove('dragging');
+            dragItem = null;
+        });
+        
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const targetItem = e.target.closest('li');
+            if (!targetItem || targetItem === dragItem) return;
+            
+            const rect = targetItem.getBoundingClientRect();
+            const midpoint = (rect.left + rect.right) / 2;
+            if (e.clientX < midpoint) {
+                targetItem.parentNode.insertBefore(dragItem, targetItem);
+            } else {
+                targetItem.parentNode.insertBefore(dragItem, targetItem.nextSibling);
+            }
+        });
+    }
+
+    loadStatusOrder();
+    initDragAndDrop();
+    document.getElementById('saveStatusOrderBtn').addEventListener('click', saveStatusOrder);
 </script>
 </body>
 </html>

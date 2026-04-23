@@ -6,6 +6,7 @@ import models
 import schemas
 import crud
 from datetime import datetime
+from datetime import time
 
 router = APIRouter(prefix="/api/timelog", tags=["timelog"])
 
@@ -38,7 +39,12 @@ async def create_timelog(entry: schemas.TimeLogCreate, db: AsyncSession = Depend
     employee = await crud.get_employee_by_id(db, entry.user_id)
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    
+
+    if entry.action == "start":
+        current_time = datetime.now().time()
+        if current_time >= time(22, 0, 0):
+            raise HTTPException(400, "Нельзя начать смену после 22:00")
+
     last_entry = await get_last_entry(db, entry.user_id)
     last_action = last_entry.action if last_entry else None
     if last_action == "start" and last_entry:

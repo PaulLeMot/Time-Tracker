@@ -172,3 +172,50 @@ async def update_employee(db: AsyncSession, employee_id: int, username: str = No
     result = await db.execute(stmt)
     await db.commit()
     return result.scalar_one()
+
+from sqlalchemy import select
+from models import TimeEntry, Employee
+from datetime import datetime
+
+async def auto_close_shifts(db: AsyncSession):
+    now = datetime.now()
+    employees = await get_employees(db, active_only=True)
+    for emp in employees:
+        last_entry = await get_last_entry(db, emp.id)
+        if not last_entry:
+            continue
+        if last_entry.action == "end":
+            continue
+        start_of_day = datetime.combine(now.date(), datetime.min.time())
+        stmt = select(TimeEntry).where(
+            TimeEntry.employee_id == emp.id,
+            TimeEntry.action == "end",
+            TimeEntry.source == "auto",
+            TimeEntry.timestamp >= start_of_day
+        )
+        result = await db.execute(stmt)
+        if result.scalar_one_or_none():
+            continue
+        if last_entry.action == "break_start":
+            break_end_entry = TimeEntry(
+                employee_id=emp.id,
+                action="break_end",
+                timestamp=now,
+                source="auto"
+            )
+            db.add(break_end_entry)
+        end_entry = TimeEntry(
+            employee_id=emp.id,
+            action="end",
+            timestamp=now,
+            source="auto"
+        )
+        db.add(end_entry)
+    await db.commit()
+
+async def get_last_entry(db: AsyncSession, employee_id: int):
+    stmt = select(TimeEntry).where(
+        TimeEntry.employee_id == employee_id
+    ).order_by(desc(TimeEntry.timestamp)).limit(1)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()

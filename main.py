@@ -6,12 +6,19 @@ from routers import timelog, admin, auth
 from starlette.middleware.sessions import SessionMiddleware
 import os
 from backup import schedule_backup
+from crud import auto_close_shifts
+from database import AsyncSessionLocal
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     schedule_backup()
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(scheduled_auto_close, CronTrigger(hour=22, minute=0))
+    scheduler.start()
     yield
 
 app = FastAPI(title="TimeTracker API", lifespan=lifespan)
@@ -26,3 +33,7 @@ app.include_router(auth.router)
 @app.get("/")
 async def root():
     return {"message": "TimeTracker API is running"}
+
+async def scheduled_auto_close():
+    async with AsyncSessionLocal() as db:
+        await auto_close_shifts(db)

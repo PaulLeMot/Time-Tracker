@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from database import get_db
 import crud
 import os
-from datetime import datetime
+from datetime import datetime, time
 import models
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -96,8 +96,8 @@ async def employee_daily_summary(
     
     target_date = datetime.now().date()
     start_of_day = datetime.combine(target_date, datetime.min.time())
-    end_of_day = datetime.combine(target_date, datetime.max.time())
-    entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=start_of_day, end_date=end_of_day)
+    cutoff_time = datetime.combine(target_date, time(22, 0, 0))
+    entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=start_of_day, end_date=cutoff_time)
     entries_sorted = sorted(entries, key=lambda x: x.timestamp)
     
     status_day = "not_started"
@@ -112,39 +112,42 @@ async def employee_daily_summary(
     now = datetime.now()
     
     for entry in entries_sorted:
-        if entry.action == "start":
+        ts = entry.timestamp
+        action = entry.action
+        
+        if action == "start":
             if not in_shift:
                 in_shift = True
-                last_start_time = entry.timestamp
+                last_start_time = ts
                 status_day = "started"
-        elif entry.action == "end":
+        elif action == "end":
             if in_shift:
                 in_shift = False
                 if last_start_time and not in_break:
-                    total_work_sec += (entry.timestamp - last_start_time).total_seconds()
+                    total_work_sec += (ts - last_start_time).total_seconds()
                 last_start_time = None
                 status_day = "ended"
-        elif entry.action == "break_start":
+        elif action == "break_start":
             if in_shift and not in_break:
                 in_break = True
-                last_break_start = entry.timestamp
+                last_break_start = ts
                 status_break = "on_break"
                 break_count += 1
                 if last_start_time:
-                    total_work_sec += (entry.timestamp - last_start_time).total_seconds()
+                    total_work_sec += (ts - last_start_time).total_seconds()
                     last_start_time = None
-        elif entry.action == "break_end":
+        elif action == "break_end":
             if in_break:
                 in_break = False
                 status_break = "not_on_break"
                 if last_break_start:
-                    total_break_sec += (entry.timestamp - last_break_start).total_seconds()
+                    total_break_sec += (ts - last_break_start).total_seconds()
                     last_break_start = None
-                last_start_time = entry.timestamp
+                last_start_time = ts
     
+    # 处理未闭合的当前状态
     if in_shift and not in_break and last_start_time:
         total_work_sec += (now - last_start_time).total_seconds()
-
     if in_break and last_break_start:
         total_break_sec += (now - last_break_start).total_seconds()
     
@@ -200,8 +203,8 @@ async def employee_weekly_summary(
     for i in range(7):
         day_date = start + timedelta(days=i)
         start_of_day = datetime.combine(day_date, datetime.min.time())
-        end_of_day = datetime.combine(day_date, datetime.max.time())
-        entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=start_of_day, end_date=end_of_day)
+        cutoff_time = datetime.combine(day_date, time(22, 0, 0))
+        entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=start_of_day, end_date=cutoff_time)
         worked_min, break_min, _, _ = calculate_work_stats(entries)
         worked_hours = round(worked_min / 60, 2)
         result["days"].append({
