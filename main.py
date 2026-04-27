@@ -29,6 +29,9 @@ app.include_router(admin.router)
 app.include_router(admin.page_router)
 app.include_router(admin.public_router)
 app.include_router(auth.router)
+from sse import admin_events_endpoint
+app.add_api_route("/api/admin/events", endpoint=admin_events_endpoint, methods=["GET"])
+
 
 @app.get("/")
 async def root():

@@ -13,6 +13,7 @@ from datetime import datetime, time
 from routers.auth import admin_required
 from routers.auth import get_current_employee
 import models
+from sse import notify_admin_clients
 class EmployeeCreate(BaseModel):
     username: str
     full_name: str
@@ -118,7 +119,7 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
     employees = await crud.get_employees(db, active_only=True)
     target_date = datetime.strptime(date, "%Y-%m-%d").date()
     start_of_day = datetime.combine(target_date, datetime.min.time())
-    cutoff_time = datetime.combine(target_date, time(22, 0, 0))
+    cutoff_time = datetime.combine(target_date, time(22, 0, 0, 999999))
     now = datetime.now()
     
     result = []
@@ -247,7 +248,7 @@ async def weekly_report(start_date: str, request: Request, db: AsyncSession = De
             cutoff = datetime.combine(day_date, cutoff_time_of_day)
             entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=start_of_day, end_date=cutoff)
             entries_sorted = sorted(entries, key=lambda x: x.timestamp)
-            
+
             total_work_sec = 0
             total_break_sec = 0
             last_start_time = None
@@ -259,7 +260,10 @@ async def weekly_report(start_date: str, request: Request, db: AsyncSession = De
                 day_cutoff = now
             else:
                 day_cutoff = cutoff
-            
+            first_start_time = None
+            end_time = None
+            break_count = 0
+
             for entry in entries_sorted:
                 ts = entry.timestamp
                 action = entry.action
@@ -267,16 +271,20 @@ async def weekly_report(start_date: str, request: Request, db: AsyncSession = De
                     if not in_shift:
                         in_shift = True
                         last_start_time = ts
+                        if first_start_time is None:
+                            first_start_time = ts
                 elif action == "end":
                     if in_shift:
                         in_shift = False
                         if last_start_time and not in_break:
                             total_work_sec += (ts - last_start_time).total_seconds()
                         last_start_time = None
+                        end_time = ts
                 elif action == "break_start":
                     if in_shift and not in_break:
                         in_break = True
                         last_break_start = ts
+                        break_count += 1
                         if last_start_time:
                             total_work_sec += (ts - last_start_time).total_seconds()
                             last_start_time = None
@@ -287,20 +295,23 @@ async def weekly_report(start_date: str, request: Request, db: AsyncSession = De
                             total_break_sec += (ts - last_break_start).total_seconds()
                             last_break_start = None
                         last_start_time = ts
-            
+
             if in_shift and not in_break and last_start_time:
                 total_work_sec += (day_cutoff - last_start_time).total_seconds()
             if in_break and last_break_start:
                 total_break_sec += (day_cutoff - last_break_start).total_seconds()
-            
+
             worked_hours = round(total_work_sec / 3600, 2)
             break_minutes = round(total_break_sec / 60, 0)
-            
+
             emp_data["days"].append({
                 "date": day_date.isoformat(),
                 "weekday": weekdays[i],
                 "worked_hours": worked_hours,
-                "break_minutes": break_minutes
+                "break_minutes": break_minutes,
+                "first_start_time": first_start_time.isoformat() if first_start_time else None,
+                "end_time": end_time.isoformat() if end_time else None,
+                "break_count": break_count
             })
             emp_data["total_worked_hours"] += worked_hours
             emp_data["total_break_minutes"] += break_minutes
@@ -321,7 +332,15 @@ async def employee_detail(employee_id: int, date: str, request: Request, db: Asy
     start_of_day = datetime.combine(target_date, datetime.min.time())
     cutoff_time = datetime.combine(target_date, time(22, 0, 0))
     entries = await crud.get_time_entries(db, employee_id=employee_id, start_date=start_of_day, end_date=cutoff_time)
-    entries_list = [{"id": e.id, "timestamp": e.timestamp.isoformat(), "action": e.action} for e in entries]
+    entries_list = [
+        {
+            "id": e.id,
+            "timestamp": e.timestamp.isoformat(),
+            "action": e.action,
+            "source": e.source
+        }
+        for e in entries
+    ]
     worked, breaks, _, _ = calculate_work_stats(entries)
     return {
         "employee_id": employee_id,
@@ -418,6 +437,7 @@ async def admin_create_timelog(data: TimeEntryCreateAdmin, db: AsyncSession = De
     except ValueError:
         raise HTTPException(400, "Invalid timestamp format. Use ISO format.")
     entry = await crud.create_time_entry_admin(db, data.employee_id, data.action, dt, source="admin")
+    await notify_admin_clients()
     return {"status": "ok", "entry_id": entry.id}
 
 @public_router.put("/api/admin/timelog/{entry_id}")
@@ -443,6 +463,7 @@ async def admin_update_timelog(
     entry.source = "admin"
     
     await db.commit()
+    await notify_admin_clients()
     await db.refresh(entry)
     return {
         "status": "ok",
@@ -455,6 +476,7 @@ async def admin_update_timelog(
 async def admin_delete_timelog(entry_id: int, db: AsyncSession = Depends(get_db)):
     try:
         await crud.delete_time_entry(db, entry_id)
+        await notify_admin_clients()
     except ValueError:
         raise HTTPException(404, "Entry not found")
     return Response(status_code=204)
@@ -581,10 +603,11 @@ async def get_recent_entries(
                 start_key = (emp_id, date, last_num)
                 if start_key in break_start_time:
                     duration = e["timestamp"] - break_start_time[start_key]
-                    minutes = int(duration.total_seconds() // 60)
+                    total_seconds = int(duration.total_seconds())
+                    minutes = total_seconds // 60
                     hours = minutes // 60
                     mins = minutes % 60
-                    e["break_duration"] = f"{hours:02d}:{mins:02d}" if hours > 0 else f"{minutes} мин"
+                    e["break_duration"] = f"{hours:02d}:{mins:02d}"
     
     entries.sort(key=lambda x: x["timestamp"], reverse=True)
     entries = entries[:limit]

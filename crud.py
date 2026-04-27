@@ -5,6 +5,7 @@ from datetime import datetime
 from models import Employee, TimeEntry
 import secrets
 import string
+from sse import notify_admin_clients
 
 async def create_employee(db: AsyncSession, full_name: str) -> Employee:
     qr_secret = str(uuid.uuid4()).replace('-', '')[:16]
@@ -212,6 +213,7 @@ async def auto_close_shifts(db: AsyncSession):
         )
         db.add(end_entry)
     await db.commit()
+    await notify_admin_clients()
 
 async def get_last_entry(db: AsyncSession, employee_id: int):
     stmt = select(TimeEntry).where(
@@ -219,3 +221,29 @@ async def get_last_entry(db: AsyncSession, employee_id: int):
     ).order_by(desc(TimeEntry.timestamp)).limit(1)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+async def convert_end_start_to_break(
+    db: AsyncSession,
+    employee_id: int,
+    start_of_day: datetime,
+    end_of_day: datetime
+) -> bool:
+
+    stmt = select(TimeEntry).where(
+        TimeEntry.employee_id == employee_id,
+        TimeEntry.timestamp >= start_of_day,
+        TimeEntry.timestamp <= end_of_day
+    ).order_by(TimeEntry.timestamp)
+    result = await db.execute(stmt)
+    entries = result.scalars().all()
+
+    for i in range(len(entries) - 1):
+        if entries[i].action == "end" and entries[i+1].action == "start":
+            entries[i].action = "break_start"
+            entries[i+1].action = "break_end"
+            entries[i].source = "auto"
+            entries[i+1].source = "auto"
+            await db.commit()
+            await notify_admin_clients()
+            return True
+    return False
