@@ -14,3 +14,4 @@ logs/
 *.sqlite
 *.db
 backups/
+backups/*
