@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import select, update, delete, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
+from datetime import datetime, time
 from models import Employee, TimeEntry
 import secrets
 import string
@@ -180,6 +180,7 @@ from datetime import datetime
 
 async def auto_close_shifts(db: AsyncSession):
     now = datetime.now()
+    auto_time = datetime.combine(now.date(), time(22, 0, 0))
     employees = await get_employees(db, active_only=True)
     for emp in employees:
         last_entry = await get_last_entry(db, emp.id)
@@ -201,14 +202,14 @@ async def auto_close_shifts(db: AsyncSession):
             break_end_entry = TimeEntry(
                 employee_id=emp.id,
                 action="break_end",
-                timestamp=now,
+                timestamp=auto_time,
                 source="auto"
             )
             db.add(break_end_entry)
         end_entry = TimeEntry(
             employee_id=emp.id,
             action="end",
-            timestamp=now,
+            timestamp=auto_time,
             source="auto"
         )
         db.add(end_entry)
