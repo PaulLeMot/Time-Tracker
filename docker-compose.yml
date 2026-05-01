@@ -27,6 +27,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MONITOR_PASSWORD: ${MONITOR_PASSWORD}
       TZ: Asia/Yerevan
     volumes:
       - .:/app

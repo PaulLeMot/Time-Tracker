@@ -5,13 +5,13 @@ from datetime import datetime, time
 from models import Employee, TimeEntry
 import secrets
 import string
-from sse import notify_admin_clients
+from sse import notify_admin_clients, notify_monitor_clients
 
 async def create_employee(db: AsyncSession, full_name: str) -> Employee:
-    qr_secret = str(uuid.uuid4()).replace('-', '')[:16]
+    barcode_secret = str(uuid.uuid4()).replace('-', '')[:16]
     new_employee = Employee(
         full_name=full_name,
-        qr_code_secret=qr_secret,
+        barcode_secret=barcode_secret,
         is_active=1
     )
     db.add(new_employee)
@@ -32,9 +32,9 @@ async def get_employee_by_id(db: AsyncSession, employee_id: int):
     result = await db.execute(select(Employee).where(Employee.id == employee_id))
     return result.scalar_one_or_none()
 
-async def get_employee_by_qr_secret(db: AsyncSession, qr_secret: str):
+async def get_employee_by_barcode_secret(db: AsyncSession, barcode_secret: str):
 
-    result = await db.execute(select(Employee).where(Employee.qr_code_secret == qr_secret))
+    result = await db.execute(select(Employee).where(Employee.barcode_secret == barcode_secret))
     return result.scalar_one_or_none()
 
 async def update_employee(db: AsyncSession, employee_id: int, full_name: str = None, is_active: int = None) -> Employee:
@@ -141,11 +141,11 @@ async def get_employee_by_full_name(db: AsyncSession, full_name: str):
     return result.scalar_one_or_none()
 
 async def create_employee(db: AsyncSession, username: str, full_name: str) -> Employee:
-    qr_secret = str(uuid.uuid4()).replace('-', '')[:16]
+    barcode_secret = str(uuid.uuid4()).replace('-', '')[:16]
     new_employee = Employee(
         full_name=full_name,
         username=username,
-        qr_code_secret=qr_secret,
+        barcode_secret=barcode_secret,
         is_active=1
     )
     db.add(new_employee)
@@ -215,6 +215,7 @@ async def auto_close_shifts(db: AsyncSession):
         db.add(end_entry)
     await db.commit()
     await notify_admin_clients()
+    await notify_monitor_clients()
 
 async def get_last_entry(db: AsyncSession, employee_id: int):
     stmt = select(TimeEntry).where(
@@ -246,5 +247,6 @@ async def convert_end_start_to_break(
             entries[i+1].source = "auto"
             await db.commit()
             await notify_admin_clients()
+            await notify_monitor_clients()
             return True
     return False

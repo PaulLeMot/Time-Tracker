@@ -389,6 +389,7 @@
                         <th>ФИО</th>
                         <th>Пароль</th>
                         <th>Активен</th>
+                        <th>Штрих-код</th>
                         <th>Действия</th>
                     </tr>
                 </thead>
@@ -517,10 +518,16 @@
                     <button class="small-btn toggle-active-btn" data-id="${emp.id}" data-active="${emp.is_active}" title="Изменить статус">🔄</button>
                 `;
                 
-                const actionsCell = row.insertCell(5);
-                const qrBtn = document.createElement('button');
-                qrBtn.textContent = 'Штрих-код';
-                qrBtn.onclick = () => window.open(`/api/employees/${emp.id}/qr?action=start`, '_blank');
+                const barcodeSecretCell = row.insertCell(5);
+                barcodeSecretCell.innerHTML = `
+                    <span style="font-family: monospace;">${escapeHtml(emp.barcode_secret || 'не задан')}</span>
+                    <button class="small-btn edit-barcode-secret-btn" data-id="${emp.id}" data-secret="${escapeHtml(emp.barcode_secret || '')}" title="Изменить секрет штрих-кода">✏️</button>
+                `;
+
+                const actionsCell = row.insertCell(6);
+                const barcodeBtn = document.createElement('button');
+                barcodeBtn.textContent = 'Штрих-код';
+                barcodeBtn.onclick = () => window.open(`/api/employees/${emp.id}/barcode?action=start`, '_blank');
                 const delBtn = document.createElement('button');
                 delBtn.textContent = '🗑️ Удалить навсегда';
                 delBtn.className = 'btn-danger btn-sm';
@@ -534,7 +541,7 @@
                         } else showToast('Ошибка', true);
                     }
                 };
-                actionsCell.appendChild(qrBtn);
+                actionsCell.appendChild(barcodeBtn);
                 actionsCell.appendChild(delBtn);
             }
 
@@ -589,6 +596,33 @@
                     } else showToast('Ошибка', true);
                 });
             });
+
+            document.querySelectorAll('.edit-barcode-secret-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.id;
+                    const current = btn.dataset.secret;
+                    const newSecret = prompt('Введите новое значение для штрих-кода (будет отображаться на карточке):', current);
+                    if (newSecret !== null) {
+                        try {
+                            const resp = await fetch(`/api/employees/${id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ barcode_secret: newSecret })
+                            });
+                            if (resp.ok) {
+                                showToast('Секрет штрих-кода обновлён');
+                                loadEmployees();
+                                refreshCurrentReport();
+                            } else {
+                                showToast('Ошибка обновления', true);
+                            }
+                        } catch (err) {
+                            showToast('Ошибка сети', true);
+                        }
+                    }
+                });
+            });
+
         } catch (err) {
             showToast(err.message, true);
         }
@@ -904,7 +938,7 @@
             return;
         }
         function formatSource(source) {
-            if (source === 'qr') return 'Сотрудник';
+            if (source === 'barcode') return 'Сотрудник';
             if (source === 'admin') return 'Админ';
             if (source === 'auto') return 'Авто';
             return source || '—';
@@ -1259,7 +1293,7 @@
                     actionDisplay = `Конец перерыва №${entry.break_number} (${entry.break_duration})`;
                 }
                 let sourceDisplay = entry.source;
-                if (sourceDisplay === 'qr') sourceDisplay = 'Сотрудник';
+                if (sourceDisplay === 'barcode') sourceDisplay = 'Сотрудник';
                 else if (sourceDisplay === 'admin') sourceDisplay = 'Админ';
                 else if (sourceDisplay === 'auto') sourceDisplay = 'Авто';
                 else sourceDisplay = escapeHtml(sourceDisplay);

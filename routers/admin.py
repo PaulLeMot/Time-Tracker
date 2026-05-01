@@ -4,6 +4,7 @@ from sqlalchemy import select, update, delete, desc
 from pydantic import BaseModel
 import barcode
 from barcode.writer import ImageWriter
+from barcode.errors import BarcodeError
 from io import BytesIO
 from typing import List, Optional
 from database import get_db
@@ -13,7 +14,7 @@ from datetime import datetime, time
 from routers.auth import admin_required
 from routers.auth import get_current_employee
 import models
-from sse import notify_admin_clients
+from sse import notify_admin_clients, notify_monitor_clients
 class EmployeeCreate(BaseModel):
     username: str
     full_name: str
@@ -22,7 +23,7 @@ class EmployeeResponse(BaseModel):
     id: int
     username: str
     full_name: str
-    qr_code_secret: str
+    barcode_secret: str
     is_active: int
     password: Optional[str] = None
 
@@ -31,6 +32,7 @@ class EmployeeUpdate(BaseModel):
     full_name: Optional[str] = None
     is_active: Optional[int] = None
     password: Optional[str] = None
+    barcode_secret: Optional[str] = None
 
 class TimeEntryCreateAdmin(BaseModel):
     employee_id: int
@@ -55,25 +57,28 @@ async def create_employee(emp_data: EmployeeCreate, db: AsyncSession = Depends(g
     employee = await crud.create_employee(db, username=emp_data.username, full_name=emp_data.full_name)
     return employee
 
-@router.get("/{employee_id}/qr")
-async def get_employee_qr(employee_id: int, action: str = "start", db: AsyncSession = Depends(get_db)):
+@router.get("/{employee_id}/barcode")
+async def get_employee_barcode(employee_id: int, action: str = "start", db: AsyncSession = Depends(get_db)):
     employee = await crud.get_employee_by_id(db, employee_id)
     if not employee:
         raise HTTPException(404, detail="Employee not found")
-    barcode_data = str(employee_id)
-    barcode_class = barcode.get_barcode_class('code128')
-    my_barcode = barcode_class(barcode_data, writer=ImageWriter())
-    barcode_options = {
-        'module_width': 0.3,
-        'module_height': 15.0,
-        'font_size': 12,
-        'text_distance': 5.0,
-        'quiet_zone': 6.5,
-    }
-    barcode_bytes = BytesIO()
-    my_barcode.write(barcode_bytes, options=barcode_options)
-    barcode_bytes.seek(0)
-    return Response(content=barcode_bytes.getvalue(), media_type="image/png")
+    code = employee.barcode_secret
+    try:
+        ean = barcode.get_barcode_class('ean13')
+        my_barcode = ean(code, writer=ImageWriter())
+        barcode_options = {
+            'module_width': 0.33,
+            'module_height': 15.0,
+            'font_size': 12,
+            'text_distance': 5.0,
+            'quiet_zone': 6.5,
+        }
+        barcode_bytes = BytesIO()
+        my_barcode.write(barcode_bytes, options=barcode_options)
+        barcode_bytes.seek(0)
+        return Response(content=barcode_bytes.getvalue(), media_type="image/png")
+    except BarcodeError as e:
+        raise HTTPException(400, detail=f"Invalid barcode: {str(e)}")
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)
 async def update_employee(employee_id: int, update_data: EmployeeUpdate, db: AsyncSession = Depends(get_db)):
@@ -88,6 +93,8 @@ async def update_employee(employee_id: int, update_data: EmployeeUpdate, db: Asy
         employee.is_active = update_data.is_active
     if update_data.password is not None:
         employee.password = update_data.password
+    if update_data.barcode_secret is not None:
+        employee.barcode_secret = update_data.barcode_secret
     await db.commit()
     await db.refresh(employee)
     return employee
@@ -438,6 +445,7 @@ async def admin_create_timelog(data: TimeEntryCreateAdmin, db: AsyncSession = De
         raise HTTPException(400, "Invalid timestamp format. Use ISO format.")
     entry = await crud.create_time_entry_admin(db, data.employee_id, data.action, dt, source="admin")
     await notify_admin_clients()
+    await notify_monitor_clients()
     return {"status": "ok", "entry_id": entry.id}
 
 @public_router.put("/api/admin/timelog/{entry_id}")
@@ -464,6 +472,7 @@ async def admin_update_timelog(
     
     await db.commit()
     await notify_admin_clients()
+    await notify_monitor_clients()
     await db.refresh(entry)
     return {
         "status": "ok",
@@ -477,6 +486,7 @@ async def admin_delete_timelog(entry_id: int, db: AsyncSession = Depends(get_db)
     try:
         await crud.delete_time_entry(db, entry_id)
         await notify_admin_clients()
+        await notify_monitor_clients()
     except ValueError:
         raise HTTPException(404, "Entry not found")
     return Response(status_code=204)
@@ -637,3 +647,16 @@ async def get_recent_entries(
         result_list.append(item)
     
     return result_list
+
+@page_router.get("/monitor", include_in_schema=False)
+async def monitor_page(request: Request):
+    if not request.session.get("is_monitor"):
+        return FileResponse("static/monitor_login.html")
+    return FileResponse(
+        "static/monitor.html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )

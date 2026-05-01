@@ -39,7 +39,7 @@
             margin-bottom: 32px;
             font-size: 0.95rem;
         }
-        .qr-input {
+        .barcode-input {
             position: absolute;
             left: -9999px;
             opacity: 0;
@@ -123,7 +123,7 @@
     <div class="sub">Выберите действие, затем отсканируйте штрих-код сотрудника</div>
 
     <!-- Невидимое поле ввода для захвата сканирования -->
-    <input type="text" id="qrInput" class="qr-input" autofocus>
+    <input type="text" id="barcodeInput" class="barcode-input" autofocus>
 
     <div class="action-buttons">
         <button class="action-btn" data-action="start">🚀 Начать работу</button>
@@ -145,7 +145,7 @@
 <div id="toast" class="toast"></div>
 
 <script>
-    const input = document.getElementById('qrInput');
+    const input = document.getElementById('barcodeInput');
     const statusDiv = document.getElementById('statusMessage');
     const employeeInfoDiv = document.getElementById('employeeInfo');
     const empNameSpan = document.getElementById('empName');

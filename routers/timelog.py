@@ -8,7 +8,7 @@ import crud
 from datetime import datetime
 from datetime import time
 from crud import convert_end_start_to_break
-from sse import notify_admin_clients
+from sse import notify_admin_clients, notify_monitor_clients
 
 router = APIRouter(prefix="/api/timelog", tags=["timelog"])
 
@@ -70,12 +70,13 @@ async def create_timelog(entry: schemas.TimeLogCreate, db: AsyncSession = Depend
         employee_id=entry.user_id,
         action=entry.action,
         timestamp=now,
-        source="qr"
+        source="barcode"
     )
     db.add(db_entry)
     await db.commit()
     await db.refresh(db_entry)
     await notify_admin_clients()
+    await notify_monitor_clients()
     return {"status": "ok", "entry_id": db_entry.id}
 
 def get_allowed_next(last_action: str | None) -> list:

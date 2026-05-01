@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мониторинг TimeTracker</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #f1f5f9; margin: 0; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 24px; padding: 24px; }
+        h1 { color: #0f172a; }
+        .report-table { width: 100%; border-collapse: collapse; margin-top: 16px; overflow-x: auto; }
+        .report-table th, .report-table td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #e2e8f0; }
+        .report-table th { background: #f8fafc; position: sticky; top: 0; }
+        .row-working { background-color: #dcfce7; }
+        .row-on-break { background-color: #fef9c3; }
+        .row-not-started { background-color: #f1f5f9; }
+        .row-ended { background-color: #dbeafe; }
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #0f172a; color: white; padding: 12px 20px; border-radius: 40px; opacity: 0; transition: opacity 0.3s; z-index: 1000; }
+        .toast.show { opacity: 1; }
+        .logout { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 20px; cursor: pointer; float: right; }
+        .date-picker { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1>📊 Мониторинг TimeTracker</h1>
+        <button id="logoutBtn" class="logout">Выйти</button>
+    </div>
+    <div class="date-picker">
+        <input type="date" id="reportDate">
+    </div>
+    <div id="reportContainer">Загрузка...</div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+    // вспомогательные функции
+    function getLocalDate() {
+        const now = new Date();
+        return now.toISOString().slice(0,10);
+    }
+    function formatHoursToHHMM(hoursDecimal) {
+        if (hoursDecimal === undefined || hoursDecimal === null) return '—';
+        const totalMinutes = Math.round(hoursDecimal * 60);
+        const hh = Math.floor(totalMinutes / 60);
+        const mm = totalMinutes % 60;
+        return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+    }
+    function formatMinutesToHHMM(minutes) {
+        if (minutes === undefined || minutes === null) return '—';
+        const hh = Math.floor(minutes / 60);
+        const mm = minutes % 60;
+        return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+    }
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m]));
+    }
+    function showToast(msg, isError = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.style.background = isError ? '#dc2626' : '#10b981';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    async function loadDailyReport(date) {
+        const container = document.getElementById('reportContainer');
+        container.innerHTML = '<p>Загрузка...</p>';
+        try {
+            const resp = await fetch(`/api/reports/daily?date=${date}`);
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            let report = await resp.json();
+            if (!report.length) {
+                container.innerHTML = '<p>Нет данных за этот день</p>';
+                return;
+            }
+            report.sort((a,b) => a.full_name.localeCompare(b.full_name, 'ru'));
+            let html = '<table class="report-table"><thead><tr><th>Сотрудник</th><th>Статус дня</th><th>Начало дня</th><th>Статус перерыва</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th></tr></thead><tbody>';
+            for (const row of report) {
+                let rowClass = '';
+                if (row.status_day === '❌ не начал') rowClass = 'row-not-started';
+                else if (row.status_break === '☕ в перерыве') rowClass = 'row-on-break';
+                else if (row.status_day === '✅ работает') rowClass = 'row-working';
+                else if (row.status_day === '🏁 завершил') rowClass = 'row-ended';
+                let lastEntryDisplay = '';
+                if (row.last_entry_time) {
+                    const timePart = row.last_entry_time.slice(11,16);
+                    let actionText = { start:'Начало дня', break_start:'Начало перерыва', break_end:'Конец перерыва', end:'Конец дня' }[row.last_entry_action] || row.last_entry_action;
+                    lastEntryDisplay = `${timePart} - ${actionText}`;
+                }
+                let startTimeDisplay = row.first_start_time ? row.first_start_time.slice(11,16) : '';
+                html += `<tr class="${rowClass}">
+                    <td>${escapeHtml(row.full_name)}</td>
+                    <td>${escapeHtml(row.status_day)}</td>
+                    <td>${startTimeDisplay}</td>
+                    <td>${escapeHtml(row.status_break)}</td>
+                    <td>${lastEntryDisplay}</td>
+                    <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
+                    <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
+                    <td>${row.break_count}</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch (err) {
+            container.innerHTML = '<p>Ошибка загрузки</p>';
+            showToast(err.message, true);
+        }
+    }
+
+    // Автоматическая загрузка при смене даты
+    const dateInput = document.getElementById('reportDate');
+    dateInput.value = getLocalDate();
+    dateInput.addEventListener('change', () => {
+        if (dateInput.value) loadDailyReport(dateInput.value);
+    });
+
+    // SSE подключение
+    let eventSource = null;
+    function connectMonitorSSE() {
+        if (eventSource) eventSource.close();
+        eventSource = new EventSource('/api/monitor/events');
+        eventSource.addEventListener('update', () => {
+            console.log('Обновление отчёта (SSE)');
+            const date = dateInput.value;
+            if (date) loadDailyReport(date);
+        });
+        eventSource.onerror = () => {
+            console.warn('SSE ошибка, переподключение через 5 сек');
+            eventSource.close();
+            setTimeout(connectMonitorSSE, 5000);
+        };
+    }
+
+    async function checkMonitor() {
+        try {
+            const resp = await fetch('/api/auth/monitor/check', { credentials: 'include' });
+            const data = await resp.json();
+            if (!data.is_monitor) window.location.replace('/static/monitor_login.html');
+            else {
+                loadDailyReport(dateInput.value);
+                connectMonitorSSE();
+            }
+        } catch (err) { window.location.replace('/static/monitor_login.html'); }
+    }
+
+    document.getElementById('logoutBtn').onclick = async () => {
+        await fetch('/api/auth/monitor/logout', { method: 'POST', credentials: 'include' });
+        window.location.replace('/static/monitor_login.html');
+    };
+
+    checkMonitor();
+</script>
+</body>
+</html>

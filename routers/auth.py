@@ -301,3 +301,24 @@ async def change_password(
     employee.password = data.new_password
     await db.commit()
     return {"message": "Пароль успешно изменён"}
+
+class MonitorLoginData(BaseModel):
+    password: str
+
+@router.post("/monitor/login")
+async def monitor_login(login_data: MonitorLoginData, request: Request):
+    monitor_password = os.getenv("MONITOR_PASSWORD", "default_monitor_password")
+    if login_data.password == monitor_password:
+        request.session["is_monitor"] = True
+        return {"message": "Monitor login successful"}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid monitor password")
+
+@router.get("/monitor/check")
+async def monitor_check(request: Request):
+    return {"is_monitor": request.session.get("is_monitor", False)}
+
+@router.post("/monitor/logout")
+async def monitor_logout(request: Request):
+    request.session.pop("is_monitor", None)
+    return {"message": "Monitor logged out"}

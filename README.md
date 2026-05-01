@@ -6,6 +6,7 @@ POSTGRES_PASSWORD=yourdbpassword
 POSTGRES_DB=timetracker
 DATABASE_URL=postgresql+asyncpg://admin:yourdbpassword@db:5432/timetracker
 ADMIN_PASSWORD=youradminpassword
+MONITOR_PASSWORD=your_monitor_password
 
 If you need to restore the database from a dump, run the following command (on the host):
 
