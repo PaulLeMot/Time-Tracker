@@ -140,12 +140,42 @@
             font-size: 0.9rem;
         }
         @media (max-width: 768px) {
-            .report-table th, .report-table td {
+            .report-table th, 
+            .report-table td {
                 padding: 6px 4px;
                 font-size: 0.7rem;
             }
+            #employeesTable {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
+            #reportContainer {
+                overflow-x: auto;
+            }
+            .report-table {
+                min-width: 700px;
+            }
+            .tabs {
+                overflow-x: auto;
+                white-space: nowrap;
+                flex-wrap: nowrap;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 8px;
+            }
+            .tab-btn {
+                display: inline-block;
+                flex-shrink: 0;
+                margin-right: 4px;
+            }
         }
 
+        @media (max-width: 480px) {
+            .tab-btn {
+                padding: 6px 12px;
+                font-size: 0.85rem;
+            }
+        }
         .tabs {
             display: flex;
             gap: 8px;
@@ -390,6 +420,8 @@
                         <th>Пароль</th>
                         <th>Активен</th>
                         <th>Штрих-код</th>
+                        <th>Админ</th>
+                        <th>Мониторинг</th>
                         <th>Действия</th>
                     </tr>
                 </thead>
@@ -524,7 +556,53 @@
                     <button class="small-btn edit-barcode-secret-btn" data-id="${emp.id}" data-secret="${escapeHtml(emp.barcode_secret || '')}" title="Изменить секрет штрих-кода">✏️</button>
                 `;
 
-                const actionsCell = row.insertCell(6);
+                const adminCell = row.insertCell(6);
+                const adminCheckbox = document.createElement('input');
+                adminCheckbox.type = 'checkbox';
+                adminCheckbox.className = 'admin-checkbox';
+                adminCheckbox.dataset.id = emp.id;
+                adminCheckbox.checked = emp.is_admin === 1;
+                adminCheckbox.addEventListener('change', async (e) => {
+                    const val = e.target.checked ? 1 : 0;
+                    try {
+                        const resp = await fetch(`/api/employees/${emp.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ is_admin: val })
+                        });
+                        if (!resp.ok) throw new Error('Ошибка');
+                        showToast(`Права админа ${val ? 'установлены' : 'сняты'}`);
+                    } catch (err) {
+                        showToast('Ошибка обновления прав', true);
+                        e.target.checked = !e.target.checked;
+                    }
+                });
+                adminCell.appendChild(adminCheckbox);
+
+                const monitorCell = row.insertCell(7);
+                const monitorCheckbox = document.createElement('input');
+                monitorCheckbox.type = 'checkbox';
+                monitorCheckbox.className = 'monitor-checkbox';
+                monitorCheckbox.dataset.id = emp.id;
+                monitorCheckbox.checked = emp.is_monitor === 1;
+                monitorCheckbox.addEventListener('change', async (e) => {
+                    const val = e.target.checked ? 1 : 0;
+                    try {
+                        const resp = await fetch(`/api/employees/${emp.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ is_monitor: val })
+                        });
+                        if (!resp.ok) throw new Error('Ошибка');
+                        showToast(`Права мониторинга ${val ? 'установлены' : 'сняты'}`);
+                    } catch (err) {
+                        showToast('Ошибка обновления прав', true);
+                        e.target.checked = !e.target.checked;
+                    }
+                });
+                monitorCell.appendChild(monitorCheckbox);
+
+                const actionsCell = row.insertCell(8);
                 const barcodeBtn = document.createElement('button');
                 barcodeBtn.textContent = 'Штрих-код';
                 barcodeBtn.onclick = () => window.open(`/api/employees/${emp.id}/barcode?action=start`, '_blank');

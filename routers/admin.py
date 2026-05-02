@@ -11,8 +11,7 @@ from database import get_db
 import crud
 from fastapi.responses import FileResponse
 from datetime import datetime, time
-from routers.auth import admin_required
-from routers.auth import get_current_employee
+from routers.auth import get_current_employee, get_current_admin, get_current_monitor
 import models
 from sse import notify_admin_clients, notify_monitor_clients
 class EmployeeCreate(BaseModel):
@@ -26,6 +25,8 @@ class EmployeeResponse(BaseModel):
     barcode_secret: str
     is_active: int
     password: Optional[str] = None
+    is_admin: int
+    is_monitor: int
 
 class EmployeeUpdate(BaseModel):
     username: Optional[str] = None
@@ -33,6 +34,8 @@ class EmployeeUpdate(BaseModel):
     is_active: Optional[int] = None
     password: Optional[str] = None
     barcode_secret: Optional[str] = None
+    is_admin: Optional[int] = None
+    is_monitor: Optional[int] = None
 
 class TimeEntryCreateAdmin(BaseModel):
     employee_id: int
@@ -44,7 +47,7 @@ class TimeEntryUpdateAdmin(BaseModel):
     action: Optional[str] = None
 
 page_router = APIRouter(tags=["pages"])
-router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(admin_required)])
+router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(get_current_admin)])
 public_router = APIRouter(tags=["public"])
 
 @router.get("/", response_model=List[EmployeeResponse])
@@ -95,6 +98,10 @@ async def update_employee(employee_id: int, update_data: EmployeeUpdate, db: Asy
         employee.password = update_data.password
     if update_data.barcode_secret is not None:
         employee.barcode_secret = update_data.barcode_secret
+    if update_data.is_admin is not None:
+        employee.is_admin = update_data.is_admin
+    if update_data.is_monitor is not None:
+        employee.is_monitor = update_data.is_monitor
     await db.commit()
     await db.refresh(employee)
     return employee
@@ -111,7 +118,9 @@ async def delete_employee(employee_id: int, permanent: bool = False, db: AsyncSe
     return Response(status_code=204)
 
 @page_router.get("/admin", include_in_schema=False)
-async def admin_page(request: Request):
+async def admin_page(request: Request, admin: Optional[models.Employee] = Depends(get_current_admin)):
+    if admin is None and not request.session.get("is_admin"):
+        return FileResponse("static/admin_login.html")
     return FileResponse(
         "templates/admin.html",
         headers={
@@ -228,9 +237,7 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
     return result
 
 @public_router.get("/api/reports/weekly")
-async def weekly_report(start_date: str, request: Request, db: AsyncSession = Depends(get_db)):
-    if not request.session.get("is_admin", False):
-        raise HTTPException(403, "Admin access required")
+async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     from datetime import timedelta, time
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     if start.weekday() != 0:
@@ -435,7 +442,7 @@ async def employee_daily_summary(
     }
 
 @public_router.post("/api/admin/timelog", status_code=201)
-async def admin_create_timelog(data: TimeEntryCreateAdmin, db: AsyncSession = Depends(get_db)):
+async def admin_create_timelog(data: TimeEntryCreateAdmin, admin: Optional[models.Employee] = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     employee = await crud.get_employee_by_id(db, data.employee_id)
     if not employee:
         raise HTTPException(404, "Employee not found")
@@ -443,7 +450,8 @@ async def admin_create_timelog(data: TimeEntryCreateAdmin, db: AsyncSession = De
         dt = datetime.fromisoformat(data.timestamp)
     except ValueError:
         raise HTTPException(400, "Invalid timestamp format. Use ISO format.")
-    entry = await crud.create_time_entry_admin(db, data.employee_id, data.action, dt, source="admin")
+    source_prefix = f"admin({admin.full_name})" if admin else "admin"
+    entry = await crud.create_time_entry_admin(db, data.employee_id, data.action, dt, source=source_prefix)
     await notify_admin_clients()
     await notify_monitor_clients()
     return {"status": "ok", "entry_id": entry.id}
@@ -452,6 +460,7 @@ async def admin_create_timelog(data: TimeEntryCreateAdmin, db: AsyncSession = De
 async def admin_update_timelog(
     entry_id: int,
     data: TimeEntryUpdateAdmin,
+    admin: Optional[models.Employee] = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -468,7 +477,7 @@ async def admin_update_timelog(
     entry.timestamp = dt
     if data.action is not None:
         entry.action = data.action
-    entry.source = "admin"
+    entry.source = f"admin({admin.full_name})" if admin else "admin"
     
     await db.commit()
     await notify_admin_clients()
@@ -560,13 +569,7 @@ def calculate_work_stats(entries):
     return worked_min, break_min, start_str, end_str
 
 @public_router.get("/api/admin/recent-entries")
-async def get_recent_entries(
-    request: Request,
-    limit: int = 100,
-    db: AsyncSession = Depends(get_db)
-):
-    if not request.session.get("is_admin", False):
-        raise HTTPException(403, "Admin access required")
+async def get_recent_entries(limit: int = 100, admin: Optional[models.Employee] = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
     
     stmt = select(
         models.TimeEntry.id,
@@ -649,8 +652,8 @@ async def get_recent_entries(
     return result_list
 
 @page_router.get("/monitor", include_in_schema=False)
-async def monitor_page(request: Request):
-    if not request.session.get("is_monitor"):
+async def monitor_page(request: Request, monitor: Optional[models.Employee] = Depends(get_current_monitor)):
+    if monitor is None and not request.session.get("is_monitor"):
         return FileResponse("static/monitor_login.html")
     return FileResponse(
         "static/monitor.html",

@@ -50,7 +50,9 @@ async def get_profile(request: Request, db: AsyncSession = Depends(get_db)):
         "id": employee.id,
         "username": employee.username,
         "full_name": employee.full_name,
-        "is_active": employee.is_active
+        "is_active": employee.is_active,
+        "is_admin": employee.is_admin,
+        "is_monitor": employee.is_monitor
     }
 
 @router.post("/admin/login")
@@ -80,6 +82,22 @@ async def get_current_employee(request: Request, db: AsyncSession = Depends(get_
         request.session.clear()
         raise HTTPException(401, "Employee not found")
     return employee
+
+async def get_current_admin(request: Request, db: AsyncSession = Depends(get_db)):
+    if request.session.get("is_admin"):
+        return None
+    employee = await get_current_employee(request, db)
+    if employee.is_admin == 1:
+        return employee
+    raise HTTPException(403, "Admin access required")
+
+async def get_current_monitor(request: Request, db: AsyncSession = Depends(get_db)):
+    if request.session.get("is_monitor"):
+        return None
+    employee = await get_current_employee(request, db)
+    if employee.is_admin == 1 or employee.is_monitor == 1:
+        return employee
+    raise HTTPException(403, "Monitor access required")
 
 @router.get("/daily-summary")
 async def employee_daily_summary(

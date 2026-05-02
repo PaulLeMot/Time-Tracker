@@ -9,6 +9,8 @@ class Employee(Base):
     barcode_secret = Column(String, unique=True, nullable=False)
     is_active = Column(Integer, default=1)
     password = Column(String, nullable=True)
+    is_admin = Column(Integer, default=0)
+    is_monitor = Column(Integer, default=0)
     
 class TimeEntry(Base):
     __tablename__ = "time_entries"

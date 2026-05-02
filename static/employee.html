@@ -16,7 +16,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             border-radius: 32px;
@@ -160,14 +160,81 @@
             font-size: 24px;
             cursor: pointer;
         }
+        #monitorContainer {
+            overflow-x: auto;
+        }
+        #monitorContainer .report-table {
+            min-width: 900px;
+        }
+        @media (max-width: 600px) {
+            .tabs {
+                overflow-x: auto;
+                white-space: nowrap;
+                flex-wrap: nowrap;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 4px;
+            }
+            .tab-btn {
+                font-size: 0.85rem;
+                padding: 6px 16px;
+                flex-shrink: 0;
+            }
+        }
+        .sortable-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 8px 0;
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            background: #f8fafc;
+            border-radius: 60px;
+            padding: 8px 12px;
+            flex-wrap: wrap;
+        }
+        .sortable-list li {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 40px;
+            padding: 6px 16px;
+            cursor: grab;
+            user-select: none;
+            transition: background 0.2s;
+            display: inline-block;
+        }
+        .sortable-list li:active {
+            cursor: grabbing;
+        }
+        .sortable-list li.dragging {
+            opacity: 0.5;
+        }
+        .btn {
+            background: #3b82f6;
+            border: none;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            margin-right: 6px;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 0.75rem;
+        }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>Личный кабинет</h1>
-    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-bottom: 16px;">
-        <button id="logoutBtn" class="logout">Выйти</button>
+    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 16px;">
+        <button id="adminPanelBtn" class="logout" style="display: none; background: #3b82f6;">Админ-панель</button>
         <button id="changePasswordBtn" class="logout">Сменить пароль</button>
+        <button id="logoutBtn" class="logout">Выйти</button>
     </div>
     
 
@@ -175,6 +242,7 @@
     <div class="tabs">
         <button class="tab-btn active" data-tab="daily">📅 Сегодня</button>
         <button class="tab-btn" data-tab="weekly">📆 Статистика по неделям</button>
+        <button class="tab-btn" data-tab="monitor" id="monitorTab" style="display: none;">📊 Мониторинг</button>
     </div>
 
     <!-- Содержимое вкладки "Сегодня" -->
@@ -188,7 +256,7 @@
             <strong>Количество перерывов:</strong> <span id="breakCountToday">—</span>
         </div>
 
-        <div class="buttons" id="buttonsContainer"></div>
+        <div id="actionButtons" class="buttons"></div>
 
         <h2>Мои отметки за сегодня</h2>
         <div id="entriesContainer">Загрузка...</div>
@@ -201,6 +269,27 @@
             <button id="loadWeeklyBtn">Показать</button>
         </div>
         <div id="weeklyContainer">Загрузка...</div>
+    </div>
+
+    <div id="monitor-tab" class="tab-content" style="display: none;">
+        <div class="date-picker">
+            <input type="date" id="monitorDate" value="">
+            <button id="refreshMonitorBtn" class="btn btn-sm" style="background: #3b82f6;">Обновить</button>
+        </div>
+        <div>
+            <button id="toggleMonitorFilterBtn" class="btn" style="margin-bottom: 8px;">🎛️ Фильтр по статусам</button>
+        </div>
+        <div id="monitorStatusOrderSettings" style="margin-bottom: 16px; display: none;">
+            <h3>Порядок статусов в отчёте</h3>
+            <ul id="monitorStatusOrderList" class="sortable-list">
+                <li data-status="working">✅ Работает</li>
+                <li data-status="onbreak">☕ В перерыве</li>
+                <li data-status="notstarted">❌ Не начал</li>
+                <li data-status="ended">🏁 Завершил</li>
+            </ul>
+            <button id="saveMonitorStatusOrderBtn" class="btn">Сохранить порядок</button>
+        </div>
+        <div id="monitorContainer">Загрузка...</div>
     </div>
 
     <div id="changePasswordModal" class="modal">
@@ -284,10 +373,23 @@
         try {
             const resp = await fetchWithAuth('/api/auth/profile');
             const data = await resp.json();
+            if (data.is_admin || data.is_monitor) {
+                const monitorTabBtn = document.getElementById('monitorTab');
+                if (monitorTabBtn) monitorTabBtn.style.display = 'inline-block';
+            }
             document.getElementById('employeeName').innerHTML = `
                 <strong>Сотрудник:</strong> ${escapeHtml(data.full_name)}<br>
                 <strong>Логин:</strong> ${escapeHtml(data.username)} (ID: ${data.id})
             `;
+            const adminBtn = document.getElementById('adminPanelBtn');
+            if (adminBtn) {
+                if (data.is_admin) {
+                    adminBtn.style.display = 'inline-block';
+                    adminBtn.onclick = () => window.location.href = '/admin';
+                } else {
+                    adminBtn.style.display = 'none';
+                }
+            }
             return data.id;
         } catch (err) {
             console.error(err);
@@ -401,7 +503,7 @@
     }
 
     function renderButtons(availableActions) {
-        const container = document.getElementById('buttonsContainer');
+        const container = document.getElementById('actionButtons');
         container.innerHTML = '';
         const buttonConfig = {
             'start': { text: '🚀 Начать работу', class: '' },
@@ -484,11 +586,11 @@
         }
     }
 
-    // ========== Переключение вкладок ==========
     function initTabs() {
         const tabs = document.querySelectorAll('.tab-btn');
         const dailyTab = document.getElementById('daily-tab');
         const weeklyTab = document.getElementById('weekly-tab');
+        const monitorTabDiv = document.getElementById('monitor-tab');
         const weekPicker = document.getElementById('weekPicker');
         const loadWeeklyBtn = document.getElementById('loadWeeklyBtn');
 
@@ -499,10 +601,12 @@
                 btn.classList.add('active');
                 dailyTab.style.display = 'none';
                 weeklyTab.style.display = 'none';
+                if (monitorTabDiv) monitorTabDiv.style.display = 'none';
+
                 if (tabId === 'daily') {
                     dailyTab.style.display = 'block';
                     refreshState();
-                } else {
+                } else if (tabId === 'weekly') {
                     weeklyTab.style.display = 'block';
                     if (!weekPicker.value) {
                         const now = new Date();
@@ -513,8 +617,7 @@
                         const y = monday.getFullYear();
                         const m = String(monday.getMonth() + 1).padStart(2, '0');
                         const d = String(monday.getDate()).padStart(2, '0');
-                        const mondayStr = `${y}-${m}-${d}`;
-                        loadWeeklyReport(mondayStr);
+                        loadWeeklyReport(`${y}-${m}-${d}`);
                     } else {
                         const weekValue = weekPicker.value;
                         if (weekValue) {
@@ -523,10 +626,14 @@
                             const y = monday.getFullYear();
                             const m = String(monday.getMonth() + 1).padStart(2, '0');
                             const d = String(monday.getDate()).padStart(2, '0');
-                            const mondayStr = `${y}-${m}-${d}`;
-                            loadWeeklyReport(mondayStr);
+                            loadWeeklyReport(`${y}-${m}-${d}`);
                         }
                     }
+                } else if (tabId === 'monitor') {
+                    if (monitorTabDiv) monitorTabDiv.style.display = 'block';
+                    const monitorDate = document.getElementById('monitorDate');
+                    if (!monitorDate.value) monitorDate.value = getLocalDate();
+                    loadMonitorReport(monitorDate.value);
                 }
             });
         });
@@ -539,8 +646,7 @@
                 const y = monday.getFullYear();
                 const m = String(monday.getMonth() + 1).padStart(2, '0');
                 const d = String(monday.getDate()).padStart(2, '0');
-                const mondayStr = `${y}-${m}-${d}`;
-                loadWeeklyReport(mondayStr);
+                loadWeeklyReport(`${y}-${m}-${d}`);
             }
         });
     }
@@ -609,6 +715,231 @@
             errorSpan.innerText = 'Ошибка соединения с сервером';
         }
     };
+
+    async function loadMonitorReport(date) {
+        const container = document.getElementById('monitorContainer');
+        container.innerHTML = '<p>Загрузка...</p>';
+        try {
+            const resp = await fetch(`/api/reports/daily?date=${date}`);
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            let report = await resp.json();
+            if (!report.length) {
+                container.innerHTML = '<p>Нет данных за этот день</p>';
+                return;
+            }
+            if (monitorFilterEnabled) {
+                const getStatusPriority = (row) => {
+                    let key;
+                    if (row.status_break === '☕ в перерыве') key = 'onbreak';
+                    else if (row.status_day === '✅ работает') key = 'working';
+                    else if (row.status_day === '❌ не начал') key = 'notstarted';
+                    else if (row.status_day === '🏁 завершил') key = 'ended';
+                    else return 99;
+                    const idx = monitorStatusOrder.indexOf(key);
+                    return idx !== -1 ? idx : 99;
+                };
+                report.sort((a, b) => {
+                    const priorityA = getStatusPriority(a);
+                    const priorityB = getStatusPriority(b);
+                    if (priorityA !== priorityB) return priorityA - priorityB;
+                    return a.full_name.localeCompare(b.full_name, 'ru');
+                });
+            } else {
+                report.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+            }
+            let html = '<table class="report-table" style="width:100%; border-collapse: collapse;"><thead>';
+            html += '<tr><th>Сотрудник</th><th>Статус дня</th><th>Начало рабочего дня</th><th>Статус перерыва</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th></tr></thead><tbody>';
+            for (const row of report) {
+                let rowClass = '';
+                if (row.status_day === '❌ не начал') rowClass = 'row-not-started';
+                else if (row.status_break === '☕ в перерыве') rowClass = 'row-on-break';
+                else if (row.status_day === '✅ работает') rowClass = 'row-working';
+                else if (row.status_day === '🏁 завершил') rowClass = 'row-ended';
+                
+                let lastEntryDisplay = '';
+                if (row.last_entry_time) {
+                    const timePart = row.last_entry_time.slice(11,16);
+                    let actionText = '';
+                    switch (row.last_entry_action) {
+                        case 'start': actionText = 'Начало дня'; break;
+                        case 'break_start': actionText = 'Начало перерыва'; break;
+                        case 'break_end': actionText = 'Конец перерыва'; break;
+                        case 'end': actionText = 'Конец дня'; break;
+                        default: actionText = row.last_entry_action;
+                    }
+                    lastEntryDisplay = `${timePart} - ${actionText}`;
+                }
+                let startTimeDisplay = row.first_start_time ? row.first_start_time.slice(11,16) : '';
+                html += `<tr class="${rowClass}">
+                            <td>${escapeHtml(row.full_name)}</td>
+                            <td>${escapeHtml(row.status_day)}</td>
+                            <td>${startTimeDisplay}</td>
+                            <td>${escapeHtml(row.status_break)}</td>
+                            <td>${lastEntryDisplay}</td>
+                            <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
+                            <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
+                            <td>${row.break_count}</td>
+                        </tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+            const style = document.createElement('style');
+            style.textContent = `
+                .report-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+                .report-table th, .report-table td { padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+                .row-not-started { background-color: #f1f5f9; }
+                .row-working { background-color: #dcfce7; }
+                .row-on-break { background-color: #fef9c3; }
+                .row-ended { background-color: #dbeafe; }
+            `;
+            container.appendChild(style);
+        } catch (err) {
+            container.innerHTML = '<p>Ошибка загрузки</p>';
+            showToast(err.message, true);
+        }
+    }
+
+const monitorDateInput = document.getElementById('monitorDate');
+const refreshMonitorBtn = document.getElementById('refreshMonitorBtn');
+if (monitorDateInput) {
+    monitorDateInput.value = getLocalDate();
+}
+if (refreshMonitorBtn) {
+    refreshMonitorBtn.addEventListener('click', () => {
+        loadMonitorReport(monitorDateInput.value);
+    });
+    monitorDateInput.addEventListener('change', () => {
+        loadMonitorReport(monitorDateInput.value);
+    });
+}
+
+let monitorEventSource = null;
+
+function connectMonitorSSE() {
+    if (monitorEventSource) monitorEventSource.close();
+    monitorEventSource = new EventSource('/api/monitor/events');
+    monitorEventSource.addEventListener('update', () => {
+        console.log('Получено обновление мониторинга');
+        const activeTabBtn = document.querySelector('.tab-btn.active');
+        if (activeTabBtn && activeTabBtn.dataset.tab === 'monitor') {
+            const monitorDate = document.getElementById('monitorDate').value || getLocalDate();
+            loadMonitorReport(monitorDate);
+        }
+    });
+    monitorEventSource.onerror = () => {
+        console.warn('SSE мониторинга ошибка, переподключение через 5 секунд');
+        monitorEventSource.close();
+        setTimeout(connectMonitorSSE, 5000);
+    };
+}
+
+if (monitorDateInput) {
+    monitorDateInput.value = getLocalDate();
+}
+connectMonitorSSE();
+
+// ========== Фильтр мониторинга ==========
+let monitorFilterEnabled = localStorage.getItem('monitorFilterEnabled') === 'true';
+let monitorStatusOrder = [];
+
+function loadMonitorStatusOrder() {
+    const saved = localStorage.getItem('monitorStatusOrder');
+    if (saved) {
+        monitorStatusOrder = JSON.parse(saved);
+    } else {
+        monitorStatusOrder = ['working', 'onbreak', 'notstarted', 'ended'];
+    }
+    applyMonitorOrderToUI();
+}
+
+function applyMonitorOrderToUI() {
+    const container = document.getElementById('monitorStatusOrderList');
+    const items = Array.from(container.children);
+    items.sort((a, b) => {
+        const aIdx = monitorStatusOrder.indexOf(a.dataset.status);
+        const bIdx = monitorStatusOrder.indexOf(b.dataset.status);
+        return aIdx - bIdx;
+    });
+    container.innerHTML = '';
+    items.forEach(item => container.appendChild(item));
+}
+
+function saveMonitorStatusOrder() {
+    const items = document.querySelectorAll('#monitorStatusOrderList li');
+    monitorStatusOrder = Array.from(items).map(li => li.dataset.status);
+    localStorage.setItem('monitorStatusOrder', JSON.stringify(monitorStatusOrder));
+    showToast('Порядок статусов сохранён');
+    const monitorDate = document.getElementById('monitorDate').value;
+    if (monitorDate) loadMonitorReport(monitorDate);
+}
+
+function initMonitorDragAndDrop() {
+    const list = document.getElementById('monitorStatusOrderList');
+    if (!list) return;
+    const items = list.querySelectorAll('li');
+    items.forEach(item => item.setAttribute('draggable', 'true'));
+    let dragItem = null;
+    
+    list.addEventListener('dragstart', (e) => {
+        dragItem = e.target.closest('li');
+        if (!dragItem) return;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+        dragItem.classList.add('dragging');
+    });
+    
+    list.addEventListener('dragend', (e) => {
+        if (dragItem) dragItem.classList.remove('dragging');
+        dragItem = null;
+    });
+    
+    list.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const targetItem = e.target.closest('li');
+        if (!targetItem || targetItem === dragItem) return;
+        const rect = targetItem.getBoundingClientRect();
+        const midpoint = (rect.left + rect.right) / 2;
+        if (e.clientX < midpoint) {
+            targetItem.parentNode.insertBefore(dragItem, targetItem);
+        } else {
+            targetItem.parentNode.insertBefore(dragItem, targetItem.nextSibling);
+        }
+    });
+}
+
+function toggleMonitorFilter() {
+    monitorFilterEnabled = !monitorFilterEnabled;
+    localStorage.setItem('monitorFilterEnabled', monitorFilterEnabled);
+    const settingsDiv = document.getElementById('monitorStatusOrderSettings');
+    const toggleBtn = document.getElementById('toggleMonitorFilterBtn');
+    if (monitorFilterEnabled) {
+        settingsDiv.style.display = 'block';
+        toggleBtn.textContent = '🎛️ Скрыть фильтр статусов';
+        loadMonitorStatusOrder();
+        initMonitorDragAndDrop();
+    } else {
+        settingsDiv.style.display = 'none';
+        toggleBtn.textContent = '🎛️ Фильтр по статусам';
+    }
+    const currentDate = document.getElementById('monitorDate').value;
+    if (currentDate) loadMonitorReport(currentDate);
+}
+
+const monitorToggleBtn = document.getElementById('toggleMonitorFilterBtn');
+if (monitorToggleBtn) {
+    monitorToggleBtn.addEventListener('click', toggleMonitorFilter);
+    if (monitorFilterEnabled) {
+        document.getElementById('monitorStatusOrderSettings').style.display = 'block';
+        monitorToggleBtn.textContent = '🎛️ Скрыть фильтр статусов';
+        loadMonitorStatusOrder();
+        initMonitorDragAndDrop();
+    } else {
+        document.getElementById('monitorStatusOrderSettings').style.display = 'none';
+        monitorToggleBtn.textContent = '🎛️ Фильтр по статусам';
+    }
+}
+document.getElementById('saveMonitorStatusOrderBtn')?.addEventListener('click', saveMonitorStatusOrder);
 </script>
 </body>
 </html>
