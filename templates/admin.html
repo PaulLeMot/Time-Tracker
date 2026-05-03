@@ -347,6 +347,12 @@
             background-color: #ededed !important;
             color: #c8c8c8 !important;
         }
+        .report-table td:first-child,
+        .report-table th:first-child,
+        .report-table td:nth-child(5),
+        .report-table th:nth-child(5) {
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -1015,12 +1021,17 @@
             modalBody.innerHTML = '<p>Нет отметок за этот день</p>';
             return;
         }
-        function formatSource(source) {
-            if (source === 'barcode') return 'Сотрудник';
-            if (source === 'admin') return 'Админ';
-            if (source === 'auto') return 'Авто';
-            return source || '—';
+    function formatSource(source) {
+        if (source === 'barcode') return 'Сотрудник';
+        if (source === 'auto') return 'Авто';
+        if (source && source.startsWith('admin(')) {
+            const match = source.match(/^admin\((.*)\)$/);
+            if (match) return `Админ(${match[1]})`;
+            return 'Админ';
         }
+        if (source === 'admin') return 'Админ';
+        return source || '—';
+    }
         let html = '<table style="width:100%;"><thead><tr><th>Время</th><th>Действие</th><th>Источник</th><th>Действия</th></tr></thead><tbody>';
         for (const entry of entries) {
             const isoDate = entry.timestamp.slice(0, 10);
@@ -1371,10 +1382,22 @@
                     actionDisplay = `Конец перерыва №${entry.break_number} (${entry.break_duration})`;
                 }
                 let sourceDisplay = entry.source;
-                if (sourceDisplay === 'barcode') sourceDisplay = 'Сотрудник';
-                else if (sourceDisplay === 'admin') sourceDisplay = 'Админ';
-                else if (sourceDisplay === 'auto') sourceDisplay = 'Авто';
-                else sourceDisplay = escapeHtml(sourceDisplay);
+                if (sourceDisplay === 'barcode') {
+                    sourceDisplay = 'Сотрудник';
+                } else if (sourceDisplay === 'auto') {
+                    sourceDisplay = 'Авто';
+                } else if (sourceDisplay && sourceDisplay.startsWith('admin(')) {
+                    const match = sourceDisplay.match(/^admin\((.*)\)$/);
+                    if (match) {
+                        sourceDisplay = `Админ(${escapeHtml(match[1])})`;
+                    } else {
+                        sourceDisplay = 'Админ';
+                    }
+                } else if (sourceDisplay === 'admin') {
+                    sourceDisplay = 'Админ';
+                } else {
+                    sourceDisplay = escapeHtml(sourceDisplay);
+                }
 
                 html += `<tr>
                             <td>${time}</td>

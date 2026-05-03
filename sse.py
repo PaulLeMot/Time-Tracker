@@ -1,6 +1,7 @@
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 import asyncio
+from fastapi import HTTPException
 
 admin_queues = set()
 monitor_queues = set()

@@ -29,6 +29,8 @@ async def login(login_data: LoginData, request: Request, db: AsyncSession = Depe
         raise HTTPException(403, "Сотрудник деактивирован")
     if employee.password != login_data.password:
         raise HTTPException(401, "Неверный пароль")
+    request.session.pop("is_admin", None)
+    request.session.pop("is_monitor", None)
     request.session["employee_id"] = employee.id
     return {"message": "Успешный вход", "employee_id": employee.id, "username": employee.username, "full_name": employee.full_name}
 
@@ -59,6 +61,7 @@ async def get_profile(request: Request, db: AsyncSession = Depends(get_db)):
 async def admin_login(login_data: AdminLoginData, request: Request):
     admin_password = os.getenv("ADMIN_PASSWORD", "default_admin_password")
     if login_data.password == admin_password:
+        request.session.pop("employee_id", None)
         request.session["is_admin"] = True
         return {"message": "Admin login successful"}
     else:
@@ -70,8 +73,15 @@ async def admin_logout(request: Request):
     return {"message": "Admin logged out"}
 
 @router.get("/admin/check")
-async def admin_check(request: Request):
-    return {"is_admin": request.session.get("is_admin", False)}
+async def admin_check(request: Request, db: AsyncSession = Depends(get_db)):
+    employee_id = request.session.get("employee_id")
+    if employee_id:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if employee and employee.is_admin == 1:
+            return {"is_admin": True}
+    if request.session.get("is_admin"):
+        return {"is_admin": True}
+    return {"is_admin": False}
 
 async def get_current_employee(request: Request, db: AsyncSession = Depends(get_db)):
     employee_id = request.session.get("employee_id")
@@ -84,19 +94,23 @@ async def get_current_employee(request: Request, db: AsyncSession = Depends(get_
     return employee
 
 async def get_current_admin(request: Request, db: AsyncSession = Depends(get_db)):
+    employee_id = request.session.get("employee_id")
+    if employee_id:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if employee and employee.is_admin == 1:
+            return employee
     if request.session.get("is_admin"):
         return None
-    employee = await get_current_employee(request, db)
-    if employee.is_admin == 1:
-        return employee
     raise HTTPException(403, "Admin access required")
 
 async def get_current_monitor(request: Request, db: AsyncSession = Depends(get_db)):
+    employee_id = request.session.get("employee_id")
+    if employee_id:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if employee and (employee.is_admin == 1 or employee.is_monitor == 1):
+            return employee
     if request.session.get("is_monitor"):
         return None
-    employee = await get_current_employee(request, db)
-    if employee.is_admin == 1 or employee.is_monitor == 1:
-        return employee
     raise HTTPException(403, "Monitor access required")
 
 @router.get("/daily-summary")
@@ -327,16 +341,19 @@ class MonitorLoginData(BaseModel):
 async def monitor_login(login_data: MonitorLoginData, request: Request):
     monitor_password = os.getenv("MONITOR_PASSWORD", "default_monitor_password")
     if login_data.password == monitor_password:
+        request.session.pop("employee_id", None)
         request.session["is_monitor"] = True
         return {"message": "Monitor login successful"}
     else:
         raise HTTPException(status_code=401, detail="Invalid monitor password")
 
 @router.get("/monitor/check")
-async def monitor_check(request: Request):
-    return {"is_monitor": request.session.get("is_monitor", False)}
-
-@router.post("/monitor/logout")
-async def monitor_logout(request: Request):
-    request.session.pop("is_monitor", None)
-    return {"message": "Monitor logged out"}
+async def monitor_check(request: Request, db: AsyncSession = Depends(get_db)):
+    employee_id = request.session.get("employee_id")
+    if employee_id:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if employee and (employee.is_admin == 1 or employee.is_monitor == 1):
+            return {"is_monitor": True}
+    if request.session.get("is_monitor"):
+        return {"is_monitor": True}
+    return {"is_monitor": False}

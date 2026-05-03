@@ -336,8 +336,13 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
 @public_router.get("/api/reports/employee/{employee_id}")
 async def employee_detail(employee_id: int, date: str, request: Request, db: AsyncSession = Depends(get_db)):
     session_employee_id = request.session.get("employee_id")
-    is_admin = request.session.get("is_admin", False)
-    if not is_admin and session_employee_id != employee_id:
+    is_admin_session = request.session.get("is_admin", False)
+    user_is_admin = is_admin_session
+    if not user_is_admin and session_employee_id:
+        employee = await crud.get_employee_by_id(db, session_employee_id)
+        if employee and employee.is_admin == 1:
+            user_is_admin = True
+    if not user_is_admin and session_employee_id != employee_id:
         raise HTTPException(403, "You can only view your own reports")
     emp = await crud.get_employee_by_id(db, employee_id)
     if not emp:
@@ -451,6 +456,7 @@ async def admin_create_timelog(data: TimeEntryCreateAdmin, admin: Optional[model
     except ValueError:
         raise HTTPException(400, "Invalid timestamp format. Use ISO format.")
     source_prefix = f"admin({admin.full_name})" if admin else "admin"
+    print(f"DEBUG: admin = {admin}, type = {type(admin)}")
     entry = await crud.create_time_entry_admin(db, data.employee_id, data.action, dt, source=source_prefix)
     await notify_admin_clients()
     await notify_monitor_clients()
