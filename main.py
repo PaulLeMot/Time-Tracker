@@ -15,6 +15,22 @@ from apscheduler.triggers.cron import CronTrigger
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    async with AsyncSessionLocal() as db:
+        from crud import get_employees, create_employee, set_employee_password
+        admins = await get_employees(db, active_only=False)
+        admin_exists = any(e.is_admin == 1 for e in admins)
+        
+        if not admin_exists:
+            admin_username = os.getenv("ADMIN_USERNAME", "admin")
+            admin_fullname = os.getenv("ADMIN_FULLNAME", "System Administrator")
+            admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+            new_admin = await create_employee(db, username=admin_username, full_name=admin_fullname)
+            new_admin.is_admin = 1
+            new_admin.is_monitor = 1
+            await set_employee_password(db, new_admin.id, admin_password)
+            await db.commit()
+            print(f"Created admin user: {admin_username} / {admin_password}")
+    
     schedule_backup()
     scheduler = AsyncIOScheduler()
     scheduler.add_job(scheduled_auto_close, CronTrigger(hour=22, minute=0))

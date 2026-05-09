@@ -16,7 +16,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
             border-radius: 32px;
@@ -183,15 +183,18 @@
         .sortable-list {
             list-style: none;
             padding: 0;
-            margin: 0 0 8px 0;
+            margin: 0;
             display: flex;
             flex-direction: row;
             gap: 8px;
             background: #f8fafc;
             border-radius: 60px;
-            padding: 8px 12px;
+            padding: 0;
             flex-wrap: wrap;
+            align-items: center;
+            height: 38px;
         }
+
         .sortable-list li {
             background: white;
             border: 1px solid #e2e8f0;
@@ -201,6 +204,8 @@
             user-select: none;
             transition: background 0.2s;
             display: inline-block;
+            line-height: 1.2;
+            font-size: 0.85rem;
         }
         .sortable-list li:active {
             cursor: grabbing;
@@ -218,6 +223,8 @@
             font-size: 0.85rem;
             margin-right: 6px;
             transition: all 0.2s;
+            height: 38px;
+            line-height: 1.2;
         }
         .btn:hover {
             background: #2563eb;
@@ -236,6 +243,27 @@
         #monitorContainer .report-table td:nth-child(5) {
             text-align: left;
         }
+        .recent-table {
+            max-height: 600px;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+        .recent-table table {
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 0;
+            width: 100%;
+        }
+        .recent-table th {
+            position: sticky;
+            top: 0;
+            background: #f8fafc;
+            z-index: 10;
+        }
+        .row-not-started { background-color: #f1f5f9; }
+        .row-working { background-color: #dcfce7; }
+        .row-on-break { background-color: #fef9c3; }
+        .row-ended { background-color: #dbeafe; }
     </style>
 </head>
 <body>
@@ -286,19 +314,17 @@
             <input type="date" id="monitorDate" value="">
             <button id="refreshMonitorBtn" class="btn btn-sm" style="background: #3b82f6;">Обновить</button>
         </div>
-        <div>
-            <button id="toggleMonitorFilterBtn" class="btn" style="margin-bottom: 8px;">🎛️ Фильтр по статусам</button>
-        </div>
-        <div id="monitorStatusOrderSettings" style="margin-bottom: 16px; display: none;">
-            <h3>Порядок статусов в отчёте</h3>
+    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+        <button id="toggleMonitorFilterBtn" class="btn">🎛️ Фильтр по статусам</button>
+        <div id="monitorStatusOrderSettings" style="display: none;">
             <ul id="monitorStatusOrderList" class="sortable-list">
                 <li data-status="working">✅ Работает</li>
                 <li data-status="onbreak">☕ В перерыве</li>
                 <li data-status="notstarted">❌ Не начал</li>
                 <li data-status="ended">🏁 Завершил</li>
             </ul>
-            <button id="saveMonitorStatusOrderBtn" class="btn">Сохранить порядок</button>
         </div>
+    </div>
         <div id="monitorContainer">Загрузка...</div>
     </div>
 
@@ -314,7 +340,7 @@
         </div>
     </div>
 </div>
-<div id="toast" class="toast">
+<div id="toast" class="toast"></div>
 
 <script>
     // ========== Вспомогательные функции ==========
@@ -386,6 +412,10 @@
             if (data.is_admin || data.is_monitor) {
                 const monitorTabBtn = document.getElementById('monitorTab');
                 if (monitorTabBtn) monitorTabBtn.style.display = 'inline-block';
+            }
+            if ((data.is_admin || data.is_monitor) && !window._monitorSSE_active) {
+                window._monitorSSE_active = true;
+                connectMonitorSSE();
             }
             document.getElementById('employeeName').innerHTML = `
                 <strong>Сотрудник:</strong> ${escapeHtml(data.full_name)}<br>
@@ -644,6 +674,13 @@
                     const monitorDate = document.getElementById('monitorDate');
                     if (!monitorDate.value) monitorDate.value = getLocalDate();
                     loadMonitorReport(monitorDate.value);
+                    if (!monitorEventSource) {
+                        fetch('/api/auth/profile', { credentials: 'include' }).then(r => r.json()).then(data => {
+                            if (data.is_monitor) {
+                                connectMonitorSSE();
+                            }
+                        });
+                    }
                 }
             });
         });
@@ -757,7 +794,7 @@
             } else {
                 report.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
             }
-            let html = '<table class="report-table" style="width:100%; border-collapse: collapse;"><thead>';
+            let html = '<div class="recent-table"><table class="report-table" style="width:100%;"><thead>';
             html += '<tr><th>Сотрудник</th><th>Статус дня</th><th>Начало рабочего дня</th><th>Статус перерыва</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th></tr></thead><tbody>';
             for (const row of report) {
                 let rowClass = '';
@@ -791,18 +828,8 @@
                             <td>${row.break_count}</td>
                         </tr>`;
             }
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             container.innerHTML = html;
-            const style = document.createElement('style');
-            style.textContent = `
-                .report-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-                .report-table th, .report-table td { padding: 8px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-                .row-not-started { background-color: #f1f5f9; }
-                .row-working { background-color: #dcfce7; }
-                .row-on-break { background-color: #fef9c3; }
-                .row-ended { background-color: #dbeafe; }
-            `;
-            container.appendChild(style);
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';
             showToast(err.message, true);
@@ -837,17 +864,15 @@ function connectMonitorSSE() {
         }
     });
     monitorEventSource.onerror = () => {
-        console.warn('SSE мониторинга ошибка, переподключение через 5 секунд');
-        monitorEventSource.close();
-        setTimeout(connectMonitorSSE, 5000);
+        console.warn('SSE мониторинга ошибка, соединение закрыто');
+        if (monitorEventSource) monitorEventSource.close();
+        monitorEventSource = null;
     };
 }
 
 if (monitorDateInput) {
     monitorDateInput.value = getLocalDate();
 }
-connectMonitorSSE();
-
 // ========== Фильтр мониторинга ==========
 let monitorFilterEnabled = localStorage.getItem('monitorFilterEnabled') === 'true';
 let monitorStatusOrder = [];
@@ -901,6 +926,7 @@ function initMonitorDragAndDrop() {
     list.addEventListener('dragend', (e) => {
         if (dragItem) dragItem.classList.remove('dragging');
         dragItem = null;
+        saveMonitorStatusOrder();
     });
     
     list.addEventListener('dragover', (e) => {
@@ -949,7 +975,6 @@ if (monitorToggleBtn) {
         monitorToggleBtn.textContent = '🎛️ Фильтр по статусам';
     }
 }
-document.getElementById('saveMonitorStatusOrderBtn')?.addEventListener('click', saveMonitorStatusOrder);
 </script>
 </body>
 </html>

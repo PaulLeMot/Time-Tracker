@@ -1,7 +1,9 @@
-from fastapi import Request
-from fastapi.responses import StreamingResponse
 import asyncio
-from fastapi import HTTPException
+from fastapi import Request, HTTPException, Depends
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from database import get_db
+import crud
 
 admin_queues = set()
 monitor_queues = set()
@@ -30,8 +32,16 @@ async def admin_events_endpoint(request: Request):
             admin_queues.discard(queue)
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
-async def monitor_events_endpoint(request: Request):
-    if not request.session.get("is_monitor"):
+async def monitor_events_endpoint(request: Request, db: AsyncSession = Depends(get_db)):
+    employee_id = request.session.get("employee_id")
+    is_allowed = False
+    
+    if employee_id:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if employee and (employee.is_admin == 1 or employee.is_monitor == 1):
+            is_allowed = True
+    
+    if not is_allowed and not request.session.get("is_monitor"):
         raise HTTPException(403, "Access denied")
     queue = asyncio.Queue()
     monitor_queues.add(queue)

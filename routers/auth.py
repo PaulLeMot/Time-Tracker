@@ -57,32 +57,6 @@ async def get_profile(request: Request, db: AsyncSession = Depends(get_db)):
         "is_monitor": employee.is_monitor
     }
 
-@router.post("/admin/login")
-async def admin_login(login_data: AdminLoginData, request: Request):
-    admin_password = os.getenv("ADMIN_PASSWORD", "default_admin_password")
-    if login_data.password == admin_password:
-        request.session.pop("employee_id", None)
-        request.session["is_admin"] = True
-        return {"message": "Admin login successful"}
-    else:
-        raise HTTPException(status_code=401, detail="Invalid admin password")
-
-@router.post("/admin/logout")
-async def admin_logout(request: Request):
-    request.session.pop("is_admin", None)
-    return {"message": "Admin logged out"}
-
-@router.get("/admin/check")
-async def admin_check(request: Request, db: AsyncSession = Depends(get_db)):
-    employee_id = request.session.get("employee_id")
-    if employee_id:
-        employee = await crud.get_employee_by_id(db, employee_id)
-        if employee and employee.is_admin == 1:
-            return {"is_admin": True}
-    if request.session.get("is_admin"):
-        return {"is_admin": True}
-    return {"is_admin": False}
-
 async def get_current_employee(request: Request, db: AsyncSession = Depends(get_db)):
     employee_id = request.session.get("employee_id")
     if not employee_id:
@@ -177,7 +151,6 @@ async def employee_daily_summary(
                     last_break_start = None
                 last_start_time = ts
     
-    # 处理未闭合的当前状态
     if in_shift and not in_break and last_start_time:
         total_work_sec += (now - last_start_time).total_seconds()
     if in_break and last_break_start:
@@ -336,24 +309,3 @@ async def change_password(
 
 class MonitorLoginData(BaseModel):
     password: str
-
-@router.post("/monitor/login")
-async def monitor_login(login_data: MonitorLoginData, request: Request):
-    monitor_password = os.getenv("MONITOR_PASSWORD", "default_monitor_password")
-    if login_data.password == monitor_password:
-        request.session.pop("employee_id", None)
-        request.session["is_monitor"] = True
-        return {"message": "Monitor login successful"}
-    else:
-        raise HTTPException(status_code=401, detail="Invalid monitor password")
-
-@router.get("/monitor/check")
-async def monitor_check(request: Request, db: AsyncSession = Depends(get_db)):
-    employee_id = request.session.get("employee_id")
-    if employee_id:
-        employee = await crud.get_employee_by_id(db, employee_id)
-        if employee and (employee.is_admin == 1 or employee.is_monitor == 1):
-            return {"is_monitor": True}
-    if request.session.get("is_monitor"):
-        return {"is_monitor": True}
-    return {"is_monitor": False}

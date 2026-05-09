@@ -14,6 +14,7 @@ from datetime import datetime, time
 from routers.auth import get_current_employee, get_current_admin, get_current_monitor
 import models
 from sse import notify_admin_clients, notify_monitor_clients
+from fastapi.responses import RedirectResponse
 class EmployeeCreate(BaseModel):
     username: str
     full_name: str
@@ -118,17 +119,20 @@ async def delete_employee(employee_id: int, permanent: bool = False, db: AsyncSe
     return Response(status_code=204)
 
 @page_router.get("/admin", include_in_schema=False)
-async def admin_page(request: Request, admin: Optional[models.Employee] = Depends(get_current_admin)):
-    if admin is None and not request.session.get("is_admin"):
-        return FileResponse("static/admin_login.html")
-    return FileResponse(
-        "templates/admin.html",
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
-    )
+async def admin_page(request: Request, db: AsyncSession = Depends(get_db)):
+    employee_id = request.session.get("employee_id")
+    if employee_id:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if employee and employee.is_admin == 1:
+            return FileResponse(
+                "templates/admin.html",
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
+    return RedirectResponse(url="/static/login.html", status_code=302)
 
 @public_router.get("/api/reports/daily")
 async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
