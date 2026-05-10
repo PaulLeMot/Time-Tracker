@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime
 from database import Base
-
+from datetime import datetime, time
 class Employee(Base):
     __tablename__ = "employees"
     id = Column(Integer, primary_key=True, index=True)
@@ -19,3 +19,8 @@ class TimeEntry(Base):
     action = Column(String, nullable=False)
     timestamp = Column(DateTime, nullable=False)
     source = Column(String, default="barcode")
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+    key = Column(String(100), primary_key=True)
+    value = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

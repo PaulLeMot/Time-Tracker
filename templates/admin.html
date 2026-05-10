@@ -7,6 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Админ-панель TimeTracker</title>
+    <link rel="icon" type="image/png" href="../static/ttr.png">
     <style>
         * { box-sizing: border-box; }
         body {
@@ -366,6 +367,22 @@
         .report-table th:nth-child(5) {
             text-align: left;
         }
+        .close-rounding,
+        .close-edit,
+        .close-username,
+        .close-fullname {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-rounding:hover,
+        .close-edit:hover,
+        .close-username:hover,
+        .close-fullname:hover {
+            color: black;
+        }
     </style>
 </head>
 <body>
@@ -506,6 +523,16 @@
         <input type="text" id="newFullname" placeholder="Новое ФИО">
         <button id="saveFullnameBtn" class="btn">Сохранить</button>
         <div id="fullnameError" style="color:red;"></div>
+    </div>
+</div>
+<div id="roundingModal" class="modal">
+    <div class="modal-content" style="max-width: 300px;">
+        <span class="close-rounding">&times;</span>
+        <h3>Настройка округления</h3>
+        <p>Округлять отработанное время <strong>вниз</strong> до кратного числа минут:</p>
+        <input type="number" id="roundingInterval" min="1" max="60" step="1" value="15">
+        <button id="saveRoundingBtn" class="btn">Сохранить</button>
+        <div id="roundingError" style="color:red;"></div>
     </div>
 </div>
 <script>
@@ -863,7 +890,7 @@
             html += '<th>Начало рабочего дня</th>';
             html += '<th>Статус перерыва</th>';
             html += '<th>Последняя отметка</th>';
-            html += '<th>Отработано</th>';
+            html += '<th>Отработано <span id="roundingSettingsBtn" style="cursor:pointer; font-size:1.2rem;">⚙️</span></th>';
             html += '<th>Перерывы</th>';
             html += '<th>Кол-во перерывов</th>';
             html += '<th>Детали</th>';
@@ -904,7 +931,7 @@
                             <td>${startTimeDisplay}</td>
                             <td>${escapeHtml(row.status_break)}</td>
                             <td>${lastEntryDisplay}</td>
-                            <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
+                            <td>${row.worked_display || formatHoursToHHMM(row.worked_hours_current)}</td>
                             <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
                             <td>${row.break_count}</td>
                             <td><button class="btn-sm" onclick="showEmployeeDetail(${row.employee_id}, '${date}')">📋</button></td>
@@ -912,6 +939,14 @@
             }
             html += '</tbody><td></div>';
             container.innerHTML = html;
+            const gearBtn = document.getElementById('roundingSettingsBtn');
+            if (gearBtn) {
+                gearBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    document.getElementById('roundingModal').style.display = 'block';
+                    loadRoundingInterval();
+                };
+            }
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';
             showToast(err.message, true);
@@ -956,7 +991,7 @@
                     
                     html += `
                         <td class="worked-hours-cell ${cellClass}" data-day-index="${i}">
-                            <div style="color: green; font-weight: 500;">${formatHoursToHHMM(day.worked_hours)}</div>
+                            <div style="color: green; font-weight: 500;">${day.worked_display || formatHoursToHHMM(day.worked_hours)}</div>
                             <div style="color: blue; font-size: 0.85em;">${startTime}</div>
                         </td>
                         <td class="break-minutes-cell ${cellClass}" data-day-index="${i}">
@@ -966,7 +1001,7 @@
                     `;
                 }
                 html += `
-                    <td class="worked-hours-cell"><strong>${formatHoursToHHMM(emp.total_worked_hours)}</strong></td>
+                    <td class="worked-hours-cell"><strong>${emp.total_worked_display || formatHoursToHHMM(emp.total_worked_hours)}</strong></td>
                     <td class="break-minutes-cell"><strong>${formatMinutesToHHMM(emp.total_break_minutes)}</strong></td>
                 `;
                 html += `</tr>`;
@@ -1777,6 +1812,60 @@ if (weekPickerInput) {
         }
     });
 }
+
+async function loadRoundingInterval() {
+    const resp = await fetch('/api/admin/rounding', { credentials: 'include' });
+    const data = await resp.json();
+    document.getElementById('roundingInterval').value = data.interval_minutes;
+}
+
+async function saveRoundingInterval(interval) {
+    const resp = await fetch('/api/admin/rounding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval_minutes: interval }),
+        credentials: 'include'
+    });
+    if (!resp.ok) throw new Error('Ошибка сохранения');
+}
+
+const roundingModal = document.getElementById('roundingModal');
+const closeRounding = document.querySelector('.close-rounding');
+const saveBtn = document.getElementById('saveRoundingBtn');
+
+if (closeRounding) {
+    closeRounding.onclick = () => roundingModal.style.display = 'none';
+}
+window.onclick = (e) => { if (e.target === roundingModal) roundingModal.style.display = 'none'; };
+
+saveBtn.onclick = async () => {
+    const interval = parseInt(document.getElementById('roundingInterval').value);
+    if (isNaN(interval) || interval < 1 || interval > 60) {
+        document.getElementById('roundingError').innerText = 'Число от 1 до 60';
+        return;
+    }
+    try {
+        await saveRoundingInterval(interval);
+        roundingModal.style.display = 'none';
+        const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+        if (activeTab === 'daily') {
+            const date = document.getElementById('reportDate').value;
+            if (date) loadDailyReport(date);
+        } else if (activeTab === 'weekly') {
+            const weekPicker = document.getElementById('weekPicker');
+            if (weekPicker && weekPicker.value) {
+                const [year, week] = weekPicker.value.split('-W');
+                const monday = getMondayOfWeek(parseInt(year), parseInt(week));
+                const y = monday.getFullYear();
+                const m = String(monday.getMonth() + 1).padStart(2, '0');
+                const d = String(monday.getDate()).padStart(2, '0');
+                loadWeeklyReport(`${y}-${m}-${d}`);
+            }
+        }
+    } catch (err) {
+        document.getElementById('roundingError').innerText = err.message;
+    }
+};
 </script>
 </body>
 </html>

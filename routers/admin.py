@@ -141,12 +141,13 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
     start_of_day = datetime.combine(target_date, datetime.min.time())
     cutoff_time = datetime.combine(target_date, time(22, 0, 0, 999999))
     now = datetime.now()
-    
+    interval = await crud.get_rounding_interval(db)
+
     result = []
     for emp in employees:
         entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=start_of_day, end_date=cutoff_time)
         entries_sorted = sorted(entries, key=lambda x: x.timestamp)
-        
+
         total_work_sec = 0
         total_break_sec = 0
         break_count = 0
@@ -159,13 +160,13 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
         last_entry_time = None
         last_entry_action = None
         first_start_time = None
-        
+
         for entry in entries_sorted:
             ts = entry.timestamp
             action = entry.action
             last_entry_time = ts
             last_entry_action = action
-            
+
             if action == "start":
                 if not in_shift:
                     in_shift = True
@@ -197,7 +198,7 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
                         total_break_sec += (ts - last_break_start).total_seconds()
                         last_break_start = None
                     last_start_time = ts
-        
+
         if target_date == now.date():
             if in_shift and not in_break and last_start_time:
                 total_work_sec += (now - last_start_time).total_seconds()
@@ -210,21 +211,30 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
                 total_break_sec += (cutoff_time - last_break_start).total_seconds()
             if in_shift:
                 status_day = "ended"
-        
+
+        raw_minutes = int(total_work_sec // 60)
+        rounded_minutes = crud.floor_round_minutes(int(raw_minutes), interval)
+
+        def format_minutes_to_hhmm(minutes):
+            h = minutes // 60
+            m = minutes % 60
+            return f"{h:02d}:{m:02d}"
+
+        worked_display = f"{format_minutes_to_hhmm(rounded_minutes)} ({format_minutes_to_hhmm(raw_minutes)})"
         worked_hours = round(total_work_sec / 3600, 2)
         break_minutes = round(total_break_sec / 60, 0)
-        
+
         status_day_text = {
             "not_started": "❌ не начал",
             "started": "✅ работает",
             "ended": "🏁 завершил"
         }.get(status_day, "неизвестно")
-        
+
         status_break_text = {
             "not_on_break": "",
             "on_break": "☕ в перерыве"
         }.get(status_break, "неизвестно")
-        
+
         result.append({
             "employee_id": emp.id,
             "full_name": emp.full_name,
@@ -236,7 +246,11 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
             "last_break_start": last_break_start.isoformat() if last_break_start else None,
             "worked_hours_current": worked_hours,
             "break_minutes_current": break_minutes,
-            "break_count": break_count
+            "break_count": break_count,
+            "worked_display": worked_display,
+            "worked_minutes_raw": raw_minutes,
+            "worked_hours_raw": round(raw_minutes / 60, 2),
+            "worked_hours_rounded": round(rounded_minutes / 60, 2)
         })
     return result
 
@@ -248,6 +262,14 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
         raise HTTPException(400, "Дата начала должна быть понедельником")
     employees = await crud.get_employees(db, active_only=True)
     
+    interval = await crud.get_rounding_interval(db)
+    
+    def format_minutes_to_hhmm(minutes):
+        minutes = int(minutes)
+        h = minutes // 60
+        m = minutes % 60
+        return f"{h:02d}:{m:02d}"
+    
     result = []
     weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
     cutoff_time_of_day = time(22, 0, 0)
@@ -257,7 +279,8 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
             "employee_id": emp.id,
             "full_name": emp.full_name,
             "days": [],
-            "total_worked_hours": 0,
+            "total_rounded_minutes": 0,
+            "total_raw_minutes": 0,
             "total_break_minutes": 0
         }
         for i in range(7):
@@ -319,8 +342,15 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
             if in_break and last_break_start:
                 total_break_sec += (day_cutoff - last_break_start).total_seconds()
 
+            raw_minutes = int(total_work_sec // 60)
+            rounded_minutes = crud.floor_round_minutes(raw_minutes, interval)
+            worked_display = f"{format_minutes_to_hhmm(rounded_minutes)} ({format_minutes_to_hhmm(raw_minutes)})"
             worked_hours = round(total_work_sec / 3600, 2)
             break_minutes = round(total_break_sec / 60, 0)
+
+            emp_data["total_rounded_minutes"] += rounded_minutes
+            emp_data["total_raw_minutes"] += raw_minutes
+            emp_data["total_break_minutes"] += break_minutes
 
             emp_data["days"].append({
                 "date": day_date.isoformat(),
@@ -329,10 +359,17 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
                 "break_minutes": break_minutes,
                 "first_start_time": first_start_time.isoformat() if first_start_time else None,
                 "end_time": end_time.isoformat() if end_time else None,
-                "break_count": break_count
+                "break_count": break_count,
+                "worked_display": worked_display,
+                "worked_minutes_raw": raw_minutes,
+                "worked_hours_raw": round(raw_minutes / 60, 2),
+                "worked_hours_rounded": round(rounded_minutes / 60, 2)
             })
-            emp_data["total_worked_hours"] += worked_hours
-            emp_data["total_break_minutes"] += break_minutes
+        
+        total_display = f"{format_minutes_to_hhmm(emp_data['total_rounded_minutes'])} ({format_minutes_to_hhmm(emp_data['total_raw_minutes'])})"
+        emp_data["total_worked_display"] = total_display
+        emp_data["total_worked_hours"] = round(emp_data["total_raw_minutes"] / 60, 2)   # обратная совместимость
+        emp_data["total_break_hours"] = round(emp_data["total_break_minutes"] / 60, 2)  # для удобства
         
         result.append(emp_data)
     return result
@@ -673,3 +710,24 @@ async def monitor_page(request: Request, monitor: Optional[models.Employee] = De
             "Expires": "0"
         }
     )
+
+class RoundingRequest(BaseModel):
+    interval_minutes: int
+
+@public_router.get("/api/admin/rounding")
+async def get_rounding_interval_api(db: AsyncSession = Depends(get_db)):
+    interval = await crud.get_rounding_interval(db)
+    return {"interval_minutes": interval}
+
+@public_router.post("/api/admin/rounding")
+async def set_rounding_interval_api(
+    data: RoundingRequest,
+    admin: models.Employee = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    if not admin:
+        raise HTTPException(403, "Admin access required")
+    if data.interval_minutes < 1 or data.interval_minutes > 60:
+        raise HTTPException(400, "Interval must be 1-60 minutes")
+    await crud.set_rounding_interval(db, data.interval_minutes)
+    return {"message": "ok"}

@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import select, update, delete, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, time
-from models import Employee, TimeEntry
+from models import Employee, TimeEntry, SystemSetting
 import secrets
 import string
 from sse import notify_admin_clients, notify_monitor_clients
@@ -250,3 +250,17 @@ async def convert_end_start_to_break(
             await notify_monitor_clients()
             return True
     return False
+
+async def get_rounding_interval(db: AsyncSession) -> int:
+    stmt = select(SystemSetting).where(SystemSetting.key == "rounding_interval_minutes")
+    result = await db.execute(stmt)
+    setting = result.scalar_one_or_none()
+    return int(setting.value) if setting else 15
+
+async def set_rounding_interval(db: AsyncSession, minutes: int):
+    stmt = update(SystemSetting).where(SystemSetting.key == "rounding_interval_minutes").values(value=str(minutes))
+    await db.execute(stmt)
+    await db.commit()
+
+def floor_round_minutes(minutes: int, interval: int) -> int:
+    return (minutes // interval) * interval
