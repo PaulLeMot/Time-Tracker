@@ -421,6 +421,26 @@
         .schedule-row td:focus-within {
             background-color: rgba(239, 255, 254, 0.05);
         }
+        .expand-schedule-btn {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+        #employeesTable {
+            border-collapse: collapse;
+        }
+        #employeesTable th:last-child,
+        #employeesTable td:last-child {
+            width: 40px;
+            min-width: 40px;
+            max-width: 40px;
+        }
+        .schedule-row table th,
+        .schedule-row table td {
+            width: calc(100% / 7);
+        }
     </style>
 </head>
 <body>
