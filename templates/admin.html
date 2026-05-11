@@ -383,6 +383,44 @@
         .close-fullname:hover {
             color: black;
         }
+        .schedule-row td {
+            background-color: #f9fafb;
+            border-top: 2px solid #e2e8f0;
+        }
+        .expand-schedule-btn {
+            color: #1e293b;
+        }
+        .schedule-row table,
+        .schedule-row th,
+        .schedule-row td {
+            border: 1px solid #cbd5e1;
+            border-collapse: collapse;
+        }
+        .schedule-row th, .schedule-row td {
+            padding: 8px 4px;
+            background-color: #f9fafb;
+        }
+        .schedule-row input.schedule-time-input {
+            border: none;
+            background: transparent;
+            padding: 8px 4px;
+            font-size: 1rem;
+            width: 100%;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            outline: none;
+            box-shadow: none;
+            box-sizing: border-box;
+        }
+        .schedule-start-row td {
+            background-color: rgba(144, 238, 144, 0.15);
+        }
+        .schedule-end-row td {
+            background-color: rgba(255, 160, 122, 0.15);
+        }
+        .schedule-row td:focus-within {
+            background-color: rgba(239, 255, 254, 0.05);
+        }
     </style>
 </head>
 <body>
@@ -423,6 +461,7 @@
             <div class="date-picker">
                 <input type="week" id="weekPicker">
                 <button id="loadWeeklyReportBtn">Показать отчёт</button>
+                <span id="weeklyRoundingBtn" style="cursor:pointer; font-size:1.2rem; margin-left: 8px;">⚙️</span>
             </div>
             <div id="weeklyReportContainer"></div>
         </div>
@@ -460,6 +499,7 @@
                             <th>Админ</th>
                             <th>Мониторинг</th>
                             <th>Действия</th>
+                            <th style="width: 40px;"></th>
                         </tr>
                     </thead>
                     <tbody id="employeesTbody"></tbody>
@@ -688,6 +728,26 @@
                         } else showToast('Ошибка', true);
                     }
                 };
+
+                const expandCell = row.insertCell(9);
+                expandCell.innerHTML = `<button class="expand-schedule-btn" data-id="${emp.id}" style="background:none; border:none; cursor:pointer; font-size:1.2rem;">▼</button>`;
+                const expandBtn = expandCell.querySelector('.expand-schedule-btn');
+                if (expandBtn) {
+                    expandBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const row = expandBtn.closest('tr');
+                        const nextRow = row.nextElementSibling;
+                        if (nextRow && nextRow.classList.contains('schedule-row')) {
+                            nextRow.remove();
+                            expandBtn.textContent = '▼';
+                        } else {
+                            if (row.nextElementSibling && row.nextElementSibling.classList.contains('schedule-row')) {
+                                row.nextElementSibling.remove();
+                            }
+                            insertScheduleRow(row, emp.id, expandBtn);
+                        }
+                    });
+                }
                 actionsCell.appendChild(barcodeBtn);
                 actionsCell.appendChild(delBtn);
             }
@@ -1866,6 +1926,169 @@ saveBtn.onclick = async () => {
         document.getElementById('roundingError').innerText = err.message;
     }
 };
+const weeklyRoundingBtn = document.getElementById('weeklyRoundingBtn');
+if (weeklyRoundingBtn) {
+    weeklyRoundingBtn.onclick = (e) => {
+        e.stopPropagation();
+        roundingModal.style.display = 'block';
+        loadRoundingInterval();
+    };
+}
+
+async function insertScheduleRow(row, empId, expandBtn) {
+    const resp = await fetch('/api/employees?active_only=false', { credentials: 'include' });
+    const employees = await resp.json();
+    const emp = employees.find(e => e.id == empId);
+    const scheduleData = emp.schedule_data || {};
+    const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const cols = row.cells.length;
+    const tr = document.createElement('tr');
+    tr.className = 'schedule-row';
+
+    let html = `<td colspan="${cols}" style="background: #f9fafb; padding: 12px;">
+                  <table style="width: 100%; border-collapse: collapse; text-align: center;">
+                    <thead><tr>`;
+    for (let i = 0; i < weekdays.length; i++) {
+        html += `<th style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${weekdays[i]}</th>`;
+    }
+    html += `</td></thead><tbody>
+              <tr class="schedule-start-row">`;
+    for (let i = 0; i < weekdays.length; i++) {
+        const start = scheduleData[i]?.start?.slice(0,5) || '';
+        html += `<td style="padding: 4px;">
+                    <input type="text" class="schedule-time-input" data-day="${i}" data-id="${empId}" value="${start}" placeholder="" style="width: 100%;">
+                  </td>`;
+    }
+    html += `</tr>
+              <tr class="schedule-end-row">`;
+    for (let i = 0; i < weekdays.length; i++) {
+        const end = scheduleData[i]?.end?.slice(0,5) || '';
+        html += `<td style="padding: 4px;">
+                    <input type="text" class="schedule-time-input" data-day="${i}" data-id="${empId}" value="${end}" placeholder="" style="width: 100%;">
+                  </td>`;
+    }
+    html += `</tr>
+             </tbody>
+            </table>
+           </td>`;
+    tr.innerHTML = html;
+    row.insertAdjacentElement('afterend', tr);
+    expandBtn.textContent = '▲';
+
+    function formatTimeString(val) {
+        if (!val) return '';
+        let str = val.toString().replace(/\D/g, '');
+        if (str.length === 0) return '';
+        if (str.length === 1) str = '0' + str + '00';
+        else if (str.length === 2) str = str + '00';
+        else if (str.length === 3) str = '0' + str;
+        let hours = str.slice(0,2);
+        let minutes = str.slice(2,4);
+        hours = hours > 23 ? '23' : hours;
+        minutes = minutes > 59 ? '59' : minutes;
+        return `${hours}:${minutes}`;
+    }
+
+    const allInputs = tr.querySelectorAll('.schedule-time-input');
+    let originalValues = [];
+    for (let i = 0; i < allInputs.length; i++) {
+        originalValues[i] = allInputs[i].value;
+    }
+
+    async function saveSchedule() {
+        const newSchedule = {};
+        let changed = false;
+        for (let i = 0; i < weekdays.length; i++) {
+            const startInput = allInputs[i];
+            const endInput = allInputs[i + weekdays.length];
+            let start = startInput.value.trim();
+            let end = endInput.value.trim();
+
+            if (start) start = formatTimeString(start);
+            if (end) end = formatTimeString(end);
+
+            const oldStart = scheduleData[i]?.start || '';
+            const oldEnd = scheduleData[i]?.end || '';
+
+            if (start !== oldStart || end !== oldEnd) changed = true;
+
+            if (start || end) {
+                newSchedule[i] = {};
+                if (start) newSchedule[i].start = start;
+                if (end) newSchedule[i].end = end;
+            }
+        }
+
+        if (!changed) return;
+
+        try {
+            const resp = await fetch(`/api/employees/${empId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schedule_data: newSchedule }),
+                credentials: 'include'
+            });
+            if (resp.ok) {
+                showToast('Расписание сохранено', false);
+                Object.assign(scheduleData, newSchedule);
+                for (let i = 0; i < allInputs.length; i++) {
+                    originalValues[i] = allInputs[i].value;
+                }
+            } else {
+                showToast('Ошибка сохранения', true);
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+        }
+    }
+
+    const handleBlur = (e) => {
+        const inp = e.target;
+        let val = inp.value.trim();
+        if (val === '') {
+            inp.value = '';
+        } else {
+            const formatted = formatTimeString(val);
+            inp.value = formatted;
+        }
+        saveSchedule();
+    };
+
+    const handleKeyPress = (e) => {
+        if (e.key === 'Enter') {
+            e.target.blur();
+        }
+    };
+
+    allInputs.forEach(inp => {
+        inp.addEventListener('blur', handleBlur);
+        inp.addEventListener('keypress', handleKeyPress);
+    });
+
+    const startInputs = tr.querySelectorAll('.schedule-start-row .schedule-time-input');
+    const endInputs = tr.querySelectorAll('.schedule-end-row .schedule-time-input');
+
+    function copyToSiblings(clickedInput, siblingInputs) {
+        const value = clickedInput.value;
+        siblingInputs.forEach(inp => {
+            if (inp !== clickedInput) {
+                inp.value = value;
+            }
+        });
+        saveSchedule();
+    }
+
+    startInputs.forEach(inp => {
+        inp.addEventListener('dblclick', () => {
+            copyToSiblings(inp, startInputs);
+        });
+    });
+    endInputs.forEach(inp => {
+        inp.addEventListener('dblclick', () => {
+            copyToSiblings(inp, endInputs);
+        });
+    });
+}
 </script>
 </body>
 </html>

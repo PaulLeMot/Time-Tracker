@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Time, JSON
 from database import Base
-from datetime import datetime, time
+from datetime import datetime
 class Employee(Base):
     __tablename__ = "employees"
     id = Column(Integer, primary_key=True, index=True)
@@ -11,6 +11,7 @@ class Employee(Base):
     password = Column(String, nullable=True)
     is_admin = Column(Integer, default=0)
     is_monitor = Column(Integer, default=0)
+    schedule_data = Column(JSON, nullable=True)
     
 class TimeEntry(Base):
     __tablename__ = "time_entries"

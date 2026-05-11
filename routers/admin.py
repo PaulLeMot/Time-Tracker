@@ -28,6 +28,7 @@ class EmployeeResponse(BaseModel):
     password: Optional[str] = None
     is_admin: int
     is_monitor: int
+    schedule_data: Optional[dict] = None
 
 class EmployeeUpdate(BaseModel):
     username: Optional[str] = None
@@ -37,6 +38,7 @@ class EmployeeUpdate(BaseModel):
     barcode_secret: Optional[str] = None
     is_admin: Optional[int] = None
     is_monitor: Optional[int] = None
+    schedule_data: Optional[dict] = None
 
 class TimeEntryCreateAdmin(BaseModel):
     employee_id: int
@@ -103,6 +105,8 @@ async def update_employee(employee_id: int, update_data: EmployeeUpdate, db: Asy
         employee.is_admin = update_data.is_admin
     if update_data.is_monitor is not None:
         employee.is_monitor = update_data.is_monitor
+    if update_data.schedule_data is not None:
+        employee.schedule_data = update_data.schedule_data
     await db.commit()
     await db.refresh(employee)
     return employee
