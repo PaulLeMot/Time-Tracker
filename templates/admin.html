@@ -736,7 +736,7 @@
                 barcodeBtn.textContent = 'Штрих-код';
                 barcodeBtn.onclick = () => window.open(`/api/employees/${emp.id}/barcode?action=start`, '_blank');
                 const delBtn = document.createElement('button');
-                delBtn.textContent = '🗑️ Удалить навсегда';
+                delBtn.textContent = '🗑️';
                 delBtn.className = 'btn-danger btn-sm';
                 delBtn.onclick = async () => {
                     if (confirm(`Удалить ${emp.full_name} навсегда? Это действие необратимо.`)) {
