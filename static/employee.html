@@ -265,6 +265,66 @@
         .row-working { background-color: #dcfce7; }
         .row-on-break { background-color: #fef9c3; }
         .row-ended { background-color: #dbeafe; }
+        #notifBadge {
+            background: #ef4444;
+            color: white;
+            border-radius: 20px;
+            padding: 2px 8px;
+            font-size: 0.7rem;
+            margin-left: 5px;
+        }
+
+        .send-notif {
+            background: #3b82f6 !important;
+            color: white !important;
+            border: none;
+            font-size: 1rem;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .send-notif:hover {
+            background: #2563eb !important;
+            transform: scale(1.05);
+        }
+
+        #notificationsContainer .btn-sm {
+            background: #3b82f6;
+            border: none;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: 0.2s;
+            margin: 0 2px;
+        }
+        #notificationsContainer .btn-sm:hover {
+            background: #2563eb;
+        }
+        #notificationsContainer .view-explanation-employee {
+            background: #3b82f6;
+        }
+        #notificationsContainer .view-explanation-employee:hover {
+            background: #3b82f6;
+        }
+
+        #explanationModal .btn,
+        #createNotificationModal .btn {
+            background: #3b82f6;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 24px;
+            cursor: pointer;
+        }
+        #explanationModal .btn:hover,
+        #createNotificationModal .btn:hover {
+            background: #2563eb;
+        }
     </style>
 </head>
 <body>
@@ -279,9 +339,10 @@
 
     <!-- Вкладки -->
     <div class="tabs">
-        <button class="tab-btn active" data-tab="daily">📅 Сегодня</button>
-        <button class="tab-btn" data-tab="weekly">📆 Статистика по неделям</button>
-        <button class="tab-btn" data-tab="monitor" id="monitorTab" style="display: none;">📊 Мониторинг</button>
+        <button class="tab-btn active" data-tab="daily" title="Сегодня">📅</button>
+        <!--button class="tab-btn" data-tab="weekly" title="Статистика по неделям">📆</button-->
+        <button class="tab-btn" data-tab="monitor" id="monitorTab" style="display: none;" title="Мониторинг">📊</button>
+        <button class="tab-btn" data-tab="notifications" title="Уведомления">🔔 <span id="notifBadge">0</span></button>
     </div>
 
     <!-- Содержимое вкладки "Сегодня" -->
@@ -329,6 +390,10 @@
         <div id="monitorContainer">Загрузка...</div>
     </div>
 
+    <div id="notifications-tab" class="tab-content" style="display: none;">
+        <h2>🔔 Мои уведомления</h2>
+        <div id="notificationsContainer">Загрузка...</div>
+    </div>
     <div id="changePasswordModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
@@ -342,7 +407,35 @@
     </div>
 </div>
 <div id="toast" class="toast"></div>
-
+<div id="explanationModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <span class="close-explanation">&times;</span>
+        <h3>Написать объяснительную</h3>
+        <textarea id="explanationText" rows="5" style="width:100%; margin:10px 0;" placeholder="Введите текст..."></textarea>
+        <button id="submitExplanationBtn" class="btn">Отправить</button>
+        <div id="explanationError" style="color:red; margin-top:8px;"></div>
+    </div>
+</div>
+<div id="createNotificationModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <span class="close-create-notif">&times;</span>
+        <h3>Отправить уведомление сотруднику</h3>
+        <div style="margin-bottom: 12px;">
+            <label>Тип:</label>
+            <select id="notifType">
+                <option value="reprimand">❌ Замечание</option>
+                <option value="warning">⚠️ Предупреждение</option>
+                <option value="commendation">✅ Похвала</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label>Сообщение:</label>
+            <textarea id="notifMessage" rows="4" style="width:100%;"></textarea>
+        </div>
+        <button id="sendNotificationBtn" class="btn">Отправить</button>
+        <div id="createNotifError" style="color:red; margin-top:8px;"></div>
+    </div>
+</div>
 <script>
     // ========== Вспомогательные функции ==========
     function getLocalDate() {
@@ -632,6 +725,7 @@
         const dailyTab = document.getElementById('daily-tab');
         const weeklyTab = document.getElementById('weekly-tab');
         const monitorTabDiv = document.getElementById('monitor-tab');
+        const notificationsTab = document.getElementById('notifications-tab');
         const weekPicker = document.getElementById('weekPicker');
         const loadWeeklyBtn = document.getElementById('loadWeeklyBtn');
 
@@ -643,6 +737,7 @@
                 dailyTab.style.display = 'none';
                 weeklyTab.style.display = 'none';
                 if (monitorTabDiv) monitorTabDiv.style.display = 'none';
+                if (notificationsTab) notificationsTab.style.display = 'none';
 
                 if (tabId === 'daily') {
                     dailyTab.style.display = 'block';
@@ -677,26 +772,29 @@
                     loadMonitorReport(monitorDate.value);
                     if (!monitorEventSource) {
                         fetch('/api/auth/profile', { credentials: 'include' }).then(r => r.json()).then(data => {
-                            if (data.is_monitor) {
-                                connectMonitorSSE();
-                            }
+                            if (data.is_monitor) connectMonitorSSE();
                         });
                     }
+                } else if (tabId === 'notifications') {
+                    if (notificationsTab) notificationsTab.style.display = 'block';
+                    loadNotifications();
                 }
             });
         });
 
-        loadWeeklyBtn.addEventListener('click', () => {
-            const weekValue = weekPicker.value;
-            if (weekValue) {
-                const [year, week] = weekValue.split('-W');
-                const monday = getMondayOfWeek(parseInt(year), parseInt(week));
-                const y = monday.getFullYear();
-                const m = String(monday.getMonth() + 1).padStart(2, '0');
-                const d = String(monday.getDate()).padStart(2, '0');
-                loadWeeklyReport(`${y}-${m}-${d}`);
-            }
-        });
+        if (loadWeeklyBtn) {
+            loadWeeklyBtn.addEventListener('click', () => {
+                const weekValue = weekPicker.value;
+                if (weekValue) {
+                    const [year, week] = weekValue.split('-W');
+                    const monday = getMondayOfWeek(parseInt(year), parseInt(week));
+                    const y = monday.getFullYear();
+                    const m = String(monday.getMonth() + 1).padStart(2, '0');
+                    const d = String(monday.getDate()).padStart(2, '0');
+                    loadWeeklyReport(`${y}-${m}-${d}`);
+                }
+            });
+        }
     }
 
     // ========== Выход ==========
@@ -796,7 +894,7 @@
                 report.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
             }
             let html = '<div class="recent-table"><table class="report-table" style="width:100%;"><thead>';
-            html += '<tr><th>Сотрудник</th><th>Статус дня</th><th>Начало рабочего дня</th><th>Статус перерыва</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th></tr></thead><tbody>';
+            html += '<tr><th>Сотрудник</th><th>Статус дня</th><th>Начало рабочего дня</th><th>Статус перерыва</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th><th>Действие</th></tr></thead><tbody>';
             for (const row of report) {
                 let rowClass = '';
                 if (row.status_day === '❌ не начал') rowClass = 'row-not-started';
@@ -827,10 +925,18 @@
                             <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
                             <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
                             <td>${row.break_count}</td>
+                            <td><button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}">📝</button></td>
                         </tr>`;
             }
             html += '</tbody></table></div>';
             container.innerHTML = html;
+            document.querySelectorAll('.send-notif').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const empId = btn.dataset.id;
+                    const empName = btn.dataset.name;
+                    openNotificationModal(empId, empName);
+                });
+            });
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';
             showToast(err.message, true);
@@ -976,6 +1082,202 @@ if (monitorToggleBtn) {
         monitorToggleBtn.textContent = '🎛️ Фильтр по статусам';
     }
 }
+
+let currentNotificationId = null;
+
+async function loadNotifications() {
+    try {
+        const resp = await fetch('/api/employee/notifications', { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки');
+        const data = await resp.json();
+        const badge = document.getElementById('notifBadge');
+        if (badge) {
+            const unansweredCount = data.filter(n => !n.has_explanation).length;
+            if (unansweredCount > 0) {
+                badge.style.display = 'inline-block';
+                badge.innerText = unansweredCount;
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+        renderNotifications(data);
+        return data;
+    } catch (err) {
+        console.error(err);
+        return [];
+    }
+}
+
+function renderNotifications(notifications) {
+    const container = document.getElementById('notificationsContainer');
+    if (!container) return;
+    if (!notifications.length) {
+        container.innerHTML = '<p>Нет уведомлений</p>';
+        return;
+    }
+    let html = '<div class="recent-table"><table class="report-table"><thead><tr>';
+    html += '<th>Тип</th><th>Сообщение</th><th>Дата</th><th>Статус объяснительной</th><th>Действие</th></tr></thead><tbody>';
+    for (const n of notifications) {
+        let typeIcon = '';
+        let typeColor = '';
+        switch (n.type) {
+            case 'reprimand':
+                typeIcon = '❌';
+                typeColor = 'red';
+                break;
+            case 'warning':
+                typeIcon = '⚠️';
+                typeColor = 'orange';
+                break;
+            case 'commendation':
+                typeIcon = '✅';
+                typeColor = 'green';
+                break;
+        }
+        const dateStr = new Date(n.created_at).toLocaleString();
+        const hasExpl = n.has_explanation;
+        let actionBtn = '';
+        if (hasExpl) {
+            actionBtn = `<button class="btn-sm view-explanation-employee" data-id="${n.id}">📄 Показать</button>`;
+        } else {
+            actionBtn = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
+        }
+        html += `<tr>
+                    <td style="color:${typeColor}; font-size:1.2rem;">${typeIcon}</td>
+                    <td>${escapeHtml(n.message)}</td>
+                    <td>${dateStr}</td>
+                    <td>${hasExpl ? 'Отвечено' : 'Ожидает'}</td>
+                    <td>${actionBtn}</td>
+                 </tr>`;
+    }
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+    document.querySelectorAll('#notificationsContainer .btn-sm[data-id]').forEach(btn => {
+        const id = parseInt(btn.dataset.id);
+        btn.addEventListener('click', () => openExplanationModal(id));
+    });
+    document.querySelectorAll('#notificationsContainer .view-explanation-employee').forEach(btn => {
+        const id = parseInt(btn.dataset.id);
+        btn.addEventListener('click', () => viewEmployeeExplanation(id));
+    });
+}
+
+window.openExplanationModal = async function(notificationId) {
+    currentNotificationId = notificationId;
+    document.getElementById('explanationText').value = '';
+    document.getElementById('explanationError').innerText = '';
+    document.getElementById('explanationModal').style.display = 'block';
+}
+async function viewEmployeeExplanation(notificationId) {
+    try {
+        const resp = await fetch(`/api/employee/notifications/${notificationId}/explanation`, { credentials: 'include' });
+        if (!resp.ok) throw new Error('Объяснительная не найдена');
+        const data = await resp.json();
+        showToast(`Объяснительная: ${data.explanation_text}`, false);
+    } catch (err) {
+        showToast(err.message, true);
+    }
+}
+document.getElementById('submitExplanationBtn')?.addEventListener('click', async () => {
+    const text = document.getElementById('explanationText').value.trim();
+    if (!text) {
+        document.getElementById('explanationError').innerText = 'Введите текст объяснительной';
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/employee/notifications/${currentNotificationId}/explanation`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ explanation_text: text }),
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            showToast('Объяснительная отправлена');
+            document.getElementById('explanationModal').style.display = 'none';
+            await loadNotifications();
+            if (document.querySelector('.tab-btn.active')?.dataset.tab === 'notifications') {
+                await loadNotifications();
+            }
+        } else {
+            const err = await resp.json();
+            document.getElementById('explanationError').innerText = err.detail || 'Ошибка отправки';
+        }
+    } catch (err) {
+        document.getElementById('explanationError').innerText = 'Ошибка соединения';
+    }
+});
+
+const expModal = document.getElementById('explanationModal');
+document.querySelector('.close-explanation')?.addEventListener('click', () => expModal.style.display = 'none');
+window.addEventListener('click', (e) => { if (e.target === expModal) expModal.style.display = 'none'; });
+
+let currentNotifyEmployeeId = null;
+let currentNotifyEmployeeName = '';
+
+function openNotificationModal(empId, empName) {
+    currentNotifyEmployeeId = empId;
+    currentNotifyEmployeeName = empName;
+    document.getElementById('notifMessage').value = '';
+    document.getElementById('createNotifError').innerText = '';
+    document.getElementById('createNotificationModal').style.display = 'block';
+}
+
+async function sendNotification() {
+    const type = document.getElementById('notifType').value;
+    const message = document.getElementById('notifMessage').value.trim();
+    if (!message) {
+        document.getElementById('createNotifError').innerText = 'Введите сообщение';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/admin/notifications/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                employee_id: currentNotifyEmployeeId,
+                type: type,
+                message: message
+            }),
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            showToast('✅ Черновик уведомления создан. Админ может утвердить его в админ-панели.');
+            document.getElementById('createNotificationModal').style.display = 'none';
+        } else {
+            const err = await resp.json();
+            document.getElementById('createNotifError').innerText = err.detail || 'Ошибка отправки';
+        }
+    } catch (err) {
+        document.getElementById('createNotifError').innerText = 'Ошибка сети';
+    }
+}
+
+document.getElementById('sendNotificationBtn')?.addEventListener('click', sendNotification);
+document.querySelector('.close-create-notif')?.addEventListener('click', () => {
+    document.getElementById('createNotificationModal').style.display = 'none';
+});
+window.addEventListener('click', (e) => {
+    const modal = document.getElementById('createNotificationModal');
+    if (e.target === modal) modal.style.display = 'none';
+});
+
+let employeeEventSource = null;
+
+function connectEmployeeSSE() {
+    if (employeeEventSource) employeeEventSource.close();
+    employeeEventSource = new EventSource('/api/employee/events', { withCredentials: true });
+    employeeEventSource.addEventListener('update', () => {
+        console.log('Получено обновление уведомлений');
+        loadNotifications();
+    });
+    employeeEventSource.onerror = () => {
+        console.warn('SSE ошибка, переподключение через 5 секунд');
+        employeeEventSource.close();
+        setTimeout(connectEmployeeSSE, 5000);
+    };
+}
+loadNotifications();
+connectEmployeeSSE();
 </script>
 </body>
 </html>

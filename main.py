@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from database import engine, Base, AsyncSessionLocal
-from routers import timelog, admin, auth
+from routers import timelog, admin, auth, employee_notifications
 from starlette.middleware.sessions import SessionMiddleware
 import os
 from backup import schedule_backup
@@ -11,6 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 from models import SystemSetting
+from sse import employee_events_endpoint
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,10 +52,13 @@ app.include_router(timelog.router)
 app.include_router(admin.router)
 app.include_router(admin.page_router)
 app.include_router(admin.public_router)
+app.include_router(admin.notifications_router)
 app.include_router(auth.router)
+app.include_router(employee_notifications.router)
 from sse import admin_events_endpoint, monitor_events_endpoint
 app.add_api_route("/api/admin/events", endpoint=admin_events_endpoint, methods=["GET"])
 app.add_api_route("/api/monitor/events", endpoint=monitor_events_endpoint, methods=["GET"])
+app.add_api_route("/api/employee/events", endpoint=employee_events_endpoint, methods=["GET"])
 
 @app.get("/")
 async def root():

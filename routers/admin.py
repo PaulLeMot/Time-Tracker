@@ -13,8 +13,9 @@ from fastapi.responses import FileResponse
 from datetime import datetime, time
 from routers.auth import get_current_employee, get_current_admin, get_current_monitor
 import models
-from sse import notify_admin_clients, notify_monitor_clients
+from sse import notify_admin_clients, notify_monitor_clients, notify_employee
 from fastapi.responses import RedirectResponse
+from models import Notification, NotificationType, NotificationStatus, Explanation
 class EmployeeCreate(BaseModel):
     username: str
     full_name: str
@@ -49,9 +50,35 @@ class TimeEntryUpdateAdmin(BaseModel):
     timestamp: str
     action: Optional[str] = None
 
+class NotificationCreate(BaseModel):
+    employee_id: int
+    type: str
+    message: str
+
+class NotificationUpdate(BaseModel):
+    type: Optional[str] = None
+    message: Optional[str] = None
+
+class NotificationResponse(BaseModel):
+    id: int
+    employee_id: int
+    admin_id: int
+    type: str
+    message: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    explanation: Optional[str] = None
+
 page_router = APIRouter(tags=["pages"])
 router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(get_current_admin)])
 public_router = APIRouter(tags=["public"])
+
+notifications_router = APIRouter(
+    prefix="/api/admin/notifications",
+    tags=["notifications"],
+    dependencies=[Depends(get_current_admin)]
+)
 
 @router.get("/", response_model=List[EmployeeResponse])
 async def list_employees(active_only: bool = True, db: AsyncSession = Depends(get_db)):
@@ -735,3 +762,141 @@ async def set_rounding_interval_api(
         raise HTTPException(400, "Interval must be 1-60 minutes")
     await crud.set_rounding_interval(db, data.interval_minutes)
     return {"message": "ok"}
+
+@notifications_router.post("/", response_model=dict)
+async def create_notification(
+    data: NotificationCreate,
+    admin: models.Employee = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        notif_type = NotificationType(data.type)
+    except ValueError:
+        raise HTTPException(400, "Invalid notification type")
+    employee = await crud.get_employee_by_id(db, data.employee_id)
+    if not employee:
+        raise HTTPException(404, "Employee not found")
+    
+    notification = Notification(
+        employee_id=data.employee_id,
+        admin_id=admin.id,
+        type=notif_type,
+        message=data.message,
+        status=NotificationStatus.DRAFT
+    )
+    db.add(notification)
+    await db.commit()
+    await db.refresh(notification)
+
+    return {"id": notification.id, "status": notification.status.value}
+
+@notifications_router.get("/", response_model=List[NotificationResponse])
+async def list_notifications(
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Notification)
+    if status:
+        try:
+            status_enum = NotificationStatus(status)
+            stmt = stmt.where(Notification.status == status_enum)
+        except ValueError:
+            raise HTTPException(400, "Invalid status value")
+    stmt = stmt.order_by(Notification.created_at.desc())
+    result = await db.execute(stmt)
+    notifications = result.scalars().all()
+
+    response = []
+    for n in notifications:
+        exp_stmt = select(Explanation).where(Explanation.notification_id == n.id)
+        exp_result = await db.execute(exp_stmt)
+        explanation = exp_result.scalar_one_or_none()
+        response.append(NotificationResponse(
+            id=n.id,
+            employee_id=n.employee_id,
+            admin_id=n.admin_id,
+            type=n.type.value,
+            message=n.message,
+            status=n.status.value,
+            created_at=n.created_at,
+            updated_at=n.updated_at,
+            explanation=explanation.explanation_text if explanation else None
+        ))
+    return response
+
+@notifications_router.put("/{notification_id}", response_model=dict)
+async def update_notification(
+    notification_id: int,
+    data: NotificationUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Notification not found")
+    if notif.status != NotificationStatus.DRAFT:
+        raise HTTPException(400, "Can only edit draft notifications")
+    if data.type is not None:
+        try:
+            notif.type = NotificationType(data.type)
+        except ValueError:
+            raise HTTPException(400, "Invalid type")
+    if data.message is not None:
+        notif.message = data.message
+    notif.updated_at = datetime.utcnow()
+    await db.commit()
+    return {"id": notif.id, "status": notif.status.value}
+
+@notifications_router.post("/{notification_id}/approve", response_model=dict)
+async def approve_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Notification not found")
+    if notif.status != NotificationStatus.DRAFT:
+        raise HTTPException(400, "Only draft notifications can be approved")
+    notif.status = NotificationStatus.SENT
+    notif.updated_at = datetime.now()
+    await db.commit()
+    await notify_employee(notif.employee_id)
+    return {"id": notif.id, "status": notif.status.value}
+
+@notifications_router.post("/{notification_id}/reject", response_model=dict)
+async def reject_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Notification not found")
+    if notif.status != NotificationStatus.DRAFT:
+        raise HTTPException(400, "Only draft notifications can be rejected")
+    notif.status = NotificationStatus.REJECTED
+    notif.updated_at = datetime.now()
+    await db.commit()
+    return {"id": notif.id, "status": notif.status.value}
+
+@notifications_router.get("/{notification_id}/explanation", response_model=dict)
+async def get_explanation(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+    result = await db.execute(stmt)
+    explanation = result.scalar_one_or_none()
+    if not explanation:
+        raise HTTPException(404, "Explanation not found")
+    return {
+        "id": explanation.id,
+        "notification_id": explanation.notification_id,
+        "employee_id": explanation.employee_id,
+        "explanation_text": explanation.explanation_text,
+        "created_at": explanation.created_at
+    }
