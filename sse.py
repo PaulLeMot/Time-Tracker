@@ -3,11 +3,11 @@ from fastapi import Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
-import crud
 
 admin_queues = set()
 monitor_queues = set()
 employee_queues = {}
+
 async def notify_admin_clients():
     for q in list(admin_queues):
         await q.put("refresh")
@@ -34,6 +34,7 @@ async def admin_events_endpoint(request: Request):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 async def monitor_events_endpoint(request: Request, db: AsyncSession = Depends(get_db)):
+    import crud
     employee_id = request.session.get("employee_id")
     is_allowed = False
     
@@ -66,6 +67,7 @@ async def notify_employee(employee_id: int):
             await q.put("notification")
 
 async def employee_events_endpoint(request: Request, db: AsyncSession = Depends(get_db)):
+    import crud
     employee_id = request.session.get("employee_id")
     if not employee_id:
         raise HTTPException(401, "Unauthorized")

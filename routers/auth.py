@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from database import get_db
 import crud
 import os
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import models
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -101,9 +101,9 @@ async def employee_daily_summary(
         raise HTTPException(401, "Employee not found")
     
     target_date = datetime.now().date()
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    cutoff_time = datetime.combine(target_date, time(22, 0, 0))
-    entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=start_of_day, end_date=cutoff_time)
+    workday_start = datetime.combine(target_date, time(5, 0, 0))
+    workday_end = workday_start + timedelta(days=1)
+    entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=workday_start, end_date=workday_end)
     entries_sorted = sorted(entries, key=lambda x: x.timestamp)
     
     status_day = "not_started"
@@ -207,9 +207,9 @@ async def employee_weekly_summary(
     }
     for i in range(7):
         day_date = start + timedelta(days=i)
-        start_of_day = datetime.combine(day_date, datetime.min.time())
-        cutoff_time = datetime.combine(day_date, time(22, 0, 0))
-        entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=start_of_day, end_date=cutoff_time)
+        workday_start = datetime.combine(day_date, time(5, 0, 0))
+        workday_end = workday_start + timedelta(days=1)
+        entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=workday_start, end_date=workday_end)
         worked_min, break_min, _, _ = calculate_work_stats(entries)
         worked_hours = round(worked_min / 60, 2)
         result["days"].append({

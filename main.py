@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 
     schedule_backup()
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(scheduled_auto_close, CronTrigger(hour=22, minute=0))
+    scheduler.add_job(scheduled_auto_close, CronTrigger(hour=5, minute=0))
     scheduler.start()
     yield
 

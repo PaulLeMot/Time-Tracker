@@ -325,6 +325,211 @@
         #createNotificationModal .btn:hover {
             background: #2563eb;
         }
+
+        @media (max-width: 768px) {
+            #monitorContainer .report-table,
+            #monitorContainer .report-table thead,
+            #monitorContainer .report-table tbody,
+            #monitorContainer .report-table tr,
+            #monitorContainer .report-table th,
+            #monitorContainer .report-table td {
+                display: block;
+            }
+
+            #monitorContainer .report-table thead {
+                display: none;
+            }
+
+            #monitorContainer .report-table tr {
+                margin-bottom: 16px;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                background: white;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+
+            #monitorContainer .report-table td {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px 12px;
+                border-bottom: 1px solid #e2e8f0;
+                text-align: left;
+                gap: 8px;
+            }
+
+            #monitorContainer .report-table td:last-child {
+                border-bottom: none;
+            }
+
+            #monitorContainer .report-table td::before {
+                content: attr(data-label);
+                font-weight: 600;
+                width: 40%;
+                color: #0f172a;
+                flex-shrink: 0;
+            }
+
+            #monitorContainer .report-table td {
+                text-align: left;
+            }
+            #monitorContainer .report-table td:first-child {
+                background-color: #f8fafc;
+                font-weight: 600;
+            }
+
+            #monitorContainer .report-table td:last-child {
+                justify-content: flex-end;
+            }
+            #monitorContainer .report-table td:last-child::before {
+                content: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .monitor-accordion {
+                display: block;
+            }
+            .monitor-accordion-item {
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                margin-bottom: 12px;
+                background: white;
+                overflow: hidden;
+            }
+            .monitor-accordion-header {
+                background: #f8fafc;
+                padding: 14px 16px;
+                font-weight: 600;
+                cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 1rem;
+            }
+            .monitor-accordion-header:after {
+                content: "▼";
+                font-size: 0.8rem;
+                transition: transform 0.2s;
+            }
+            .monitor-accordion-item.open .monitor-accordion-header:after {
+                transform: rotate(180deg);
+            }
+            .monitor-accordion-details {
+                display: none;
+                padding: 16px;
+                border-top: 1px solid #e2e8f0;
+                background: white;
+            }
+            .monitor-accordion-item.open .monitor-accordion-details {
+                display: block;
+            }
+            .monitor-accordion-details-row {
+                display: flex;
+                justify-content: space-between;
+                padding: 8px 0;
+                border-bottom: 1px solid #f1f5f9;
+            }
+            .monitor-accordion-details-row:last-child {
+                border-bottom: none;
+            }
+            .monitor-accordion-label {
+                font-weight: 600;
+                color: #0f172a;
+            }
+            .monitor-accordion-value {
+                text-align: right;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .notifications-accordion {
+                display: block;
+            }
+            .notifications-accordion-item {
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                margin-bottom: 12px;
+                background: white;
+                overflow: hidden;
+            }
+            .notifications-accordion-header {
+                background: #f8fafc;
+                padding: 14px 16px;
+                cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 1rem;
+            }
+            .notifications-accordion-header:after {
+                content: "▼";
+                font-size: 0.8rem;
+                transition: transform 0.2s;
+            }
+            .notifications-accordion-item.open .notifications-accordion-header:after {
+                transform: rotate(180deg);
+            }
+            .notifications-accordion-details {
+                display: none;
+                padding: 16px;
+                border-top: 1px solid #e2e8f0;
+                background: white;
+            }
+            .notifications-accordion-item.open .notifications-accordion-details {
+                display: block;
+            }
+            .notif-detail-row {
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid #f1f5f9;
+            }
+            .notif-detail-label {
+                font-weight: 600;
+                color: #0f172a;
+                margin-bottom: 4px;
+                font-size: 0.85rem;
+            }
+            .notif-detail-value {
+                font-size: 0.95rem;
+            }
+            .notif-explanation-text {
+                background: #f8fafc;
+                padding: 12px;
+                border-radius: 8px;
+                margin-top: 12px;
+                font-size: 0.9rem;
+            }
+        }
+
+        .close-explanation,
+        .close-create-notif,
+        .close-explanation-view,
+        .close-edit-notif {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .close-explanation:hover,
+        .close-create-notif:hover,
+        .close-explanation-view:hover,
+        .close-edit-notif:hover {
+            color: black;
+        }
+
+        .close-explanation-view {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-explanation-view:hover {
+            color: black;
+        }
     </style>
 </head>
 <body>
@@ -434,6 +639,13 @@
         </div>
         <button id="sendNotificationBtn" class="btn">Отправить</button>
         <div id="createNotifError" style="color:red; margin-top:8px;"></div>
+    </div>
+</div>
+<div id="explanationViewModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <span class="close-explanation-view">&times;</span>
+        <h3>Объяснительная сотрудника</h3>
+        <div id="explanationTextDisplay" style="background:#f8fafc; padding: 12px; border-radius: 8px; white-space: pre-wrap;"></div>
     </div>
 </div>
 <script>
@@ -893,50 +1105,133 @@
             } else {
                 report.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
             }
-            let html = '<div class="recent-table"><table class="report-table" style="width:100%;"><thead>';
-            html += '<tr><th>Сотрудник</th><th>Статус дня</th><th>Начало рабочего дня</th><th>Статус перерыва</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th><th>Действие</th></tr></thead><tbody>';
-            for (const row of report) {
-                let rowClass = '';
-                if (row.status_day === '❌ не начал') rowClass = 'row-not-started';
-                else if (row.status_break === '☕ в перерыве') rowClass = 'row-on-break';
-                else if (row.status_day === '✅ работает') rowClass = 'row-working';
-                else if (row.status_day === '🏁 завершил') rowClass = 'row-ended';
-                
-                let lastEntryDisplay = '';
-                if (row.last_entry_time) {
-                    const timePart = row.last_entry_time.slice(11,16);
-                    let actionText = '';
-                    switch (row.last_entry_action) {
-                        case 'start': actionText = 'Начало дня'; break;
-                        case 'break_start': actionText = 'Начало перерыва'; break;
-                        case 'break_end': actionText = 'Конец перерыва'; break;
-                        case 'end': actionText = 'Конец дня'; break;
-                        default: actionText = row.last_entry_action;
+
+            const isMobile = window.innerWidth <= 768;
+
+            if (!isMobile) {
+                let html = '<div class="recent-table"><table class="report-table" style="width:100%;"><thead>';
+                html += '<tr><th>Сотрудник</th><th>Статус дня</th><th>Начало рабочего дня</th><th>Статус перерыва</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th><th>Действие</th></tr></thead><tbody>';
+                for (const row of report) {
+                    let rowClass = '';
+                    if (row.status_day === '❌ не начал') rowClass = 'row-not-started';
+                    else if (row.status_break === '☕ в перерыве') rowClass = 'row-on-break';
+                    else if (row.status_day === '✅ работает') rowClass = 'row-working';
+                    else if (row.status_day === '🏁 завершил') rowClass = 'row-ended';
+                    
+                    let lastEntryDisplay = '';
+                    if (row.last_entry_time) {
+                        const timePart = row.last_entry_time.slice(11,16);
+                        let actionText = '';
+                        switch (row.last_entry_action) {
+                            case 'start': actionText = 'Начало дня'; break;
+                            case 'break_start': actionText = 'Начало перерыва'; break;
+                            case 'break_end': actionText = 'Конец перерыва'; break;
+                            case 'end': actionText = 'Конец дня'; break;
+                            default: actionText = row.last_entry_action;
+                        }
+                        lastEntryDisplay = `${timePart} - ${actionText}`;
                     }
-                    lastEntryDisplay = `${timePart} - ${actionText}`;
+                    let startTimeDisplay = row.first_start_time ? row.first_start_time.slice(11,16) : '';
+                    html += `<tr class="${rowClass}">
+                                <td>${escapeHtml(row.full_name)}</td>
+                                <td>${escapeHtml(row.status_day)}</td>
+                                <td>${startTimeDisplay}</td>
+                                <td>${escapeHtml(row.status_break)}</td>
+                                <td>${lastEntryDisplay}</td>
+                                <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
+                                <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
+                                <td>${row.break_count}</td>
+                                <td><button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}">📝</button></td>
+                            </tr>`;
                 }
-                let startTimeDisplay = row.first_start_time ? row.first_start_time.slice(11,16) : '';
-                html += `<tr class="${rowClass}">
-                            <td>${escapeHtml(row.full_name)}</td>
-                            <td>${escapeHtml(row.status_day)}</td>
-                            <td>${startTimeDisplay}</td>
-                            <td>${escapeHtml(row.status_break)}</td>
-                            <td>${lastEntryDisplay}</td>
-                            <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
-                            <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
-                            <td>${row.break_count}</td>
-                            <td><button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}">📝</button></td>
-                        </tr>`;
-            }
-            html += '</tbody></table></div>';
-            container.innerHTML = html;
-            document.querySelectorAll('.send-notif').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const empId = btn.dataset.id;
-                    const empName = btn.dataset.name;
-                    openNotificationModal(empId, empName);
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+                document.querySelectorAll('.send-notif').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const empId = btn.dataset.id;
+                        const empName = btn.dataset.name;
+                        openNotificationModal(empId, empName);
+                    });
                 });
-            });
+            } else {
+                let html = '<div class="monitor-accordion">';
+                for (const row of report) {
+                    let lastEntryDisplay = '';
+                    if (row.last_entry_time) {
+                        const timePart = row.last_entry_time.slice(11,16);
+                        let actionText = '';
+                        switch (row.last_entry_action) {
+                            case 'start': actionText = 'Начало дня'; break;
+                            case 'break_start': actionText = 'Начало перерыва'; break;
+                            case 'break_end': actionText = 'Конец перерыва'; break;
+                            case 'end': actionText = 'Конец дня'; break;
+                            default: actionText = row.last_entry_action;
+                        }
+                        lastEntryDisplay = `${timePart} - ${actionText}`;
+                    }
+                    let startTimeDisplay = row.first_start_time ? row.first_start_time.slice(11,16) : '';
+                    let statusClass = '';
+                    if (row.status_day === '❌ не начал') statusClass = 'row-not-started';
+                    else if (row.status_break === '☕ в перерыве') statusClass = 'row-on-break';
+                    else if (row.status_day === '✅ работает') statusClass = 'row-working';
+                    else if (row.status_day === '🏁 завершил') statusClass = 'row-ended';
+                    
+                    html += `
+                        <div class="monitor-accordion-item ${statusClass}">
+                            <div class="monitor-accordion-header">
+                                <span>${escapeHtml(row.full_name)}</span>
+                                <span>${row.status_day}</span>
+                            </div>
+                            <div class="monitor-accordion-details">
+                                <div class="monitor-accordion-details-row">
+                                    <span class="monitor-accordion-label">Начало рабочего дня:</span>
+                                    <span class="monitor-accordion-value">${startTimeDisplay || '—'}</span>
+                                </div>
+                                <div class="monitor-accordion-details-row">
+                                    <span class="monitor-accordion-label">Статус перерыва:</span>
+                                    <span class="monitor-accordion-value">${escapeHtml(row.status_break)}</span>
+                                </div>
+                                <div class="monitor-accordion-details-row">
+                                    <span class="monitor-accordion-label">Последняя отметка:</span>
+                                    <span class="monitor-accordion-value">${lastEntryDisplay || '—'}</span>
+                                </div>
+                                <div class="monitor-accordion-details-row">
+                                    <span class="monitor-accordion-label">Отработано:</span>
+                                    <span class="monitor-accordion-value">${formatHoursToHHMM(row.worked_hours_current)}</span>
+                                </div>
+                                <div class="monitor-accordion-details-row">
+                                    <span class="monitor-accordion-label">Перерывы:</span>
+                                    <span class="monitor-accordion-value">${formatMinutesToHHMM(row.break_minutes_current)}</span>
+                                </div>
+                                <div class="monitor-accordion-details-row">
+                                    <span class="monitor-accordion-label">Кол-во перерывов:</span>
+                                    <span class="monitor-accordion-value">${row.break_count}</span>
+                                </div>
+                                <div class="monitor-accordion-details-row">
+                                    <span class="monitor-accordion-label">Действие:</span>
+                                    <span class="monitor-accordion-value"><button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}">📝</button></span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                html += '</div>';
+                container.innerHTML = html;
+                document.querySelectorAll('.monitor-accordion-header').forEach(header => {
+                    header.addEventListener('click', () => {
+                        const item = header.closest('.monitor-accordion-item');
+                        item.classList.toggle('open');
+                    });
+                });
+                document.querySelectorAll('.send-notif').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const empId = btn.dataset.id;
+                        const empName = btn.dataset.name;
+                        openNotificationModal(empId, empName);
+                    });
+                });
+            }
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';
             showToast(err.message, true);
@@ -1115,51 +1410,161 @@ function renderNotifications(notifications) {
         container.innerHTML = '<p>Нет уведомлений</p>';
         return;
     }
-    let html = '<div class="recent-table"><table class="report-table"><thead><tr>';
-    html += '<th>Тип</th><th>Сообщение</th><th>Дата</th><th>Статус объяснительной</th><th>Действие</th></tr></thead><tbody>';
-    for (const n of notifications) {
-        let typeIcon = '';
-        let typeColor = '';
-        switch (n.type) {
-            case 'reprimand':
-                typeIcon = '❌';
-                typeColor = 'red';
-                break;
-            case 'warning':
-                typeIcon = '⚠️';
-                typeColor = 'orange';
-                break;
-            case 'commendation':
-                typeIcon = '✅';
-                typeColor = 'green';
-                break;
+    const isMobile = window.innerWidth <= 768;
+    if (!isMobile) {
+        let html = '<div class="recent-table"><table class="report-table"><thead><tr>';
+        html += '<th>Тип</th><th>Сообщение</th><th>Дата</th><th>Статус объяснительной</th><th>Действие</th></tr></thead><tbody>';
+        for (const n of notifications) {
+            let typeIcon = '';
+            let typeColor = '';
+            switch (n.type) {
+                case 'reprimand':
+                    typeIcon = '❌';
+                    typeColor = 'red';
+                    break;
+                case 'warning':
+                    typeIcon = '⚠️';
+                    typeColor = 'orange';
+                    break;
+                case 'commendation':
+                    typeIcon = '✅';
+                    typeColor = 'green';
+                    break;
+            }
+            const dateStr = new Date(n.created_at).toLocaleString();
+            const hasExpl = n.has_explanation;
+            let actionBtn = '';
+            if (hasExpl) {
+                actionBtn = `<button class="btn-sm view-explanation-employee" data-id="${n.id}">📄 Показать</button>`;
+            } else {
+                actionBtn = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
+            }
+            html += `<tr>
+                        <td style="color:${typeColor}; font-size:1.2rem;">${typeIcon}</td>
+                        <td>${escapeHtml(n.message)}</td>
+                        <td>${dateStr}</td>
+                        <td>${hasExpl ? 'Отвечено' : 'Ожидает'}</td>
+                        <td>${actionBtn}</td>
+                    </tr>`;
         }
-        const dateStr = new Date(n.created_at).toLocaleString();
-        const hasExpl = n.has_explanation;
-        let actionBtn = '';
-        if (hasExpl) {
-            actionBtn = `<button class="btn-sm view-explanation-employee" data-id="${n.id}">📄 Показать</button>`;
-        } else {
-            actionBtn = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+        document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.view-explanation-employee)').forEach(btn => {
+            const id = parseInt(btn.dataset.id);
+            btn.addEventListener('click', () => openExplanationModal(id));
+        });
+        document.querySelectorAll('#notificationsContainer .view-explanation-employee').forEach(btn => {
+            const id = parseInt(btn.dataset.id);
+            btn.addEventListener('click', () => viewEmployeeExplanation(id));
+        });
+    } else {
+        let html = '<div class="notifications-accordion">';
+        for (const n of notifications) {
+            let typeIcon = '';
+            let typeColor = '';
+            let typeLabel = '';
+            switch (n.type) {
+                case 'reprimand':
+                    typeIcon = '❌';
+                    typeColor = 'red';
+                    typeLabel = 'Замечание';
+                    break;
+                case 'warning':
+                    typeIcon = '⚠️';
+                    typeColor = 'orange';
+                    typeLabel = 'Предупреждение';
+                    break;
+                case 'commendation':
+                    typeIcon = '✅';
+                    typeColor = 'green';
+                    typeLabel = 'Похвала';
+                    break;
+            }
+            const dateStr = new Date(n.created_at).toLocaleString();
+            const hasExpl = n.has_explanation;
+            const statusText = hasExpl ? 'Отвечено' : 'Ожидает';
+            let detailsHtml = `
+                <div class="notif-detail-row">
+                    <div class="notif-detail-label">Тип</div>
+                    <div class="notif-detail-value" style="color:${typeColor};">${typeIcon}</div>
+                </div>
+                <div class="notif-detail-row">
+                    <div class="notif-detail-label">Дата</div>
+                    <div class="notif-detail-value">${dateStr}</div>
+                </div>
+                <div class="notif-detail-row">
+                    <div class="notif-detail-label">Статус объяснительной</div>
+                    <div class="notif-detail-value">${statusText}</div>
+                </div>
+                <div class="notif-detail-row">
+                    <div class="notif-detail-label">Сообщение</div>
+                    <div class="notif-detail-value">${escapeHtml(n.message)}</div>
+                </div>
+            `;
+            let explanationHtml = '';
+            if (hasExpl) {
+                explanationHtml = `<div id="explanation-container-${n.id}" class="notif-explanation-text" style="display:none;"></div>`;
+            } else {
+                explanationHtml = `<div class="notif-detail-row">
+                    <div class="notif-detail-label">Действие</div>
+                    <div class="notif-detail-value"><button class="btn-sm write-explanation" data-id="${n.id}">✏️ Написать объяснительную</button></div>
+                </div>`;
+            }
+            html += `
+                <div class="notifications-accordion-item" data-id="${n.id}">
+                    <div class="notifications-accordion-header">
+                        <span style="color:${typeColor};">${typeIcon}</span>
+                        <span>${dateStr.split(',')[0]}</span>
+                    </div>
+                    <div class="notifications-accordion-details">
+                        ${detailsHtml}
+                        ${explanationHtml}
+                    </div>
+                </div>
+            `;
         }
-        html += `<tr>
-                    <td style="color:${typeColor}; font-size:1.2rem;">${typeIcon}</td>
-                    <td>${escapeHtml(n.message)}</td>
-                    <td>${dateStr}</td>
-                    <td>${hasExpl ? 'Отвечено' : 'Ожидает'}</td>
-                    <td>${actionBtn}</td>
-                 </tr>`;
+        html += '</div>';
+        container.innerHTML = html;
+        document.querySelectorAll('.notifications-accordion-header').forEach(header => {
+            header.addEventListener('click', async (e) => {
+                const item = header.closest('.notifications-accordion-item');
+                const wasOpen = item.classList.contains('open');
+                if (wasOpen) {
+                    item.classList.remove('open');
+                    return;
+                }
+                item.classList.add('open');
+                const notifId = parseInt(item.dataset.id);
+                const notification = notifications.find(n => n.id === notifId);
+                if (notification && notification.has_explanation) {
+                    const explanationContainer = document.getElementById(`explanation-container-${notifId}`);
+                    if (explanationContainer && explanationContainer.style.display === 'none') {
+                        try {
+                            const resp = await fetch(`/api/employee/notifications/${notifId}/explanation`, { credentials: 'include' });
+                            if (resp.ok) {
+                                const data = await resp.json();
+                                explanationContainer.innerHTML = `<strong>Объяснительная сотрудника:</strong><br>${escapeHtml(data.explanation_text)}`;
+                                explanationContainer.style.display = 'block';
+                            } else {
+                                explanationContainer.innerHTML = '<span style="color:red;">Ошибка загрузки объяснительной</span>';
+                                explanationContainer.style.display = 'block';
+                            }
+                        } catch (err) {
+                            explanationContainer.innerHTML = '<span style="color:red;">Ошибка загрузки</span>';
+                            explanationContainer.style.display = 'block';
+                        }
+                    }
+                }
+            });
+        });
+        document.querySelectorAll('.write-explanation').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const notifId = parseInt(btn.dataset.id);
+                openExplanationModal(notifId);
+            });
+        });
     }
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
-    document.querySelectorAll('#notificationsContainer .btn-sm[data-id]').forEach(btn => {
-        const id = parseInt(btn.dataset.id);
-        btn.addEventListener('click', () => openExplanationModal(id));
-    });
-    document.querySelectorAll('#notificationsContainer .view-explanation-employee').forEach(btn => {
-        const id = parseInt(btn.dataset.id);
-        btn.addEventListener('click', () => viewEmployeeExplanation(id));
-    });
 }
 
 window.openExplanationModal = async function(notificationId) {
@@ -1173,7 +1578,10 @@ async function viewEmployeeExplanation(notificationId) {
         const resp = await fetch(`/api/employee/notifications/${notificationId}/explanation`, { credentials: 'include' });
         if (!resp.ok) throw new Error('Объяснительная не найдена');
         const data = await resp.json();
-        showToast(`Объяснительная: ${data.explanation_text}`, false);
+        const modal = document.getElementById('explanationViewModal');
+        const textDiv = document.getElementById('explanationTextDisplay');
+        if (textDiv) textDiv.innerText = data.explanation_text;
+        if (modal) modal.style.display = 'block';
     } catch (err) {
         showToast(err.message, true);
     }
@@ -1278,6 +1686,30 @@ function connectEmployeeSSE() {
 }
 loadNotifications();
 connectEmployeeSSE();
+
+let resizeTimeout;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+        if (activeTab === 'monitor') {
+            const monitorDate = document.getElementById('monitorDate').value;
+            if (monitorDate) loadMonitorReport(monitorDate);
+        } else if (activeTab === 'notifications') {
+            loadNotifications();
+        }
+    }, 250);
+});
+
+document.querySelector('#explanationViewModal .close-explanation-view')?.addEventListener('click', () => {
+    document.getElementById('explanationViewModal').style.display = 'none';
+});
+
+document.addEventListener('click', function(event) {
+    if (event.target.classList && event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+    }
+});
 </script>
 </body>
 </html>

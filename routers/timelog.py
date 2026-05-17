@@ -5,15 +5,15 @@ from database import get_db
 import models
 import schemas
 import crud
-from datetime import datetime
-from datetime import time
+from datetime import datetime, time, timedelta
 from crud import convert_end_start_to_break
-from sse import notify_admin_clients, notify_monitor_clients
+from sse import notify_admin_clients, notify_monitor_clients, notify_employee
+from models import Notification, NotificationType, NotificationStatus
+from sqlalchemy import select as sql_select
 
 router = APIRouter(prefix="/api/timelog", tags=["timelog"])
 
 async def get_last_entry(db: AsyncSession, employee_id: int):
-
     stmt = select(models.TimeEntry).where(
         models.TimeEntry.employee_id == employee_id
     ).order_by(desc(models.TimeEntry.timestamp)).limit(1)
@@ -23,7 +23,6 @@ async def get_last_entry(db: AsyncSession, employee_id: int):
 def is_action_valid(current_action: str, last_action: str | None) -> bool:
     if last_action is None:
         return current_action == "start"
-    
     if last_action == "start":
         return current_action in ("break_start", "end")
     elif last_action == "break_start":
@@ -43,11 +42,8 @@ async def create_timelog(entry: schemas.TimeLogCreate, db: AsyncSession = Depend
 
     now = datetime.now()
     target_date = now.date()
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    end_of_day = datetime.combine(target_date, datetime.max.time())
-
-    if now.time() >= time(22, 0, 0):
-        raise HTTPException(400, "Нельзя отмечаться после 22:00")
+    workday_start = datetime.combine(target_date, time(5, 0, 0))
+    workday_end = workday_start + timedelta(days=1)
 
     last_entry = await get_last_entry(db, entry.user_id)
     last_action = last_entry.action if last_entry else None
@@ -64,7 +60,7 @@ async def create_timelog(entry: schemas.TimeLogCreate, db: AsyncSession = Depend
         )
 
     if entry.action == "end":
-        await convert_end_start_to_break(db, entry.user_id, start_of_day, end_of_day)
+        await convert_end_start_to_break(db, entry.user_id, workday_start, workday_end)
 
     db_entry = models.TimeEntry(
         employee_id=entry.user_id,
@@ -77,10 +73,37 @@ async def create_timelog(entry: schemas.TimeLogCreate, db: AsyncSession = Depend
     await db.refresh(db_entry)
     await notify_admin_clients()
     await notify_monitor_clients()
+
+    if entry.action == "start":
+        admin_stmt = sql_select(models.Employee).where(models.Employee.is_admin == 1).limit(1)
+        admin_result = await db.execute(admin_stmt)
+        admin = admin_result.scalar_one_or_none()
+        if admin:
+            is_late = await crud.is_late(db, employee, now)
+            if is_late:
+                day_start = datetime.combine(now.date(), time(5, 0, 0))
+                notif_stmt = sql_select(Notification).where(
+                    Notification.employee_id == employee.id,
+                    Notification.type == NotificationType.REPRIMAND,
+                    Notification.message == "Опоздание",
+                    Notification.created_at >= day_start
+                )
+                existing = await db.execute(notif_stmt)
+                if not existing.scalar_one_or_none():
+                    notification = Notification(
+                        employee_id=employee.id,
+                        admin_id=admin.id,
+                        type=NotificationType.REPRIMAND,
+                        message="Опоздание",
+                        status=NotificationStatus.SENT
+                    )
+                    db.add(notification)
+                    await db.commit()
+                    await notify_employee(employee.id)
+
     return {"status": "ok", "entry_id": db_entry.id}
 
 def get_allowed_next(last_action: str | None) -> list:
-
     if last_action is None:
         return ["start"]
     transitions = {

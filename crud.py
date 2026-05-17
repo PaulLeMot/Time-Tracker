@@ -1,23 +1,11 @@
 import uuid
 from sqlalchemy import select, update, delete, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from models import Employee, TimeEntry, SystemSetting
 import secrets
 import string
 from sse import notify_admin_clients, notify_monitor_clients
-
-async def create_employee(db: AsyncSession, full_name: str) -> Employee:
-    barcode_secret = str(uuid.uuid4()).replace('-', '')[:16]
-    new_employee = Employee(
-        full_name=full_name,
-        barcode_secret=barcode_secret,
-        is_active=1
-    )
-    db.add(new_employee)
-    await db.commit()
-    await db.refresh(new_employee)
-    return new_employee
 
 async def get_employees(db: AsyncSession, active_only: bool = True):
 
@@ -179,9 +167,14 @@ from models import TimeEntry, Employee
 from datetime import datetime
 
 async def auto_close_shifts(db: AsyncSession):
+    from sse import notify_employee
+    from models import Notification, NotificationType, NotificationStatus
     now = datetime.now()
-    auto_time = datetime.combine(now.date(), time(22, 0, 0))
+    auto_time = datetime.combine(now.date(), time(5, 0, 0))
     employees = await get_employees(db, active_only=True)
+    admin_stmt = select(Employee).where(Employee.is_admin == 1).limit(1)
+    admin_result = await db.execute(admin_stmt)
+    admin = admin_result.scalar_one_or_none()
     for emp in employees:
         last_entry = await get_last_entry(db, emp.id)
         if not last_entry:
@@ -198,6 +191,7 @@ async def auto_close_shifts(db: AsyncSession):
         result = await db.execute(stmt)
         if result.scalar_one_or_none():
             continue
+        forced_end = False
         if last_entry.action == "break_start":
             break_end_entry = TimeEntry(
                 employee_id=emp.id,
@@ -213,9 +207,28 @@ async def auto_close_shifts(db: AsyncSession):
             source="auto"
         )
         db.add(end_entry)
-    await db.commit()
-    await notify_admin_clients()
-    await notify_monitor_clients()
+        forced_end = True
+        await db.commit()
+        await notify_admin_clients()
+        await notify_monitor_clients()
+        if forced_end and admin:
+            notif_stmt = select(Notification).where(
+                Notification.employee_id == emp.id,
+                Notification.type == NotificationType.WARNING,
+                Notification.created_at >= start_of_day
+            )
+            existing = await db.execute(notif_stmt)
+            if not existing.scalar_one_or_none():
+                notification = Notification(
+                    employee_id=emp.id,
+                    admin_id=admin.id,
+                    type=NotificationType.WARNING,
+                    message="Не был завершен рабочий день",
+                    status=NotificationStatus.SENT
+                )
+                db.add(notification)
+                await db.commit()
+                await notify_employee(emp.id)
 
 async def get_last_entry(db: AsyncSession, employee_id: int):
     stmt = select(TimeEntry).where(
@@ -264,3 +277,27 @@ async def set_rounding_interval(db: AsyncSession, minutes: int):
 
 def floor_round_minutes(minutes: int, interval: int) -> int:
     return (minutes // interval) * interval
+
+async def is_late(db: AsyncSession, employee: Employee, start_time: datetime) -> bool:
+    if not employee.schedule_data:
+        return False
+    weekday = start_time.weekday()
+    day_key = str(weekday)
+    if day_key not in employee.schedule_data:
+        return False
+    scheduled_start_str = employee.schedule_data[day_key].get("start")
+    if not scheduled_start_str:
+        return False
+    try:
+        scheduled_start_time = datetime.strptime(scheduled_start_str, "%H:%M").time()
+    except ValueError:
+        return False
+    scheduled_start = datetime.combine(start_time.date(), scheduled_start_time)
+    late_minutes = (start_time - scheduled_start).total_seconds() / 60.0
+    return late_minutes > 5
+
+def get_workday_date(dt: datetime) -> datetime.date:
+    if dt.time() >= time(5, 0, 0):
+        return dt.date()
+    else:
+        return dt.date() - timedelta(days=1)

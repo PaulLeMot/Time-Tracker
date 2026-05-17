@@ -10,7 +10,7 @@ from typing import List, Optional
 from database import get_db
 import crud
 from fastapi.responses import FileResponse
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from routers.auth import get_current_employee, get_current_admin, get_current_monitor
 import models
 from sse import notify_admin_clients, notify_monitor_clients, notify_employee
@@ -69,6 +69,7 @@ class NotificationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     explanation: Optional[str] = None
+    full_name: Optional[str] = None
 
 page_router = APIRouter(tags=["pages"])
 router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(get_current_admin)])
@@ -169,14 +170,14 @@ async def admin_page(request: Request, db: AsyncSession = Depends(get_db)):
 async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
     employees = await crud.get_employees(db, active_only=True)
     target_date = datetime.strptime(date, "%Y-%m-%d").date()
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    cutoff_time = datetime.combine(target_date, time(22, 0, 0, 999999))
+    workday_start = datetime.combine(target_date, time(5, 0, 0))
+    workday_end = workday_start + timedelta(days=1)
     now = datetime.now()
     interval = await crud.get_rounding_interval(db)
 
     result = []
     for emp in employees:
-        entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=start_of_day, end_date=cutoff_time)
+        entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=workday_start, end_date=workday_end)
         entries_sorted = sorted(entries, key=lambda x: x.timestamp)
 
         total_work_sec = 0
@@ -231,15 +232,16 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
                     last_start_time = ts
 
         if target_date == now.date():
+            end_limit = now if now < workday_end else workday_end
             if in_shift and not in_break and last_start_time:
-                total_work_sec += (now - last_start_time).total_seconds()
+                total_work_sec += (end_limit - last_start_time).total_seconds()
             if in_break and last_break_start:
-                total_break_sec += (now - last_break_start).total_seconds()
+                total_break_sec += (end_limit - last_break_start).total_seconds()
         else:
             if in_shift and not in_break and last_start_time:
-                total_work_sec += (cutoff_time - last_start_time).total_seconds()
+                total_work_sec += (workday_end - last_start_time).total_seconds()
             if in_break and last_break_start:
-                total_break_sec += (cutoff_time - last_break_start).total_seconds()
+                total_break_sec += (workday_end - last_break_start).total_seconds()
             if in_shift:
                 status_day = "ended"
 
@@ -303,7 +305,7 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
     
     result = []
     weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-    cutoff_time_of_day = time(22, 0, 0)
+    cutoff_time_of_day = time(23, 59, 59)
     
     for emp in employees:
         emp_data = {
@@ -316,9 +318,9 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
         }
         for i in range(7):
             day_date = start + timedelta(days=i)
-            start_of_day = datetime.combine(day_date, datetime.min.time())
-            cutoff = datetime.combine(day_date, cutoff_time_of_day)
-            entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=start_of_day, end_date=cutoff)
+            workday_start = datetime.combine(day_date, time(5, 0, 0))
+            workday_end = workday_start + timedelta(days=1)
+            entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=workday_start, end_date=workday_end)
             entries_sorted = sorted(entries, key=lambda x: x.timestamp)
 
             total_work_sec = 0
@@ -328,10 +330,10 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
             in_shift = False
             in_break = False
             now = datetime.now()
-            if day_date == now.date() and now < cutoff:
-                day_cutoff = now
+            if day_date == now.date():
+                day_cutoff = now if now < workday_end else workday_end
             else:
-                day_cutoff = cutoff
+                day_cutoff = workday_end
             first_start_time = None
             end_time = None
             break_count = 0
@@ -399,8 +401,8 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
         
         total_display = f"{format_minutes_to_hhmm(emp_data['total_rounded_minutes'])} ({format_minutes_to_hhmm(emp_data['total_raw_minutes'])})"
         emp_data["total_worked_display"] = total_display
-        emp_data["total_worked_hours"] = round(emp_data["total_raw_minutes"] / 60, 2)   # обратная совместимость
-        emp_data["total_break_hours"] = round(emp_data["total_break_minutes"] / 60, 2)  # для удобства
+        emp_data["total_worked_hours"] = round(emp_data["total_raw_minutes"] / 60, 2)
+        emp_data["total_break_hours"] = round(emp_data["total_break_minutes"] / 60, 2)
         
         result.append(emp_data)
     return result
@@ -420,9 +422,9 @@ async def employee_detail(employee_id: int, date: str, request: Request, db: Asy
     if not emp:
         raise HTTPException(404, "Employee not found")
     target_date = datetime.strptime(date, "%Y-%m-%d").date()
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    cutoff_time = datetime.combine(target_date, time(22, 0, 0))
-    entries = await crud.get_time_entries(db, employee_id=employee_id, start_date=start_of_day, end_date=cutoff_time)
+    workday_start = datetime.combine(target_date, time(5, 0, 0))
+    workday_end = workday_start + timedelta(days=1)
+    entries = await crud.get_time_entries(db, employee_id=employee_id, start_date=workday_start, end_date=workday_end)
     entries_list = [
         {
             "id": e.id,
@@ -448,9 +450,9 @@ async def employee_daily_summary(
     db: AsyncSession = Depends(get_db)
 ):
     target_date = datetime.now().date()
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    cutoff_time = datetime.combine(target_date, time(22, 0, 0))
-    entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=start_of_day, end_date=cutoff_time)
+    workday_start = datetime.combine(target_date, time(5, 0, 0))
+    workday_end = workday_start + timedelta(days=1)
+    entries = await crud.get_time_entries(db, employee_id=employee.id, start_date=workday_start, end_date=workday_end)
     entries_sorted = sorted(entries, key=lambda x: x.timestamp)
     
     status_day = "not_started"
@@ -808,6 +810,10 @@ async def list_notifications(
 
     response = []
     for n in notifications:
+        emp_stmt = select(models.Employee.full_name).where(models.Employee.id == n.employee_id)
+        emp_result = await db.execute(emp_stmt)
+        full_name = emp_result.scalar_one_or_none()
+
         exp_stmt = select(Explanation).where(Explanation.notification_id == n.id)
         exp_result = await db.execute(exp_stmt)
         explanation = exp_result.scalar_one_or_none()
@@ -820,7 +826,8 @@ async def list_notifications(
             status=n.status.value,
             created_at=n.created_at,
             updated_at=n.updated_at,
-            explanation=explanation.explanation_text if explanation else None
+            explanation=explanation.explanation_text if explanation else None,
+            full_name=full_name
         ))
     return response
 
