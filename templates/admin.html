@@ -227,12 +227,6 @@
             padding: 8px;
             border-bottom: 1px solid #e2e8f0;
         }
-        .recent-table th {
-            position: sticky;
-            top: 0;
-            background: #f8fafc;
-            z-index: 10; 
-        }
         .row-not-started { background-color: #f1f5f9; }
         .row-working { background-color: #dcfce7; }
         .row-on-break { background-color: #fef9c3; }
@@ -273,21 +267,6 @@
             border-collapse: collapse;
         }
 
-        #weeklyReportContainer .report-table thead tr:first-child th {
-            position: sticky;
-            top: 0;
-            background-color: #f8fafc;
-            z-index: 10;
-            box-shadow: inset 0 -1px 0 #e2e8f0;
-        }
-
-        #weeklyReportContainer .report-table thead tr:nth-child(2) th {
-            position: sticky;
-            top: 42px;
-            background-color: #f8fafc;
-            z-index: 5;
-            box-shadow: inset 0 -1px 0 #e2e8f0;
-        }
         #weeklyReportContainer .report-table thead th {
             line-height: 40px;
             vertical-align: middle;
@@ -481,12 +460,20 @@
             width: 100%;
         }
 
+        #employees-tab .recent-table,
+        #reportContainer .recent-table,
+        #recentContainer .recent-table,
+        #notificationsContainer .recent-table {
+            max-height: 60vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
         .recent-table th {
             position: sticky;
             top: 0;
             background: #f8fafc;
             z-index: 10;
-            box-shadow: inset 0 -1px 0 #e2e8f0;
         }
     </style>
 </head>
