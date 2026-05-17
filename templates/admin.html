@@ -215,6 +215,7 @@
         }
         .recent-table {
             overflow-x: auto;
+            overflow-y: visible;
         }
         .recent-table table {
             width: 100%;
@@ -434,46 +435,17 @@
             color: black;
         }
 
-        #reportContainer .recent-table {
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-
-        #employees-tab .recent-table {
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-
-        #recentContainer .recent-table {
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-
-        #notificationsContainer .recent-table {
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-
         .recent-table table {
-            border-collapse: separate;
-            border-spacing: 0;
             width: 100%;
-        }
-
-        #employees-tab .recent-table,
-        #reportContainer .recent-table,
-        #recentContainer .recent-table,
-        #notificationsContainer .recent-table {
-            max-height: 60vh;
-            overflow-y: auto;
-            position: relative;
+            border-collapse: separate;
+            margin-top: 0;
         }
 
         .recent-table th {
             position: sticky;
-            top: 0;
+            top: 70;
             background: #f8fafc;
-            z-index: 10;
+            z-index: 20;
         }
     </style>
 </head>
