@@ -78,7 +78,7 @@ public_router = APIRouter(tags=["public"])
 notifications_router = APIRouter(
     prefix="/api/admin/notifications",
     tags=["notifications"],
-    dependencies=[Depends(get_current_admin)]
+    dependencies=[Depends(get_current_monitor)]
 )
 
 @router.get("/", response_model=List[EmployeeResponse])
@@ -768,20 +768,31 @@ async def set_rounding_interval_api(
 @notifications_router.post("/", response_model=dict)
 async def create_notification(
     data: NotificationCreate,
-    admin: models.Employee = Depends(get_current_admin),
+    current_user: models.Employee = Depends(get_current_monitor),
     db: AsyncSession = Depends(get_db)
 ):
     try:
         notif_type = NotificationType(data.type)
     except ValueError:
         raise HTTPException(400, "Invalid notification type")
+    
     employee = await crud.get_employee_by_id(db, data.employee_id)
     if not employee:
         raise HTTPException(404, "Employee not found")
     
+    if current_user.is_admin:
+        admin_id = current_user.id
+    else:
+        admin_stmt = select(models.Employee).where(models.Employee.is_admin == 1).limit(1)
+        admin_result = await db.execute(admin_stmt)
+        system_admin = admin_result.scalar_one_or_none()
+        if not system_admin:
+            raise HTTPException(500, "No admin found in system")
+        admin_id = system_admin.id
+    
     notification = Notification(
         employee_id=data.employee_id,
-        admin_id=admin.id,
+        admin_id=admin_id,
         type=notif_type,
         message=data.message,
         status=NotificationStatus.DRAFT
@@ -789,7 +800,6 @@ async def create_notification(
     db.add(notification)
     await db.commit()
     await db.refresh(notification)
-
     return {"id": notification.id, "status": notification.status.value}
 
 @notifications_router.get("/", response_model=List[NotificationResponse])
