@@ -245,10 +245,10 @@
             text-align: left;
         }
         .recent-table {
-            max-height: 600px;
-            overflow-y: auto;
-            overflow-x: auto;
+            overflow-x: visible;
+            overflow-y: visible;
         }
+        
         .recent-table table {
             border-collapse: separate;
             border-spacing: 0;
@@ -530,6 +530,62 @@
         .close-explanation-view:hover {
             color: black;
         }
+
+        .close-edit-notif {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-edit-notif:hover {
+            color: black;
+        }
+
+        .report-table thead {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+        .report-table th {
+            position: sticky;
+            top: 0;
+            background: #f8fafc;
+            z-index: 20;
+        }
+
+        #allNotificationsContainer .report-table thead,
+        #allNotificationsContainer .report-table th {
+            position: sticky !important;
+            top: 0 !important;
+            background: #f8fafc !important;
+            z-index: 30 !important;
+        }
+
+        #allNotificationsContainer {
+            overflow: visible !important;
+        }
+
+        #allNotificationsContainer .btn-sm.view-explanation {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 16px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: 0.2s;
+        }
+        #allNotificationsContainer .btn-sm.view-explanation:hover {
+            background: #2563eb;
+        }
+
+        #allNotifStatusFilter,
+        #all-notifications-tab select {
+            border-radius: 20px;
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+        }
     </style>
 </head>
 <body>
@@ -548,6 +604,7 @@
         <!--button class="tab-btn" data-tab="weekly" title="Статистика по неделям">📆</button-->
         <button class="tab-btn" data-tab="monitor" id="monitorTab" style="display: none;" title="Мониторинг">📊</button>
         <button class="tab-btn" data-tab="notifications" title="Уведомления">🔔 <span id="notifBadge">0</span></button>
+        <button class="tab-btn" data-tab="all-notifications" id="allNotifTab" style="display: none;">📋</button>
     </div>
 
     <!-- Содержимое вкладки "Сегодня" -->
@@ -595,6 +652,8 @@
         <div id="monitorContainer">Загрузка...</div>
     </div>
 
+    <!-- Содержимое вкладки "Мои уведомления" -->
+
     <div id="notifications-tab" class="tab-content" style="display: none;">
         <h2>🔔 Мои уведомления</h2>
         <div id="notificationsContainer">Загрузка...</div>
@@ -609,6 +668,23 @@
             <button id="savePasswordBtn" class="action-btn">Сохранить</button>
             <div id="passwordError" style="color:red; margin-top:8px;"></div>
         </div>
+    </div>
+
+    <!-- Содержимое вкладки "Все уведомления" -->
+
+    <div id="all-notifications-tab" class="tab-content" style="display: none;">
+        <h2>📋 Управление уведомлениями</h2>
+        <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center;">
+            <label>Фильтр по статусу:</label>
+            <select id="allNotifStatusFilter">
+                <option value="">Все</option>
+                <option value="draft">Черновики</option>
+                <option value="sent">Отправленные</option>
+                <option value="rejected">Отклонённые</option>
+            </select>
+            <button id="refreshAllNotifBtn" class="btn">Обновить</button>
+        </div>
+        <div id="allNotificationsContainer">Загрузка...</div>
     </div>
 </div>
 <div id="toast" class="toast"></div>
@@ -715,6 +791,7 @@
         try {
             const resp = await fetchWithAuth('/api/auth/profile');
             const data = await resp.json();
+            window.isAdmin = data.is_admin === 1;
             if (data.is_admin || data.is_monitor) {
                 const monitorTabBtn = document.getElementById('monitorTab');
                 if (monitorTabBtn) monitorTabBtn.style.display = 'inline-block';
@@ -722,6 +799,10 @@
             if ((data.is_admin || data.is_monitor) && !window._monitorSSE_active) {
                 window._monitorSSE_active = true;
                 connectMonitorSSE();
+            }
+            const allNotifTab = document.getElementById('allNotifTab');
+            if (allNotifTab && (data.is_admin || data.is_monitor)) {
+                allNotifTab.style.display = 'inline-block';
             }
             document.getElementById('employeeName').innerHTML = `
                 <strong>Сотрудник:</strong> ${escapeHtml(data.full_name)}<br>
@@ -940,6 +1021,7 @@
         const notificationsTab = document.getElementById('notifications-tab');
         const weekPicker = document.getElementById('weekPicker');
         const loadWeeklyBtn = document.getElementById('loadWeeklyBtn');
+        const allNotifTabDiv = document.getElementById('all-notifications-tab');
 
         tabs.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -950,6 +1032,7 @@
                 weeklyTab.style.display = 'none';
                 if (monitorTabDiv) monitorTabDiv.style.display = 'none';
                 if (notificationsTab) notificationsTab.style.display = 'none';
+                if (allNotifTabDiv) allNotifTabDiv.style.display = 'none';
 
                 if (tabId === 'daily') {
                     dailyTab.style.display = 'block';
@@ -990,6 +1073,9 @@
                 } else if (tabId === 'notifications') {
                     if (notificationsTab) notificationsTab.style.display = 'block';
                     loadNotifications();
+                } else if (tabId === 'all-notifications') {
+                    if (allNotifTabDiv) allNotifTabDiv.style.display = 'block';
+                    loadAllNotifications();
                 }
             });
         });
@@ -1007,6 +1093,8 @@
                 }
             });
         }
+        const defaultTab = document.querySelector('.tab-btn[data-tab="daily"]');
+        if (defaultTab) defaultTab.click();
     }
 
     // ========== Выход ==========
@@ -1085,6 +1173,14 @@
                 container.innerHTML = '<p>Нет данных за этот день</p>';
                 return;
             }
+            const getCombinedStatus = (row) => {
+                if (row.status_break && row.status_break !== '') {
+                    return row.status_break;
+                } else {
+                    return row.status_day;
+                }
+            };
+
             if (monitorFilterEnabled) {
                 const getStatusPriority = (row) => {
                     let key;
@@ -1110,7 +1206,8 @@
 
             if (!isMobile) {
                 let html = '<div class="recent-table"><table class="report-table" style="width:100%;"><thead>';
-                html += '<tr><th>Сотрудник</th><th>Статус дня</th><th>Начало рабочего дня</th><th>Статус перерыва</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th><th>Действие</th></tr></thead><tbody>';
+                html += '<tr><th>Сотрудник</th><th>Статус</th><th>Начало рабочего дня</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th><th>Действие</th></tr>';
+                html += '</thead><tbody>';
                 for (const row of report) {
                     let rowClass = '';
                     if (row.status_day === '❌ не начал') rowClass = 'row-not-started';
@@ -1132,11 +1229,12 @@
                         lastEntryDisplay = `${timePart} - ${actionText}`;
                     }
                     let startTimeDisplay = row.first_start_time ? row.first_start_time.slice(11,16) : '';
+                    const combinedStatus = getCombinedStatus(row);
+                    
                     html += `<tr class="${rowClass}">
                                 <td>${escapeHtml(row.full_name)}</td>
-                                <td>${escapeHtml(row.status_day)}</td>
+                                <td>${escapeHtml(combinedStatus)}</td>
                                 <td>${startTimeDisplay}</td>
-                                <td>${escapeHtml(row.status_break)}</td>
                                 <td>${lastEntryDisplay}</td>
                                 <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
                                 <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
@@ -1146,6 +1244,7 @@
                 }
                 html += '</tbody></table></div>';
                 container.innerHTML = html;
+                
                 document.querySelectorAll('.send-notif').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         const empId = btn.dataset.id;
@@ -1176,20 +1275,18 @@
                     else if (row.status_day === '✅ работает') statusClass = 'row-working';
                     else if (row.status_day === '🏁 завершил') statusClass = 'row-ended';
                     
+                    const combinedStatus = getCombinedStatus(row);
+                    
                     html += `
                         <div class="monitor-accordion-item ${statusClass}">
                             <div class="monitor-accordion-header">
                                 <span>${escapeHtml(row.full_name)}</span>
-                                <span>${row.status_day}</span>
+                                <span>${escapeHtml(combinedStatus)}</span>
                             </div>
                             <div class="monitor-accordion-details">
                                 <div class="monitor-accordion-details-row">
                                     <span class="monitor-accordion-label">Начало рабочего дня:</span>
                                     <span class="monitor-accordion-value">${startTimeDisplay || '—'}</span>
-                                </div>
-                                <div class="monitor-accordion-details-row">
-                                    <span class="monitor-accordion-label">Статус перерыва:</span>
-                                    <span class="monitor-accordion-value">${escapeHtml(row.status_break)}</span>
                                 </div>
                                 <div class="monitor-accordion-details-row">
                                     <span class="monitor-accordion-label">Последняя отметка:</span>
@@ -1217,6 +1314,7 @@
                 }
                 html += '</div>';
                 container.innerHTML = html;
+                
                 document.querySelectorAll('.monitor-accordion-header').forEach(header => {
                     header.addEventListener('click', () => {
                         const item = header.closest('.monitor-accordion-item');
@@ -1710,6 +1808,333 @@ document.addEventListener('click', function(event) {
         event.target.style.display = 'none';
     }
 });
+
+// ========== Управление уведомлениями (для мониторов) ==========
+let currentEditNotificationId = null;
+
+async function loadAllNotifications() {
+    const container = document.getElementById('allNotificationsContainer');
+    const filter = document.getElementById('allNotifStatusFilter').value;
+    let url = '/api/admin/notifications';
+    if (filter) url += `?status=${filter}`;
+    try {
+        const resp = await fetch(url, { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки');
+        const data = await resp.json();
+        renderAllNotifications(data);
+    } catch (err) {
+        container.innerHTML = `<p>Ошибка: ${err.message}</p>`;
+    }
+}
+
+function renderAllNotifications(notifications) {
+    const container = document.getElementById('allNotificationsContainer');
+    if (!notifications.length) {
+        container.innerHTML = '<p>Нет уведомлений</p>';
+        return;
+    }
+
+    const isMobile = window.innerWidth <= 768;
+    const isAdmin = window.isAdmin === true;
+
+    if (!isMobile) {
+        let html = '<div class="recent-table"><table class="report-table"><thead>';
+        html += '<th>ФИО</th><th>Тип</th><th>Сообщение</th><th>Статус</th><th>Дата создания</th><th>Объяснительная</th><th>Действия</th></tr></thead><tbody>';
+        for (const n of notifications) {
+            let typeIcon = '';
+            switch (n.type) {
+                case 'reprimand': typeIcon = '❌'; break;
+                case 'warning': typeIcon = '⚠️'; break;
+                case 'commendation': typeIcon = '✅'; break;
+            }
+            let statusText = '';
+            if (n.status === 'draft') statusText = 'Черновик';
+            else if (n.status === 'sent') statusText = 'Отправлено';
+            else statusText = 'Отклонено';
+
+            let createdDate = '';
+            if (n.created_at) {
+                const date = new Date(n.created_at);
+                createdDate = date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            }
+
+            let actionsHtml = '';
+            if (n.status === 'draft') {
+                if (isAdmin) {
+                    actionsHtml = `
+                        <button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>
+                        <button class="btn-sm approve-notif" data-id="${n.id}">✅</button>
+                        <button class="btn-sm reject-notif" data-id="${n.id}">❌</button>
+                    `;
+                } else {
+                    actionsHtml = '<span style="color:gray;">—</span>';
+                }
+            } else {
+                actionsHtml = '<span style="color:gray;">—</span>';
+            }
+
+            let explanationHtml = '—';
+            if (n.explanation) {
+                explanationHtml = `<button class="btn-sm view-explanation" data-id="${n.id}">📄 Показать</button>`;
+            }
+
+            html += `<tr>
+                        <td>${escapeHtml(n.full_name)}</td>
+                        <td>${typeIcon}</td>
+                        <td>${escapeHtml(n.message)}</td>
+                        <td>${statusText}</td>
+                        <td>${createdDate}</td>
+                        <td>${explanationHtml}</td>
+                        <td>${actionsHtml}</td>
+                     </tr>`;
+        }
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+        if (isAdmin) {
+            container.querySelectorAll('.edit-notif').forEach(btn => {
+                btn.addEventListener('click', () => openEditNotificationModal(parseInt(btn.dataset.id)));
+            });
+            container.querySelectorAll('.approve-notif').forEach(btn => {
+                btn.addEventListener('click', () => approveNotification(parseInt(btn.dataset.id)));
+            });
+            container.querySelectorAll('.reject-notif').forEach(btn => {
+                btn.addEventListener('click', () => rejectNotification(parseInt(btn.dataset.id)));
+            });
+        }
+        container.querySelectorAll('.view-explanation').forEach(btn => {
+            btn.addEventListener('click', () => viewExplanation(parseInt(btn.dataset.id)));
+        });
+    } else {
+        let html = '<div class="notifications-accordion">';
+        for (const n of notifications) {
+            let typeIcon = '';
+            let typeColor = '';
+            let typeLabel = '';
+            switch (n.type) {
+                case 'reprimand': typeIcon = '❌'; typeColor = 'red'; typeLabel = 'Замечание'; break;
+                case 'warning': typeIcon = '⚠️'; typeColor = 'orange'; typeLabel = 'Предупреждение'; break;
+                case 'commendation': typeIcon = '✅'; typeColor = 'green'; typeLabel = 'Похвала'; break;
+            }
+            let statusText = '';
+            if (n.status === 'draft') statusText = 'Черновик';
+            else if (n.status === 'sent') statusText = 'Отправлено';
+            else statusText = 'Отклонено';
+
+            let createdDate = '';
+            if (n.created_at) {
+                const date = new Date(n.created_at);
+                createdDate = date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            }
+
+            let actionsHtml = '';
+            if (n.status === 'draft') {
+                if (isAdmin) {
+                    actionsHtml = `
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Действия</div>
+                            <div class="notif-detail-value">
+                                <button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>
+                                <button class="btn-sm approve-notif" data-id="${n.id}">✅</button>
+                                <button class="btn-sm reject-notif" data-id="${n.id}">❌</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    actionsHtml = `
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Действия</div>
+                            <div class="notif-detail-value"><span style="color:gray;">—</span></div>
+                        </div>
+                    `;
+                }
+            } else {
+                actionsHtml = `
+                    <div class="notif-detail-row">
+                        <div class="notif-detail-label">Действия</div>
+                        <div class="notif-detail-value"><span style="color:gray;">—</span></div>
+                    </div>
+                `;
+            }
+
+            let explanationHtml = '';
+            if (n.explanation) {
+                explanationHtml = `
+                    <div class="notif-detail-row">
+                        <div class="notif-detail-label">Объяснительная</div>
+                        <div class="notif-detail-value">
+                            <button class="btn-sm view-explanation" data-id="${n.id}">📄 Показать</button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                explanationHtml = `
+                    <div class="notif-detail-row">
+                        <div class="notif-detail-label">Объяснительная</div>
+                        <div class="notif-detail-value">—</div>
+                    </div>
+                `;
+            }
+
+            html += `
+                <div class="notifications-accordion-item" data-id="${n.id}">
+                    <div class="notifications-accordion-header">
+                        <span style="color:${typeColor};">${typeIcon}</span>
+                        <span>${escapeHtml(n.full_name)}</span>
+                    </div>
+                    <div class="notifications-accordion-details">
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Тип</div>
+                            <div class="notif-detail-value">${typeLabel}</div>
+                        </div>
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Статус</div>
+                            <div class="notif-detail-value">${statusText}</div>
+                        </div>
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Дата создания</div>
+                            <div class="notif-detail-value">${createdDate}</div>
+                        </div>
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Сообщение</div>
+                            <div class="notif-detail-value">${escapeHtml(n.message)}</div>
+                        </div>
+                        ${explanationHtml}
+                        ${actionsHtml}
+                    </div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+
+        container.querySelectorAll('.notifications-accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const item = header.closest('.notifications-accordion-item');
+                item.classList.toggle('open');
+            });
+        });
+
+        if (isAdmin) {
+            container.querySelectorAll('.edit-notif').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openEditNotificationModal(parseInt(btn.dataset.id));
+                });
+            });
+            container.querySelectorAll('.approve-notif').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    approveNotification(parseInt(btn.dataset.id));
+                });
+            });
+            container.querySelectorAll('.reject-notif').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    rejectNotification(parseInt(btn.dataset.id));
+                });
+            });
+        }
+        container.querySelectorAll('.view-explanation').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                viewExplanation(parseInt(btn.dataset.id));
+            });
+        });
+    }
+}
+
+async function openEditNotificationModal(notifId) {
+    currentEditNotificationId = notifId;
+    const resp = await fetch(`/api/admin/notifications`, { credentials: 'include' });
+    const list = await resp.json();
+    const notif = list.find(n => n.id === notifId);
+    if (!notif) return;
+    document.getElementById('editNotifType').value = notif.type;
+    document.getElementById('editNotifMessage').value = notif.message;
+    document.getElementById('editNotificationModal').style.display = 'block';
+}
+
+async function saveEditedNotification() {
+    const newType = document.getElementById('editNotifType').value;
+    const newMessage = document.getElementById('editNotifMessage').value.trim();
+    if (!newMessage) {
+        document.getElementById('editNotifError').innerText = 'Сообщение не может быть пустым';
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/admin/notifications/${currentEditNotificationId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: newType, message: newMessage }),
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            showToast('Уведомление обновлено');
+            document.getElementById('editNotificationModal').style.display = 'none';
+            await loadAllNotifications();
+        } else {
+            const err = await resp.json();
+            document.getElementById('editNotifError').innerText = err.detail || 'Ошибка';
+        }
+    } catch (err) {
+        document.getElementById('editNotifError').innerText = 'Ошибка сети';
+    }
+}
+
+async function approveNotification(id) {
+    if (!confirm('Утвердить уведомление? Оно станет доступно сотруднику.')) return;
+    const resp = await fetch(`/api/admin/notifications/${id}/approve`, {
+        method: 'POST',
+        credentials: 'include'
+    });
+    if (resp.ok) {
+        showToast('Уведомление утверждено');
+        loadAllNotifications();
+        loadNotifications();
+    } else {
+        const err = await resp.json();
+        showToast(err.detail || 'Ошибка', true);
+    }
+}
+
+async function rejectNotification(id) {
+    if (!confirm('Отклонить уведомление?')) return;
+    const resp = await fetch(`/api/admin/notifications/${id}/reject`, {
+        method: 'POST',
+        credentials: 'include'
+    });
+    if (resp.ok) {
+        showToast('Уведомление отклонено');
+        loadAllNotifications();
+    } else {
+        const err = await resp.json();
+        showToast(err.detail || 'Ошибка', true);
+    }
+}
+
+async function viewExplanation(notifId) {
+    try {
+        const resp = await fetch(`/api/admin/notifications/${notifId}/explanation`, { credentials: 'include' });
+        if (!resp.ok) throw new Error('Объяснительная не найдена');
+        const data = await resp.json();
+        document.getElementById('explanationTextDisplay').innerText = data.explanation_text;
+        document.getElementById('explanationViewModal').style.display = 'block';
+    } catch (err) {
+        showToast(err.message, true);
+    }
+}
+
+document.querySelector('#editNotificationModal .close-edit-notif')?.addEventListener('click', () => {
+    document.getElementById('editNotificationModal').style.display = 'none';
+});
+document.querySelector('#explanationViewModal .close-explanation-view')?.addEventListener('click', () => {
+    document.getElementById('explanationViewModal').style.display = 'none';
+});
+document.getElementById('saveNotifEditBtn')?.addEventListener('click', saveEditedNotification);
+document.getElementById('refreshAllNotifBtn')?.addEventListener('click', loadAllNotifications);
+document.getElementById('allNotifStatusFilter')?.addEventListener('change', loadAllNotifications);
+
 </script>
 </body>
 </html>

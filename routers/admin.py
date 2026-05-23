@@ -168,17 +168,30 @@ async def admin_page(request: Request, db: AsyncSession = Depends(get_db)):
 
 @public_router.get("/api/reports/daily")
 async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
-    employees = await crud.get_employees(db, active_only=True)
     target_date = datetime.strptime(date, "%Y-%m-%d").date()
     workday_start = datetime.combine(target_date, time(5, 0, 0))
     workday_end = workday_start + timedelta(days=1)
     now = datetime.now()
     interval = await crud.get_rounding_interval(db)
 
+    employees = await crud.get_employees(db, active_only=True)
+    if not employees:
+        return []
+
+    stmt = select(models.TimeEntry).where(
+        models.TimeEntry.timestamp >= workday_start,
+        models.TimeEntry.timestamp < workday_end
+    ).order_by(models.TimeEntry.employee_id, models.TimeEntry.timestamp)
+    result = await db.execute(stmt)
+    all_entries = result.scalars().all()
+
+    entries_by_employee = {}
+    for entry in all_entries:
+        entries_by_employee.setdefault(entry.employee_id, []).append(entry)
+
     result = []
     for emp in employees:
-        entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=workday_start, end_date=workday_end)
-        entries_sorted = sorted(entries, key=lambda x: x.timestamp)
+        entries = entries_by_employee.get(emp.id, [])
 
         total_work_sec = 0
         total_break_sec = 0
@@ -193,7 +206,7 @@ async def daily_report(date: str, db: AsyncSession = Depends(get_db)):
         last_entry_action = None
         first_start_time = None
 
-        for entry in entries_sorted:
+        for entry in entries:
             ts = entry.timestamp
             action = entry.action
             last_entry_time = ts
@@ -294,19 +307,31 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
     if start.weekday() != 0:
         raise HTTPException(400, "Дата начала должна быть понедельником")
     employees = await crud.get_employees(db, active_only=True)
-    
     interval = await crud.get_rounding_interval(db)
-    
+
     def format_minutes_to_hhmm(minutes):
         minutes = int(minutes)
         h = minutes // 60
         m = minutes % 60
         return f"{h:02d}:{m:02d}"
-    
+
+    week_start = datetime.combine(start, time(5, 0, 0))
+    week_end = week_start + timedelta(days=7)
+
+    stmt = select(models.TimeEntry).where(
+        models.TimeEntry.timestamp >= week_start,
+        models.TimeEntry.timestamp < week_end
+    ).order_by(models.TimeEntry.employee_id, models.TimeEntry.timestamp)
+    result = await db.execute(stmt)
+    all_entries = result.scalars().all()
+
+    entries_by_employee = {}
+    for entry in all_entries:
+        entries_by_employee.setdefault(entry.employee_id, []).append(entry)
+
     result = []
     weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-    cutoff_time_of_day = time(23, 59, 59)
-    
+
     for emp in employees:
         emp_data = {
             "employee_id": emp.id,
@@ -316,12 +341,13 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
             "total_raw_minutes": 0,
             "total_break_minutes": 0
         }
+        entries = entries_by_employee.get(emp.id, [])
+
         for i in range(7):
             day_date = start + timedelta(days=i)
             workday_start = datetime.combine(day_date, time(5, 0, 0))
             workday_end = workday_start + timedelta(days=1)
-            entries = await crud.get_time_entries(db, employee_id=emp.id, start_date=workday_start, end_date=workday_end)
-            entries_sorted = sorted(entries, key=lambda x: x.timestamp)
+            day_entries = [e for e in entries if workday_start <= e.timestamp < workday_end]
 
             total_work_sec = 0
             total_break_sec = 0
@@ -338,7 +364,7 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
             end_time = None
             break_count = 0
 
-            for entry in entries_sorted:
+            for entry in day_entries:
                 ts = entry.timestamp
                 action = entry.action
                 if action == "start":
@@ -398,12 +424,10 @@ async def weekly_report(start_date: str, admin: Optional[models.Employee] = Depe
                 "worked_hours_raw": round(raw_minutes / 60, 2),
                 "worked_hours_rounded": round(rounded_minutes / 60, 2)
             })
-        
         total_display = f"{format_minutes_to_hhmm(emp_data['total_rounded_minutes'])} ({format_minutes_to_hhmm(emp_data['total_raw_minutes'])})"
         emp_data["total_worked_display"] = total_display
         emp_data["total_worked_hours"] = round(emp_data["total_raw_minutes"] / 60, 2)
         emp_data["total_break_hours"] = round(emp_data["total_break_minutes"] / 60, 2)
-        
         result.append(emp_data)
     return result
 

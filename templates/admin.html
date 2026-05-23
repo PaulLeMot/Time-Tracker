@@ -451,6 +451,19 @@
             top: 0;
             z-index: 20;
         }
+
+        .close-create-notif {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-create-notif:hover {
+            color: black;
+        }
+
+
     </style>
 </head>
 <body>
@@ -649,6 +662,28 @@
         <div id="explanationTextDisplay" style="background:#f8fafc; padding: 12px; border-radius: 8px; white-space: pre-wrap;"></div>
     </div>
 </div>
+
+<div id="createNotificationModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <span class="close-create-notif">&times;</span>
+        <h3>Отправить уведомление</h3>
+        <div style="margin-bottom: 12px;">
+            <label>Тип:</label>
+            <select id="notifType">
+                <option value="reprimand">❌ Замечание</option>
+                <option value="warning">⚠️ Предупреждение</option>
+                <option value="commendation">✅ Похвала</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label>Сообщение:</label>
+            <textarea id="notifMessage" rows="4" style="width:100%;"></textarea>
+        </div>
+        <button id="sendNotificationBtn" class="btn">Отправить</button>
+        <div id="createNotifError" style="color:red; margin-top:8px;"></div>
+    </div>
+</div>
+
 <script>
 
     function getLocalDate() {
@@ -668,7 +703,8 @@
                 if (nameSpan && data.full_name) {
                     nameSpan.textContent = data.full_name + ' (Личный Кабинет)';
                     nameSpan.onclick = () => {
-                        window.location.href = '/static/employee.html';
+                        if (eventSource) eventSource.close();
+                        window.location.href = '/static/employee.html/';
                     };
                 }
             }
@@ -1073,7 +1109,9 @@
                             <td>${row.worked_display || formatHoursToHHMM(row.worked_hours_current)}</td>
                             <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
                             <td>${row.break_count}</td>
-                            <td><button class="btn-sm" onclick="showEmployeeDetail(${row.employee_id}, '${date}')">📋</button></td>
+                            <td>
+    <button class="btn-sm" onclick="showEmployeeDetail(${row.employee_id}, '${date}')" title="Детали отметок">📋</button>
+    <button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}" title="Отправить уведомление">📝</button>
                         </tr>`;
             }
             html += '</tbody><td></div>';
@@ -1086,6 +1124,13 @@
                     loadRoundingInterval();
                 };
             }
+            container.querySelectorAll('.send-notif').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const empId = btn.dataset.id;
+                    const empName = btn.dataset.name;
+                    openNotificationModal(empId, empName);
+                });
+            });
         } catch (err) {
             container.innerHTML = '<p>Ошибка загрузки</p>';
             showToast(err.message, true);
@@ -1119,7 +1164,12 @@
             html += '<th></th><th></th></tr></thead><tbody>';
 
             for (const emp of report) {
-                html += `<tr><td class="fio-cell">${escapeHtml(emp.full_name)}</td>`;
+                html += `<tr>
+                    <td class="fio-cell" style="white-space: nowrap;">
+                        ${escapeHtml(emp.full_name)}
+                        <button class="btn-sm send-notif" data-id="${emp.employee_id}" data-name="${escapeHtml(emp.full_name)}" title="Отправить уведомление" style="margin-left: 8px; vertical-align: middle;">📝</button>
+                    </td>
+                `;
                 for (let i = 0; i < emp.days.length; i++) {
                     const day = emp.days[i];
                     const isZero = !day.worked_hours || day.worked_hours === 0;
@@ -1145,9 +1195,18 @@
                 `;
                 html += `</tr>`;
             }
-            html += '</tbody></table></div>';
+            html += '</tbody></tr></div>';
             container.innerHTML = html;
-
+            
+            container.querySelectorAll('.send-notif').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const empId = btn.dataset.id;
+                    const empName = btn.dataset.name;
+                    openNotificationModal(empId, empName);
+                });
+            });
+            
             const table = container.querySelector('table');
             const rows = table.querySelectorAll('tbody tr');
             
@@ -1900,7 +1959,7 @@
 
     function connectSSE() {
         if (eventSource) eventSource.close();
-        eventSource = new EventSource('/api/admin/events');
+        eventSource = new EventSource('/api/admin/events/');
         
         eventSource.addEventListener('update', (e) => {
             console.log('Получено обновление, перезагружаем отчёты');
@@ -2192,7 +2251,7 @@ function renderNotifications(notifications) {
         return;
     }
     let html = '<div class="recent-table"><table class="report-table"><thead>';
-    html += '<th>ФИО</th><th>Тип</th><th>Сообщение</th><th>Статус</th><th>Объяснительная</th><th>Действия</th></tr></thead><tbody>';
+    html += '<th>ФИО</th><th>Тип</th><th>Сообщение</th><th>Статус</th><th>Дата создания</th><th>Объяснительная</th><th>Действия</th></tr></thead><tbody>';
     for (const n of notifications) {
         let typeIcon = '';
         switch (n.type) {
@@ -2216,14 +2275,20 @@ function renderNotifications(notifications) {
         if (n.explanation) {
             explanationHtml = `<button class="btn-sm view-explanation" data-id="${n.id}">📄 Показать</button>`;
         }
+        let createdDate = '';
+        if (n.created_at) {
+            const date = new Date(n.created_at);
+            createdDate = date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
         html += `<tr>
                     <td>${escapeHtml(n.full_name)}</td>
                     <td>${typeIcon}</td>
                     <td>${escapeHtml(n.message)}</td>
                     <td>${statusText}</td>
+                    <td>${createdDate}</td>
                     <td>${explanationHtml}</td>
                     <td>${actions.join(' ')}</td>
-                 </tr>`;
+                </tr>`;
     }
     html += '</tbody></table></div>';
     container.innerHTML = html;
@@ -2335,6 +2400,58 @@ document.addEventListener('click', function(event) {
     if (event.target.classList && event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
     }
+});
+
+let currentNotifyEmployeeId = null;
+let currentNotifyEmployeeName = '';
+
+function openNotificationModal(empId, empName) {
+    currentNotifyEmployeeId = empId;
+    currentNotifyEmployeeName = empName;
+    document.getElementById('notifMessage').value = '';
+    document.getElementById('createNotifError').innerText = '';
+    document.getElementById('createNotificationModal').style.display = 'block';
+}
+
+async function sendNotification() {
+    const type = document.getElementById('notifType').value;
+    const message = document.getElementById('notifMessage').value.trim();
+    if (!message) {
+        document.getElementById('createNotifError').innerText = 'Введите сообщение';
+        return;
+    }
+    try {
+        const resp = await fetch('/api/admin/notifications/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                employee_id: currentNotifyEmployeeId,
+                type: type,
+                message: message
+            }),
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            showToast('✅ Уведомление создано (черновик)', false);
+            document.getElementById('createNotificationModal').style.display = 'none';
+        } else {
+            const err = await resp.json();
+            document.getElementById('createNotifError').innerText = err.detail || 'Ошибка отправки';
+        }
+    } catch (err) {
+        document.getElementById('createNotifError').innerText = 'Ошибка сети';
+    }
+}
+
+document.querySelector('.close-create-notif')?.addEventListener('click', () => {
+    document.getElementById('createNotificationModal').style.display = 'none';
+});
+window.addEventListener('click', (e) => {
+    const modal = document.getElementById('createNotificationModal');
+    if (e.target === modal) modal.style.display = 'none';
+});
+window.addEventListener('beforeunload', function() {
+    if (window.eventSource) window.eventSource.close();
 });
 </script>
 </body>
