@@ -798,7 +798,9 @@
             }
             if ((data.is_admin || data.is_monitor) && !window._monitorSSE_active) {
                 window._monitorSSE_active = true;
-                connectMonitorSSE();
+                setTimeout(() => {
+                    connectMonitorSSE();
+                }, 2000);
             }
             const allNotifTab = document.getElementById('allNotifTab');
             if (allNotifTab && (data.is_admin || data.is_monitor)) {
@@ -1783,7 +1785,9 @@ function connectEmployeeSSE() {
     };
 }
 loadNotifications();
-connectEmployeeSSE();
+setTimeout(() => {
+    connectEmployeeSSE();
+}, 2000);
 
 let resizeTimeout;
 window.addEventListener('resize', () => {

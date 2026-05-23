@@ -685,7 +685,7 @@
 </div>
 
 <script>
-
+    let eventSource = null;
     function getLocalDate() {
         const now = new Date();
         const year = now.getFullYear();
@@ -1955,8 +1955,6 @@
         }
     }
 
-    let eventSource = null;
-
     function connectSSE() {
         if (eventSource) eventSource.close();
         eventSource = new EventSource('/api/admin/events/');
@@ -2451,7 +2449,7 @@ window.addEventListener('click', (e) => {
     if (e.target === modal) modal.style.display = 'none';
 });
 window.addEventListener('beforeunload', function() {
-    if (window.eventSource) window.eventSource.close();
+    if (eventSource) eventSource.close();
 });
 </script>
 </body>
