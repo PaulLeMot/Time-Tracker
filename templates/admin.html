@@ -552,7 +552,7 @@
         </div>
         <div class="tab-content" id="notifications-tab" style="display: none;">
             <h2>🔔 Управление уведомлениями</h2>
-            <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center;">
+            <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                 <label>Фильтр по статусу:</label>
                 <select id="notifStatusFilter">
                     <option value="">Все</option>
@@ -560,6 +560,12 @@
                     <option value="sent">Отправленные</option>
                     <option value="rejected">Отклонённые</option>
                 </select>
+                
+                <label>Сотрудник:</label>
+                <select id="notifEmployeeFilter">
+                    <option value="">Все</option>
+                </select>
+                
                 <button id="refreshNotificationsBtn" class="btn">Обновить</button>
             </div>
             <div id="notificationsContainer">Загрузка...</div>
@@ -1610,6 +1616,7 @@
             });
         }
         loadEmployees();
+        loadEmployeeListForFilter();
         const today = getLocalDate();
         document.getElementById('reportDate').value = today;
         loadDailyReport(today);
@@ -2229,9 +2236,13 @@ let currentEditNotificationId = null;
 
 async function loadNotifications() {
     const container = document.getElementById('notificationsContainer');
-    const filter = document.getElementById('notifStatusFilter').value;
+    const status = document.getElementById('notifStatusFilter').value;
+    const employeeId = document.getElementById('notifEmployeeFilter').value;
     let url = '/api/admin/notifications';
-    if (filter) url += `?status=${filter}`;
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (employeeId) params.append('employee_id', employeeId);
+    if (params.toString()) url += '?' + params.toString();
     try {
         const resp = await fetch(url, { credentials: 'include' });
         if (!resp.ok) throw new Error('Ошибка загрузки');
@@ -2394,6 +2405,7 @@ document.querySelector('#explanationViewModal .close-explanation-view')?.addEven
 document.getElementById('saveNotifEditBtn')?.addEventListener('click', saveEditedNotification);
 document.getElementById('refreshNotificationsBtn')?.addEventListener('click', loadNotifications);
 document.getElementById('notifStatusFilter')?.addEventListener('change', loadNotifications);
+document.getElementById('notifEmployeeFilter').addEventListener('change', loadNotifications);
 document.addEventListener('click', function(event) {
     if (event.target.classList && event.target.classList.contains('modal')) {
         event.target.style.display = 'none';
@@ -2451,6 +2463,24 @@ window.addEventListener('click', (e) => {
 window.addEventListener('beforeunload', function() {
     if (eventSource) eventSource.close();
 });
+
+async function loadEmployeeListForFilter() {
+    try {
+        const resp = await fetch('/api/employees?active_only=false', { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки сотрудников');
+        const employees = await resp.json();
+        const select = document.getElementById('notifEmployeeFilter');
+        select.innerHTML = '<option value="">Все</option>';
+        employees.forEach(emp => {
+            const option = document.createElement('option');
+            option.value = emp.id;
+            option.textContent = `${emp.full_name}`;
+            select.appendChild(option);
+        });
+    } catch (err) {
+        console.error('Ошибка загрузки списка сотрудников', err);
+    }
+}
 </script>
 </body>
 </html>

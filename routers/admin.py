@@ -829,6 +829,7 @@ async def create_notification(
 @notifications_router.get("/", response_model=List[NotificationResponse])
 async def list_notifications(
     status: Optional[str] = None,
+    employee_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
     stmt = select(Notification)
@@ -838,6 +839,8 @@ async def list_notifications(
             stmt = stmt.where(Notification.status == status_enum)
         except ValueError:
             raise HTTPException(400, "Invalid status value")
+    if employee_id is not None:
+        stmt = stmt.where(Notification.employee_id == employee_id)
     stmt = stmt.order_by(Notification.created_at.desc())
     result = await db.execute(stmt)
     notifications = result.scalars().all()
