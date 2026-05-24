@@ -47,6 +47,7 @@ class Notification(Base):
     status = Column(Enum(NotificationStatus), default=NotificationStatus.DRAFT)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    source = Column(String(20), default="admin")
 
 class Explanation(Base):
     __tablename__ = "explanations"

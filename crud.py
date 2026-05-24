@@ -224,7 +224,8 @@ async def auto_close_shifts(db: AsyncSession):
                     admin_id=admin.id,
                     type=NotificationType.WARNING,
                     message="Не был завершен рабочий день",
-                    status=NotificationStatus.SENT
+                    status=NotificationStatus.SENT,
+                    source="auto"
                 )
                 db.add(notification)
                 await db.commit()

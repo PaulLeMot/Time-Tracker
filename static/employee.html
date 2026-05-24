@@ -1610,15 +1610,20 @@ function renderNotifications(notifications) {
                     <div class="notif-detail-value"><button class="btn-sm write-explanation" data-id="${n.id}">✏️ Написать объяснительную</button></div>
                 </div>`;
             }
+            let shortMessage = escapeHtml(n.message);
+            if (shortMessage.length > 45) shortMessage = shortMessage.substring(0, 42) + '...';
+
             html += `
                 <div class="notifications-accordion-item" data-id="${n.id}">
                     <div class="notifications-accordion-header">
-                        <span style="color:${typeColor};">${typeIcon}</span>
-                        <span>${dateStr.split(',')[0]}</span>
+                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+                            <span style="color:${typeColor};">${typeIcon}</span>
+                            <span style="white-space: nowrap;">${dateStr.split(',')[0]}</span>
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #475569; font-size: 0.85rem;">${shortMessage}</span>
+                        </div>
                     </div>
                     <div class="notifications-accordion-details">
-                        ${detailsHtml}
-                        ${explanationHtml}
+                        ${n.message}
                     </div>
                 </div>
             `;
@@ -1843,7 +1848,7 @@ function renderAllNotifications(notifications) {
 
     if (!isMobile) {
         let html = '<div class="recent-table"><table class="report-table"><thead>';
-        html += '<th>ФИО</th><th>Тип</th><th>Сообщение</th><th>Статус</th><th>Дата создания</th><th>Объяснительная</th><th>Действия</th></tr></thead><tbody>';
+        html += '<th>ФИО</th><th>Тип</th><th>Дата создания</th><th>Сообщение</th><th>Статус</th><th>Объяснительная</th><th>Действия</th></tr></thead><tbody>';
         for (const n of notifications) {
             let typeIcon = '';
             switch (n.type) {
@@ -1885,12 +1890,12 @@ function renderAllNotifications(notifications) {
             html += `<tr>
                         <td>${escapeHtml(n.full_name)}</td>
                         <td>${typeIcon}</td>
+                        <td>${createdDate}</td>
                         <td>${escapeHtml(n.message)}</td>
                         <td>${statusText}</td>
-                        <td>${createdDate}</td>
                         <td>${explanationHtml}</td>
                         <td>${actionsHtml}</td>
-                     </tr>`;
+                    </tr>`;
         }
         html += '</tbody></table></div>';
         container.innerHTML = html;

@@ -70,6 +70,7 @@ class NotificationResponse(BaseModel):
     updated_at: datetime
     explanation: Optional[str] = None
     full_name: Optional[str] = None
+    created_by: Optional[str] = None
 
 page_router = APIRouter(tags=["pages"])
 router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(get_current_admin)])
@@ -819,7 +820,8 @@ async def create_notification(
         admin_id=admin_id,
         type=notif_type,
         message=data.message,
-        status=NotificationStatus.DRAFT
+        status=NotificationStatus.DRAFT,
+        source="admin"
     )
     db.add(notification)
     await db.commit()
@@ -854,6 +856,14 @@ async def list_notifications(
         exp_stmt = select(Explanation).where(Explanation.notification_id == n.id)
         exp_result = await db.execute(exp_stmt)
         explanation = exp_result.scalar_one_or_none()
+
+        if n.source == "auto":
+            created_by = "Авто"
+        else:
+            admin_stmt = select(models.Employee.full_name).where(models.Employee.id == n.admin_id)
+            admin_result = await db.execute(admin_stmt)
+            created_by = admin_result.scalar_one_or_none() or "Админ"
+
         response.append(NotificationResponse(
             id=n.id,
             employee_id=n.employee_id,
@@ -864,7 +874,8 @@ async def list_notifications(
             created_at=n.created_at,
             updated_at=n.updated_at,
             explanation=explanation.explanation_text if explanation else None,
-            full_name=full_name
+            full_name=full_name,
+            created_by=created_by
         ))
     return response
 

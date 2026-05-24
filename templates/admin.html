@@ -2260,7 +2260,7 @@ function renderNotifications(notifications) {
         return;
     }
     let html = '<div class="recent-table"><table class="report-table"><thead>';
-    html += '<th>ФИО</th><th>Тип</th><th>Сообщение</th><th>Статус</th><th>Дата создания</th><th>Объяснительная</th><th>Действия</th></tr></thead><tbody>';
+    html += '<th>ФИО</th><th>Тип</th><th>Дата создания</th><th>Автор</th><th>Сообщение</th><th>Статус</th><th>Объяснительная</th><th>Действия</th></td></thead><tbody>';
     for (const n of notifications) {
         let typeIcon = '';
         switch (n.type) {
@@ -2292,9 +2292,10 @@ function renderNotifications(notifications) {
         html += `<tr>
                     <td>${escapeHtml(n.full_name)}</td>
                     <td>${typeIcon}</td>
+                    <td>${createdDate}</td>
+                    <td>${escapeHtml(n.created_by || '—')}</td>
                     <td>${escapeHtml(n.message)}</td>
                     <td>${statusText}</td>
-                    <td>${createdDate}</td>
                     <td>${explanationHtml}</td>
                     <td>${actions.join(' ')}</td>
                 </tr>`;
@@ -2468,13 +2469,14 @@ async function loadEmployeeListForFilter() {
     try {
         const resp = await fetch('/api/employees?active_only=false', { credentials: 'include' });
         if (!resp.ok) throw new Error('Ошибка загрузки сотрудников');
-        const employees = await resp.json();
+        let employees = await resp.json();
+        employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
         const select = document.getElementById('notifEmployeeFilter');
         select.innerHTML = '<option value="">Все</option>';
         employees.forEach(emp => {
             const option = document.createElement('option');
             option.value = emp.id;
-            option.textContent = `${emp.full_name}`;
+            option.textContent = emp.full_name;
             select.appendChild(option);
         });
     } catch (err) {

@@ -95,7 +95,8 @@ async def create_timelog(entry: schemas.TimeLogCreate, db: AsyncSession = Depend
                         admin_id=admin.id,
                         type=NotificationType.REPRIMAND,
                         message="Опоздание",
-                        status=NotificationStatus.SENT
+                        status=NotificationStatus.SENT,
+                        source="auto"
                     )
                     db.add(notification)
                     await db.commit()
