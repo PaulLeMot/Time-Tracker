@@ -171,6 +171,7 @@ async def auto_close_shifts(db: AsyncSession):
     from models import Notification, NotificationType, NotificationStatus
     now = datetime.now()
     auto_time = datetime.combine(now.date(), time(5, 0, 0))
+    break_time = auto_time - timedelta(seconds=1)
     employees = await get_employees(db, active_only=True)
     admin_stmt = select(Employee).where(Employee.is_admin == 1).limit(1)
     admin_result = await db.execute(admin_stmt)
@@ -196,7 +197,7 @@ async def auto_close_shifts(db: AsyncSession):
             break_end_entry = TimeEntry(
                 employee_id=emp.id,
                 action="break_end",
-                timestamp=auto_time,
+                timestamp=break_time,
                 source="auto"
             )
             db.add(break_end_entry)

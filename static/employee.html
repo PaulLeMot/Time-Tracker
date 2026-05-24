@@ -700,7 +700,10 @@
 <div id="createNotificationModal" class="modal">
     <div class="modal-content" style="max-width: 500px;">
         <span class="close-create-notif">&times;</span>
-        <h3>Отправить уведомление сотруднику</h3>
+        <h3>Отправить уведомление</h3>
+        <div id="notifyEmployeeInfo" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px; font-weight: 500; color: #0f172a;">
+            👤 Сотрудник: <span id="notifyEmployeeName">—</span>
+        </div>
         <div style="margin-bottom: 12px;">
             <label>Тип:</label>
             <select id="notifType">
@@ -1730,6 +1733,7 @@ let currentNotifyEmployeeName = '';
 function openNotificationModal(empId, empName) {
     currentNotifyEmployeeId = empId;
     currentNotifyEmployeeName = empName;
+    document.getElementById('notifyEmployeeName').innerText = empName;
     document.getElementById('notifMessage').value = '';
     document.getElementById('createNotifError').innerText = '';
     document.getElementById('createNotificationModal').style.display = 'block';
@@ -1768,6 +1772,7 @@ async function sendNotification() {
 document.getElementById('sendNotificationBtn')?.addEventListener('click', sendNotification);
 document.querySelector('.close-create-notif')?.addEventListener('click', () => {
     document.getElementById('createNotificationModal').style.display = 'none';
+    document.getElementById('notifyEmployeeName').innerText = '—';
 });
 window.addEventListener('click', (e) => {
     const modal = document.getElementById('createNotificationModal');

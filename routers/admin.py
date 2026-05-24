@@ -674,8 +674,14 @@ def calculate_work_stats(entries):
     return worked_min, break_min, start_str, end_str
 
 @public_router.get("/api/admin/recent-entries")
-async def get_recent_entries(limit: int = 100, admin: Optional[models.Employee] = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    
+async def get_recent_entries(
+    limit: int = 100,
+    employee_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    admin: Optional[models.Employee] = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
     stmt = select(
         models.TimeEntry.id,
         models.TimeEntry.employee_id,
@@ -686,7 +692,28 @@ async def get_recent_entries(limit: int = 100, admin: Optional[models.Employee] 
         models.Employee.username
     ).join(
         models.Employee, models.TimeEntry.employee_id == models.Employee.id
-    ).order_by(desc(models.TimeEntry.timestamp)).limit(limit * 2)
+    )
+    
+    if employee_id is not None:
+        stmt = stmt.where(models.TimeEntry.employee_id == employee_id)
+    
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            start_datetime = datetime.combine(start_dt, time(5, 0, 0))
+            stmt = stmt.where(models.TimeEntry.timestamp >= start_datetime)
+        except ValueError:
+            raise HTTPException(400, "Invalid start_date format, use YYYY-MM-DD")
+    
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+            end_datetime = datetime.combine(end_dt, time(5, 0, 0)) + timedelta(days=1)
+            stmt = stmt.where(models.TimeEntry.timestamp < end_datetime)
+        except ValueError:
+            raise HTTPException(400, "Invalid end_date format, use YYYY-MM-DD")
+    
+    stmt = stmt.order_by(desc(models.TimeEntry.timestamp)).limit(limit * 2)
     result = await db.execute(stmt)
     rows = result.all()
     
@@ -832,9 +859,12 @@ async def create_notification(
 async def list_notifications(
     status: Optional[str] = None,
     employee_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     stmt = select(Notification)
+    
     if status:
         try:
             status_enum = NotificationStatus(status)
@@ -843,6 +873,23 @@ async def list_notifications(
             raise HTTPException(400, "Invalid status value")
     if employee_id is not None:
         stmt = stmt.where(Notification.employee_id == employee_id)
+
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            start_datetime = datetime.combine(start_dt, time(5, 0, 0))
+            stmt = stmt.where(Notification.created_at >= start_datetime)
+        except ValueError:
+            raise HTTPException(400, "Invalid start_date format, use YYYY-MM-DD")
+    
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+            end_datetime = datetime.combine(end_dt, time(5, 0, 0)) + timedelta(days=1)
+            stmt = stmt.where(Notification.created_at < end_datetime)
+        except ValueError:
+            raise HTTPException(400, "Invalid end_date format, use YYYY-MM-DD")
+    
     stmt = stmt.order_by(Notification.created_at.desc())
     result = await db.execute(stmt)
     notifications = result.scalars().all()

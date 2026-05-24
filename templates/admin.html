@@ -463,8 +463,48 @@
             color: black;
         }
 
+        .flatpickr-calendar button,
+        .flatpickr-calendar .flatpickr-prev-month,
+        .flatpickr-calendar .flatpickr-next-month {
+            height: auto !important;
+            padding: 4px 6px !important;
+            background: transparent !important;
+            border: none !important;
+            margin: 0 !important;
+            font-size: 14px !important;
+            line-height: 1 !important;
+            color: #3b82f6 !important;
+        }
+        .flatpickr-calendar button:hover {
+            background: #e2e8f0 !important;
+        }
 
+        .flatpickr-current-month .cur-month,
+        .flatpickr-current-month .cur-year {
+            font-size: 14px;
+        }
+
+        .flatpickr-calendar {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: 16px;
+            margin-top: 4px;
+        }
+        .report-table td a {
+            color: #1e293b;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .report-table td a:hover {
+            color: #3b82f6 !important;      /* синий */
+            text-decoration: underline !important;
+            cursor: pointer;
+        }
     </style>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/rangePlugin.js"></script>
 </head>
 <body>
 <div class="container">
@@ -510,16 +550,25 @@
             <div id="weeklyReportContainer"></div>
         </div>
         <div class="tab-content" id="recent-tab" style="display: none;">
-            <div style="margin-bottom: 16px;">
-                <label>Показывать: 
+            <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <label>Показывать:
                     <select id="recentLimit">
                         <option value="50">50</option>
                         <option value="100" selected>100</option>
                         <option value="200">200</option>
                         <option value="500">500</option>
                     </select>
-                    <button id="refreshRecentBtn" class="btn">Обновить</button>
                 </label>
+                <button id="refreshRecentBtn" class="btn">Обновить</button>
+                
+                <label>Сотрудник:</label>
+                <select id="recentEmployeeFilter">
+                    <option value="">Все</option>
+                </select>
+                
+                <label>Период:</label>
+                <input type="text" id="recentDateRange" placeholder="Выберите период" style="width: 240px;">
+                <button id="clearRecentDateFilterBtn" class="btn btn-warning">Сбросить даты</button>
             </div>
             <div id="recentContainer">Загрузка...</div>
         </div>
@@ -565,8 +614,11 @@
                 <select id="notifEmployeeFilter">
                     <option value="">Все</option>
                 </select>
+                <label>Период:</label>
+                <input type="text" id="notifDateRange" placeholder="Выберите период" style="width: 240px;">
                 
                 <button id="refreshNotificationsBtn" class="btn">Обновить</button>
+                <button id="clearDateFilterBtn" class="btn btn-warning">Сбросить даты</button>
             </div>
             <div id="notificationsContainer">Загрузка...</div>
         </div>
@@ -673,6 +725,9 @@
     <div class="modal-content" style="max-width: 500px;">
         <span class="close-create-notif">&times;</span>
         <h3>Отправить уведомление</h3>
+        <div id="notifyEmployeeInfo" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px; font-weight: 500; color: #0f172a;">
+            👤 Сотрудник: <span id="notifyEmployeeName">—</span>
+        </div>
         <div style="margin-bottom: 12px;">
             <label>Тип:</label>
             <select id="notifType">
@@ -692,6 +747,11 @@
 
 <script>
     let eventSource = null;
+    let startDate = '';
+    let endDate = '';
+    let recentStartDate = '';
+    let recentEndDate = '';
+    let recentEmployeeId = '';
     function getLocalDate() {
         const now = new Date();
         const year = now.getFullYear();
@@ -1617,6 +1677,60 @@
         }
         loadEmployees();
         loadEmployeeListForFilter();
+        loadRecentEmployeeFilter();
+        flatpickr("#notifDateRange", {
+            mode: "range",
+            dateFormat: "Y-m-d",
+            onChange: function(selectedDates, dateStr, instance) {
+                if (selectedDates.length === 2) {
+                    startDate = instance.formatDate(selectedDates[0], "Y-m-d");
+                    endDate = instance.formatDate(selectedDates[1], "Y-m-d");
+                } else {
+                    startDate = '';
+                    endDate = '';
+                }
+                loadNotifications();
+            }
+        });
+        document.getElementById('clearDateFilterBtn').addEventListener('click', () => {
+            const picker = document.getElementById('notifDateRange')._flatpickr;
+            if (picker) picker.clear();
+            startDate = '';
+            endDate = '';
+            loadNotifications();
+        });
+        flatpickr("#recentDateRange", {
+            mode: "range",
+            dateFormat: "Y-m-d",
+            onChange: function(selectedDates, dateStr, instance) {
+                if (selectedDates.length === 2) {
+                    recentStartDate = instance.formatDate(selectedDates[0], "Y-m-d");
+                    recentEndDate = instance.formatDate(selectedDates[1], "Y-m-d");
+                } else {
+                    recentStartDate = '';
+                    recentEndDate = '';
+                }
+                const limit = document.getElementById('recentLimit').value;
+                loadRecentEntries(parseInt(limit));
+            }
+        });
+        document.getElementById('clearRecentDateFilterBtn').addEventListener('click', () => {
+            const picker = document.getElementById('recentDateRange')._flatpickr;
+            if (picker) picker.clear();
+            recentStartDate = '';
+            recentEndDate = '';
+            const limit = document.getElementById('recentLimit').value;
+            loadRecentEntries(parseInt(limit));
+        });
+        document.getElementById('recentLimit').addEventListener('change', () => {
+            const limit = document.getElementById('recentLimit').value;
+            loadRecentEntries(parseInt(limit));
+        });
+        document.getElementById('recentEmployeeFilter').addEventListener('change', () => {
+            recentEmployeeId = document.getElementById('recentEmployeeFilter').value;
+            const limit = document.getElementById('recentLimit').value;
+            loadRecentEntries(parseInt(limit));
+        });
         const today = getLocalDate();
         document.getElementById('reportDate').value = today;
         loadDailyReport(today);
@@ -1638,7 +1752,14 @@
         const container = document.getElementById('recentContainer');
         container.innerHTML = '<p>Загрузка...</p>';
         try {
-            const resp = await fetch(`/api/admin/recent-entries?limit=${limit}`);
+            let url = `/api/admin/recent-entries?limit=${limit}`;
+            const params = new URLSearchParams();
+            if (recentEmployeeId) params.append('employee_id', recentEmployeeId);
+            if (recentStartDate) params.append('start_date', recentStartDate);
+            if (recentEndDate) params.append('end_date', recentEndDate);
+            if (params.toString()) url += '&' + params.toString();
+            
+            const resp = await fetch(url, { credentials: 'include' });
             if (!resp.ok) throw new Error('Ошибка загрузки');
             const entries = await resp.json();
             if (!entries.length) {
@@ -2238,11 +2359,15 @@ async function loadNotifications() {
     const container = document.getElementById('notificationsContainer');
     const status = document.getElementById('notifStatusFilter').value;
     const employeeId = document.getElementById('notifEmployeeFilter').value;
+    
     let url = '/api/admin/notifications';
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (employeeId) params.append('employee_id', employeeId);
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
     if (params.toString()) url += '?' + params.toString();
+    
     try {
         const resp = await fetch(url, { credentials: 'include' });
         if (!resp.ok) throw new Error('Ошибка загрузки');
@@ -2290,7 +2415,7 @@ function renderNotifications(notifications) {
             createdDate = date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
         }
         html += `<tr>
-                    <td>${escapeHtml(n.full_name)}</td>
+                    <td><a href="#" onclick="goToEmployeeRecentEntries(${n.employee_id}, '${escapeHtml(n.full_name)}'); return false;" style="color: #1e293b; text-decoration: none; cursor: pointer;">${escapeHtml(n.full_name)}</a></td>
                     <td>${typeIcon}</td>
                     <td>${createdDate}</td>
                     <td>${escapeHtml(n.created_by || '—')}</td>
@@ -2419,6 +2544,7 @@ let currentNotifyEmployeeName = '';
 function openNotificationModal(empId, empName) {
     currentNotifyEmployeeId = empId;
     currentNotifyEmployeeName = empName;
+    document.getElementById('notifyEmployeeName').innerText = empName;
     document.getElementById('notifMessage').value = '';
     document.getElementById('createNotifError').innerText = '';
     document.getElementById('createNotificationModal').style.display = 'block';
@@ -2456,6 +2582,7 @@ async function sendNotification() {
 
 document.querySelector('.close-create-notif')?.addEventListener('click', () => {
     document.getElementById('createNotificationModal').style.display = 'none';
+    document.getElementById('notifyEmployeeName').innerText = '—';
 });
 window.addEventListener('click', (e) => {
     const modal = document.getElementById('createNotificationModal');
@@ -2483,6 +2610,51 @@ async function loadEmployeeListForFilter() {
         console.error('Ошибка загрузки списка сотрудников', err);
     }
 }
+async function loadRecentEmployeeFilter() {
+    try {
+        const resp = await fetch('/api/employees?active_only=false', { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки сотрудников');
+        let employees = await resp.json();
+        employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+        const select = document.getElementById('recentEmployeeFilter');
+        select.innerHTML = '<option value="">Все</option>';
+        employees.forEach(emp => {
+            const option = document.createElement('option');
+            option.value = emp.id;
+            option.textContent = emp.full_name;
+            select.appendChild(option);
+        });
+    } catch (err) {
+        console.error('Ошибка загрузки списка сотрудников', err);
+    }
+}
+window.goToEmployeeRecentEntries = async function(employeeId, employeeName) {
+    const recentTabBtn = document.querySelector('.tab-btn[data-tab="recent"]');
+    if (!recentTabBtn) {
+        console.error('Вкладка "Последние отметки" не найдена');
+        return;
+    }
+    recentTabBtn.click();
+
+    setTimeout(() => {
+        recentEmployeeId = employeeId;
+        const select = document.getElementById('recentEmployeeFilter');
+        if (select) select.value = employeeId;
+
+        const clearBtn = document.getElementById('clearRecentDateFilterBtn');
+        if (clearBtn) {
+            clearBtn.click();
+        } else {
+            recentStartDate = '';
+            recentEndDate = '';
+            const picker = document.getElementById('recentDateRange');
+            if (picker && picker._flatpickr) picker._flatpickr.clear();
+        }
+
+        const limit = document.getElementById('recentLimit').value;
+        loadRecentEntries(parseInt(limit));
+    }, 200);
+};
 </script>
 </body>
 </html>
