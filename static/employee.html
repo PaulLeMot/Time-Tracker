@@ -586,7 +586,44 @@
             padding: 8px 12px;
             border: 1px solid #cbd5e1;
         }
+        .flatpickr-calendar button,
+        .flatpickr-calendar .flatpickr-prev-month,
+        .flatpickr-calendar .flatpickr-next-month {
+            height: auto !important;
+            padding: 4px 6px !important;
+            background: transparent !important;
+            border: none !important;
+            margin: 0 !important;
+            font-size: 14px !important;
+            line-height: 1 !important;
+            color: #3b82f6 !important;
+        }
+        .flatpickr-calendar button:hover {
+            background: #e2e8f0 !important;
+        }
+
+        .flatpickr-current-month .cur-month,
+        .flatpickr-current-month .cur-year {
+            font-size: 14px;
+        }
+
+        .flatpickr-calendar {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-radius: 16px;
+            margin-top: 4px;
+        }
+        .btn-warning { background: #f59e0b; }
+        .btn-warning:hover { background: #d97706; }
+        input, select {
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 20px;
+            font-size: 1rem;
+        }
     </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/rangePlugin.js"></script>
 </head>
 <body>
 <div class="container">
@@ -674,7 +711,7 @@
 
     <div id="all-notifications-tab" class="tab-content" style="display: none;">
         <h2>📋 Управление уведомлениями</h2>
-        <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center;">
+        <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <label>Фильтр по статусу:</label>
             <select id="allNotifStatusFilter">
                 <option value="">Все</option>
@@ -682,6 +719,16 @@
                 <option value="sent">Отправленные</option>
                 <option value="rejected">Отклонённые</option>
             </select>
+
+            <label>Сотрудник:</label>
+            <select id="allNotifEmployeeFilter">
+                <option value="">Все</option>
+            </select>
+
+            <label>Период:</label>
+            <input type="text" id="allNotifDateRange" placeholder="Выберите период" style="width: 240px;">
+
+            <button id="clearAllNotifDateFilterBtn" class="btn btn-warning">Сбросить даты</button>
             <button id="refreshAllNotifBtn" class="btn">Обновить</button>
         </div>
         <div id="allNotificationsContainer">Загрузка...</div>
@@ -728,6 +775,11 @@
     </div>
 </div>
 <script>
+    let allNotifStartDate = '';
+    let allNotifEndDate = '';
+    let allNotifEmployeeId = '';
+    let startDate = '';
+    let endDate = '';
     // ========== Вспомогательные функции ==========
     function getLocalDate() {
         const now = new Date();
@@ -1851,9 +1903,16 @@ let currentEditNotificationId = null;
 
 async function loadAllNotifications() {
     const container = document.getElementById('allNotificationsContainer');
-    const filter = document.getElementById('allNotifStatusFilter').value;
+    const status = document.getElementById('allNotifStatusFilter').value;
+    
     let url = '/api/admin/notifications';
-    if (filter) url += `?status=${filter}`;
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (allNotifEmployeeId) params.append('employee_id', allNotifEmployeeId);
+    if (allNotifStartDate) params.append('start_date', allNotifStartDate);
+    if (allNotifEndDate) params.append('end_date', allNotifEndDate);
+    if (params.toString()) url += '?' + params.toString();
+    
     try {
         const resp = await fetch(url, { credentials: 'include' });
         if (!resp.ok) throw new Error('Ошибка загрузки');
@@ -2171,7 +2230,82 @@ document.querySelector('#explanationViewModal .close-explanation-view')?.addEven
 document.getElementById('saveNotifEditBtn')?.addEventListener('click', saveEditedNotification);
 document.getElementById('refreshAllNotifBtn')?.addEventListener('click', loadAllNotifications);
 document.getElementById('allNotifStatusFilter')?.addEventListener('change', loadAllNotifications);
+document.addEventListener('DOMContentLoaded', async () => {
+    initTabs();
 
+    // ========== Инициализация фильтров для "Управление уведомлениями" ==========
+    async function loadEmployeesForAllNotif() {
+        try {
+            const resp = await fetch('/api/employees?active_only=false', { credentials: 'include' });
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            let employees = await resp.json();
+            employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+            const select = document.getElementById('allNotifEmployeeFilter');
+            if (select) {
+                select.innerHTML = '<option value="">Все</option>';
+                employees.forEach(emp => {
+                    const option = document.createElement('option');
+                    option.value = emp.id;
+                    option.textContent = emp.full_name;
+                    select.appendChild(option);
+                });
+            }
+        } catch (err) {
+            console.error('Ошибка загрузки списка сотрудников для фильтра уведомлений', err);
+        }
+    }
+
+    const allNotifDateRangeInput = document.getElementById('allNotifDateRange');
+    if (allNotifDateRangeInput) {
+        flatpickr(allNotifDateRangeInput, {
+            mode: "range",
+            dateFormat: "Y-m-d",
+            onChange: function(selectedDates, dateStr, instance) {
+                if (selectedDates.length === 2) {
+                    allNotifStartDate = instance.formatDate(selectedDates[0], "Y-m-d");
+                    allNotifEndDate = instance.formatDate(selectedDates[1], "Y-m-d");
+                } else {
+                    allNotifStartDate = '';
+                    allNotifEndDate = '';
+                }
+                loadAllNotifications();
+            }
+        });
+    }
+
+    const clearAllNotifDateBtn = document.getElementById('clearAllNotifDateFilterBtn');
+    if (clearAllNotifDateBtn) {
+        clearAllNotifDateBtn.addEventListener('click', () => {
+            const picker = document.getElementById('allNotifDateRange')._flatpickr;
+            if (picker) picker.clear();
+            allNotifStartDate = '';
+            allNotifEndDate = '';
+            loadAllNotifications();
+        });
+    }
+
+    await loadEmployeesForAllNotif();
+
+    const allNotifEmployeeSelect = document.getElementById('allNotifEmployeeFilter');
+    if (allNotifEmployeeSelect) {
+        allNotifEmployeeSelect.addEventListener('change', () => {
+            allNotifEmployeeId = allNotifEmployeeSelect.value;
+            loadAllNotifications();
+        });
+    }
+
+    const allNotifStatusFilter = document.getElementById('allNotifStatusFilter');
+    if (allNotifStatusFilter) {
+        allNotifStatusFilter.removeEventListener('change', loadAllNotifications);
+        allNotifStatusFilter.addEventListener('change', loadAllNotifications);
+    }
+
+    const refreshBtn = document.getElementById('refreshAllNotifBtn');
+    if (refreshBtn) {
+        refreshBtn.removeEventListener('click', loadAllNotifications);
+        refreshBtn.addEventListener('click', loadAllNotifications);
+    }
+});
 </script>
 </body>
 </html>

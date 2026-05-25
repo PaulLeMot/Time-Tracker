@@ -853,6 +853,7 @@ async def create_notification(
     db.add(notification)
     await db.commit()
     await db.refresh(notification)
+    await notify_admin_clients()
     return {"id": notification.id, "status": notification.status.value}
 
 @notifications_router.get("/", response_model=List[NotificationResponse])
@@ -948,6 +949,7 @@ async def update_notification(
         notif.message = data.message
     notif.updated_at = datetime.utcnow()
     await db.commit()
+    await notify_admin_clients()
     return {"id": notif.id, "status": notif.status.value}
 
 @notifications_router.post("/{notification_id}/approve", response_model=dict)
@@ -966,6 +968,7 @@ async def approve_notification(
     notif.updated_at = datetime.now()
     await db.commit()
     await notify_employee(notif.employee_id)
+    await notify_admin_clients()
     return {"id": notif.id, "status": notif.status.value}
 
 @notifications_router.post("/{notification_id}/reject", response_model=dict)
@@ -983,6 +986,7 @@ async def reject_notification(
     notif.status = NotificationStatus.REJECTED
     notif.updated_at = datetime.now()
     await db.commit()
+    await notify_admin_clients()
     return {"id": notif.id, "status": notif.status.value}
 
 @notifications_router.get("/{notification_id}/explanation", response_model=dict)
