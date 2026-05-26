@@ -15,7 +15,8 @@ from routers.auth import get_current_employee, get_current_admin, get_current_mo
 import models
 from sse import notify_admin_clients, notify_monitor_clients, notify_employee
 from fastapi.responses import RedirectResponse
-from models import Notification, NotificationType, NotificationStatus, Explanation
+from models import Notification, NotificationType, NotificationStatus, Explanation, Employee
+from sqlalchemy.orm import aliased
 class EmployeeCreate(BaseModel):
     username: str
     full_name: str
@@ -58,6 +59,7 @@ class NotificationCreate(BaseModel):
 class NotificationUpdate(BaseModel):
     type: Optional[str] = None
     message: Optional[str] = None
+    employee_id: Optional[int] = None
 
 class NotificationResponse(BaseModel):
     id: int
@@ -71,6 +73,9 @@ class NotificationResponse(BaseModel):
     explanation: Optional[str] = None
     full_name: Optional[str] = None
     created_by: Optional[str] = None
+
+class ExplanationUpdate(BaseModel):
+    explanation_text: str
 
 page_router = APIRouter(tags=["pages"])
 router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(get_current_admin)])
@@ -864,65 +869,63 @@ async def list_notifications(
     end_date: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(Notification)
-    
+    AdminEmp = aliased(models.Employee, name="admin_emp")
+
+    stmt = (
+        select(
+            Notification,
+            Explanation.explanation_text.label("explanation_text"),
+            models.Employee.full_name.label("emp_full_name"),
+            AdminEmp.full_name.label("admin_full_name")
+        )
+        .outerjoin(Explanation, Explanation.notification_id == Notification.id)
+        .outerjoin(models.Employee, models.Employee.id == Notification.employee_id)
+        .outerjoin(AdminEmp, AdminEmp.id == Notification.admin_id)
+        .order_by(Notification.created_at.desc())
+    )
+
     if status:
         try:
             status_enum = NotificationStatus(status)
             stmt = stmt.where(Notification.status == status_enum)
         except ValueError:
             raise HTTPException(400, "Invalid status value")
+
     if employee_id is not None:
         stmt = stmt.where(Notification.employee_id == employee_id)
 
     if start_date:
         try:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
-            start_datetime = datetime.combine(start_dt, time(5, 0, 0))
-            stmt = stmt.where(Notification.created_at >= start_datetime)
+            stmt = stmt.where(Notification.created_at >= datetime.combine(start_dt, time(5, 0, 0)))
         except ValueError:
             raise HTTPException(400, "Invalid start_date format, use YYYY-MM-DD")
-    
+
     if end_date:
         try:
             end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
-            end_datetime = datetime.combine(end_dt, time(5, 0, 0)) + timedelta(days=1)
-            stmt = stmt.where(Notification.created_at < end_datetime)
+            stmt = stmt.where(Notification.created_at < datetime.combine(end_dt, time(5, 0, 0)) + timedelta(days=1))
         except ValueError:
             raise HTTPException(400, "Invalid end_date format, use YYYY-MM-DD")
-    
-    stmt = stmt.order_by(Notification.created_at.desc())
+
     result = await db.execute(stmt)
-    notifications = result.scalars().all()
+    rows = result.all()
 
     response = []
-    for n in notifications:
-        emp_stmt = select(models.Employee.full_name).where(models.Employee.id == n.employee_id)
-        emp_result = await db.execute(emp_stmt)
-        full_name = emp_result.scalar_one_or_none()
-
-        exp_stmt = select(Explanation).where(Explanation.notification_id == n.id)
-        exp_result = await db.execute(exp_stmt)
-        explanation = exp_result.scalar_one_or_none()
-
-        if n.source == "auto":
-            created_by = "Авто"
-        else:
-            admin_stmt = select(models.Employee.full_name).where(models.Employee.id == n.admin_id)
-            admin_result = await db.execute(admin_stmt)
-            created_by = admin_result.scalar_one_or_none() or "Админ"
-
+    for notif, exp_text, emp_name, admin_name in rows:
+        created_by = "Авто" if notif.source == "auto" else (admin_name or "Админ")
+        
         response.append(NotificationResponse(
-            id=n.id,
-            employee_id=n.employee_id,
-            admin_id=n.admin_id,
-            type=n.type.value,
-            message=n.message,
-            status=n.status.value,
-            created_at=n.created_at,
-            updated_at=n.updated_at,
-            explanation=explanation.explanation_text if explanation else None,
-            full_name=full_name,
+            id=notif.id,
+            employee_id=notif.employee_id,
+            admin_id=notif.admin_id,
+            type=notif.type.value,
+            message=notif.message,
+            status=notif.status.value,
+            created_at=notif.created_at,
+            updated_at=notif.updated_at,
+            explanation=exp_text,
+            full_name=emp_name,
             created_by=created_by
         ))
     return response
@@ -938,8 +941,7 @@ async def update_notification(
     notif = result.scalar_one_or_none()
     if not notif:
         raise HTTPException(404, "Notification not found")
-    if notif.status != NotificationStatus.DRAFT:
-        raise HTTPException(400, "Can only edit draft notifications")
+    
     if data.type is not None:
         try:
             notif.type = NotificationType(data.type)
@@ -947,7 +949,23 @@ async def update_notification(
             raise HTTPException(400, "Invalid type")
     if data.message is not None:
         notif.message = data.message
-    notif.updated_at = datetime.utcnow()
+    if data.employee_id is not None:
+        emp_stmt = select(Employee).where(Employee.id == data.employee_id)
+        emp_res = await db.execute(emp_stmt)
+        if not emp_res.scalar_one_or_none():
+            raise HTTPException(404, "Employee not found")
+        if data.employee_id is not None and data.employee_id != notif.employee_id:
+            from models import Explanation
+            exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+            exp_result = await db.execute(exp_stmt)
+            explanation = exp_result.scalar_one_or_none()
+            if explanation:
+                await db.delete(explanation)
+        notif.employee_id = data.employee_id
+    if notif.status in (NotificationStatus.SENT, NotificationStatus.REJECTED):
+        notif.status = NotificationStatus.DRAFT
+    
+    notif.updated_at = datetime.now()
     await db.commit()
     await notify_admin_clients()
     return {"id": notif.id, "status": notif.status.value}
@@ -1006,3 +1024,67 @@ async def get_explanation(
         "explanation_text": explanation.explanation_text,
         "created_at": explanation.created_at
     }
+
+@notifications_router.delete("/{notification_id}", status_code=204)
+async def delete_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Notification not found")
+    exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+    exp_result = await db.execute(exp_stmt)
+    explanation = exp_result.scalar_one_or_none()
+    if explanation:
+        await db.delete(explanation)
+    
+    await db.delete(notif)
+    await db.commit()
+    await notify_admin_clients()
+    return Response(status_code=204)
+
+@notifications_router.put("/{notification_id}/explanation", response_model=dict)
+async def update_explanation(
+    notification_id: int,
+    data: ExplanationUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+    result = await db.execute(stmt)
+    explanation = result.scalar_one_or_none()
+    if not explanation:
+        raise HTTPException(404, "Explanation not found")
+    explanation.explanation_text = data.explanation_text
+    explanation.created_at = datetime.now()
+    await db.commit()
+    await notify_admin_clients()
+    return {"message": "Updated"}
+
+@notifications_router.post("/{notification_id}/explanation", response_model=dict)
+async def create_explanation(
+    notification_id: int,
+    data: ExplanationUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    notif_stmt = select(Notification).where(Notification.id == notification_id)
+    notif_res = await db.execute(notif_stmt)
+    notif = notif_res.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Notification not found")
+    exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+    exp_res = await db.execute(exp_stmt)
+    if exp_res.scalar_one_or_none():
+        raise HTTPException(400, "Explanation already exists, use PUT")
+    
+    explanation = Explanation(
+        notification_id=notification_id,
+        employee_id=notif.employee_id,
+        explanation_text=data.explanation_text
+    )
+    db.add(explanation)
+    await db.commit()
+    await notify_admin_clients()
+    return {"message": "Created"}

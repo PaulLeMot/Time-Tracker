@@ -699,6 +699,12 @@
         <span class="close-edit-notif">&times;</span>
         <h3>Редактирование уведомления</h3>
         <div style="margin-bottom: 12px;">
+            <label>Сотрудник:</label>
+            <select id="editNotifEmployee">
+                <option value="">Загрузка...</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 12px;">
             <label>Тип:</label>
             <select id="editNotifType">
                 <option value="reprimand">❌ Замечание</option>
@@ -709,6 +715,10 @@
         <div style="margin-bottom: 12px;">
             <label>Сообщение:</label>
             <textarea id="editNotifMessage" rows="4" style="width:100%;"></textarea>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <label>Объяснительная сотрудника:</label>
+            <textarea id="editNotifExplanation" rows="4" style="width:100%;" placeholder="Текст объяснительной..."></textarea>
         </div>
         <button id="saveNotifEditBtn" class="btn">Сохранить</button>
         <div id="editNotifError" style="color:red; margin-top:8px;"></div>
@@ -1333,6 +1343,7 @@
     let currentEmployeeId = null;
     let currentDate = null;
     let currentEntries = [];
+    let allEmployees = [];
 
     window.showEmployeeDetail = async (empId, date) => {
         currentEmployeeId = empId;
@@ -1755,6 +1766,7 @@
             }
         }
         updateDraftBadge();
+        loadEmployeesForSelect();
     });
     async function loadRecentEntries(limit = 100) {
         const container = document.getElementById('recentContainer');
@@ -2118,7 +2130,9 @@
 
 
 
-    connectSSE();
+    setTimeout(() => {
+        connectSSE();
+    }, 1000);
 
 
 
@@ -2407,8 +2421,9 @@ function renderNotifications(notifications) {
         else if (n.status === 'sent') statusText = 'Отправлено';
         else statusText = 'Отклонено';
         const actions = [];
+        actions.push(`<button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>`);
+        actions.push(`<button class="btn-sm delete-notif" data-id="${n.id}">🗑️</button>`);
         if (n.status === 'draft') {
-            actions.push(`<button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>`);
             actions.push(`<button class="btn-sm approve-notif" data-id="${n.id}">✅</button>`);
             actions.push(`<button class="btn-sm reject-notif" data-id="${n.id}">❌</button>`);
         } else {
@@ -2436,7 +2451,9 @@ function renderNotifications(notifications) {
     }
     html += '</tbody></table></div>';
     container.innerHTML = html;
-
+    container.querySelectorAll('.delete-notif').forEach(btn => {
+        btn.addEventListener('click', () => deleteNotification(parseInt(btn.dataset.id)));
+    });
     document.querySelectorAll('.edit-notif').forEach(btn => {
         btn.addEventListener('click', () => openEditNotificationModal(parseInt(btn.dataset.id)));
     });
@@ -2459,32 +2476,76 @@ async function openEditNotificationModal(notifId) {
     if (!notif) return;
     document.getElementById('editNotifType').value = notif.type;
     document.getElementById('editNotifMessage').value = notif.message;
+    const empSelect = document.getElementById('editNotifEmployee');
+    const explanationTextarea = document.getElementById('editNotifExplanation');
+    if (explanationTextarea) {
+        explanationTextarea.value = notif.explanation || '';
+    }
+    if (empSelect && allEmployees.length) {
+        empSelect.value = notif.employee_id;
+    }
     document.getElementById('editNotificationModal').style.display = 'block';
 }
 
 async function saveEditedNotification() {
     const newType = document.getElementById('editNotifType').value;
     const newMessage = document.getElementById('editNotifMessage').value.trim();
+    const newEmployeeId = document.getElementById('editNotifEmployee').value;
+    const newExplanation = document.getElementById('editNotifExplanation').value.trim();
+
     if (!newMessage) {
         document.getElementById('editNotifError').innerText = 'Сообщение не может быть пустым';
+        return;
+    }
+    if (!newEmployeeId) {
+        document.getElementById('editNotifError').innerText = 'Выберите сотрудника';
         return;
     }
     try {
         const resp = await fetch(`/api/admin/notifications/${currentEditNotificationId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: newType, message: newMessage }),
+            body: JSON.stringify({
+                type: newType,
+                message: newMessage,
+                employee_id: parseInt(newEmployeeId)
+            }),
             credentials: 'include'
         });
-        if (resp.ok) {
-            showToast('Уведомление обновлено');
-            document.getElementById('editNotificationModal').style.display = 'none';
-            await loadNotifications();
-            updateDraftBadge();
-        } else {
+
+        if (!resp.ok) {
             const err = await resp.json();
-            document.getElementById('editNotifError').innerText = err.detail || 'Ошибка';
+            document.getElementById('editNotifError').innerText = err.detail || 'Ошибка обновления уведомления';
+            return;
         }
+        if (newExplanation !== undefined) {
+            let expResp = await fetch(`/api/admin/notifications/${currentEditNotificationId}/explanation`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ explanation_text: newExplanation }),
+                credentials: 'include'
+            });
+            if (expResp.status === 404) {
+                expResp = await fetch(`/api/admin/notifications/${currentEditNotificationId}/explanation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ explanation_text: newExplanation }),
+                    credentials: 'include'
+                });
+            }
+
+            if (!expResp.ok) {
+                const err = await expResp.json();
+                document.getElementById('editNotifError').innerText = err.detail || 'Ошибка сохранения объяснительной';
+                return;
+            }
+        }
+
+        showToast('Уведомление обновлено');
+        document.getElementById('editNotificationModal').style.display = 'none';
+        await loadNotifications();
+        updateDraftBadge();
+
     } catch (err) {
         document.getElementById('editNotifError').innerText = 'Ошибка сети';
     }
@@ -2687,6 +2748,45 @@ async function updateDraftBadge() {
         }
     } catch (err) {
         console.error('Ошибка загрузки количества черновиков', err);
+    }
+}
+
+async function loadEmployeesForSelect() {
+    try {
+        const resp = await fetch('/api/employees?active_only=true');
+        if (!resp.ok) throw new Error();
+        allEmployees = await resp.json();
+        allEmployees.sort((a,b) => a.full_name.localeCompare(b.full_name));
+        const select = document.getElementById('editNotifEmployee');
+        if (select) {
+            select.innerHTML = '<option value="">Выберите сотрудника</option>';
+            allEmployees.forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = emp.id;
+                opt.textContent = emp.full_name;
+                select.appendChild(opt);
+            });
+        }
+    } catch(err) { console.error(err); }
+}
+
+async function deleteNotification(id) {
+    if (!confirm('Удалить это уведомление навсегда? Действие необратимо.')) return;
+    try {
+        const resp = await fetch(`/api/admin/notifications/${id}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            showToast('Уведомление удалено');
+            await loadNotifications();
+            updateDraftBadge();
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || 'Ошибка удаления', true);
+        }
+    } catch (err) {
+        showToast('Ошибка сети', true);
     }
 }
 </script>

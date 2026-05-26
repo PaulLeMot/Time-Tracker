@@ -162,10 +162,19 @@
             cursor: pointer;
         }
         #monitorContainer {
-            overflow-x: auto;
+            overflow-x: visible;
         }
         #monitorContainer .report-table {
-            min-width: 900px;
+            width: 100%;
+            min-width: 0;
+        }
+        #monitorContainer .recent-table {
+            overflow-x: visible;
+        }
+        #monitorContainer .report-table th,
+        #monitorContainer .report-table td {
+            white-space: normal;
+            word-break: break-word;
         }
         @media (max-width: 600px) {
             .tabs {
@@ -2284,7 +2293,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    await loadEmployeesForAllNotif();
+    if (window.isAdmin || window.isMonitor) {
+        await loadEmployeesForAllNotif();
+    }
 
     const allNotifEmployeeSelect = document.getElementById('allNotifEmployeeFilter');
     if (allNotifEmployeeSelect) {
