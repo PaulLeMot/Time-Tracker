@@ -629,6 +629,20 @@
             border-radius: 20px;
             font-size: 1rem;
         }
+
+        .report-table tr.notif-answered {
+            background-color: rgba(34, 197, 94, 0.1);
+        }
+        .report-table tr.notif-pending {
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+
+        .notifications-accordion-item.notif-answered {
+            background-color: rgba(34, 197, 94, 0.1) !important;
+        }
+        .notifications-accordion-item.notif-pending {
+            background-color: rgba(239, 68, 68, 0.1) !important;
+        }
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -1601,9 +1615,16 @@ function renderNotifications(notifications) {
             if (hasExpl) {
                 actionBtn = `<button class="btn-sm view-explanation-employee" data-id="${n.id}">📄 Показать</button>`;
             } else {
-                actionBtn = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
+                if (n.type === 'reprimand') {
+                    actionBtn = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
+                } else if (n.type === 'warning' || n.type === 'commendation') {
+                    actionBtn = `<button class="btn-sm mark-as-read" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>`;
+                } else {
+                    actionBtn = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
+                }
             }
-            html += `<tr>
+            const rowClass = hasExpl ? 'notif-answered' : 'notif-pending';
+            html += `<tr class="${rowClass}">
                         <td style="color:${typeColor}; font-size:1.2rem;">${typeIcon}</td>
                         <td>${escapeHtml(n.message)}</td>
                         <td>${dateStr}</td>
@@ -1613,13 +1634,21 @@ function renderNotifications(notifications) {
         }
         html += '</tbody></table></div>';
         container.innerHTML = html;
-        document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.view-explanation-employee)').forEach(btn => {
+
+        document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.view-explanation-employee):not(.mark-as-read)').forEach(btn => {
             const id = parseInt(btn.dataset.id);
             btn.addEventListener('click', () => openExplanationModal(id));
         });
         document.querySelectorAll('#notificationsContainer .view-explanation-employee').forEach(btn => {
             const id = parseInt(btn.dataset.id);
             btn.addEventListener('click', () => viewEmployeeExplanation(id));
+        });
+        document.querySelectorAll('#notificationsContainer .mark-as-read').forEach(btn => {
+            const id = parseInt(btn.dataset.id);
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                markAsRead(id);
+            });
         });
     } else {
         let html = '<div class="notifications-accordion">';
@@ -1681,18 +1710,39 @@ function renderNotifications(notifications) {
                     </div>
                 `;
             } else {
-                detailsHtml += `
-                    <div class="notif-detail-row">
-                        <div class="notif-detail-label">Действие</div>
-                        <div class="notif-detail-value">
-                            <button class="btn-sm write-explanation" data-id="${n.id}">✏️ Написать объяснительную</button>
+                if (n.type === 'reprimand') {
+                    detailsHtml += `
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Действие</div>
+                            <div class="notif-detail-value">
+                                <button class="btn-sm write-explanation" data-id="${n.id}">✏️ Написать объяснительную</button>
+                            </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                } else if (n.type === 'warning' || n.type === 'commendation') {
+                    detailsHtml += `
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Действие</div>
+                            <div class="notif-detail-value">
+                                <button class="btn-sm mark-as-read-mobile" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    detailsHtml += `
+                        <div class="notif-detail-row">
+                            <div class="notif-detail-label">Действие</div>
+                            <div class="notif-detail-value">
+                                <button class="btn-sm write-explanation" data-id="${n.id}">✏️ Написать объяснительную</button>
+                            </div>
+                        </div>
+                    `;
+                }
             }
             
+            const accordionClass = hasExpl ? 'notif-answered' : 'notif-pending';
             html += `
-                <div class="notifications-accordion-item" data-id="${n.id}">
+                <div class="notifications-accordion-item ${accordionClass}" data-id="${n.id}">
                     <div class="notifications-accordion-header">
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
                             <span style="color:${typeColor};">${typeIcon}</span>
@@ -1744,7 +1794,6 @@ function renderNotifications(notifications) {
                             console.error('Ошибка загрузки объяснения', err);
                         }
                     }
-                } else {
                 }
             });
         });
@@ -1754,6 +1803,13 @@ function renderNotifications(notifications) {
                 e.stopPropagation();
                 const notifId = parseInt(btn.dataset.id);
                 openExplanationModal(notifId);
+            });
+        });
+        document.querySelectorAll('.mark-as-read-mobile').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.dataset.id);
+                markAsRead(id);
             });
         });
     }
@@ -2317,6 +2373,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         refreshBtn.addEventListener('click', loadAllNotifications);
     }
 });
+
+async function markAsRead(notificationId) {
+    try {
+        const resp = await fetch(`/api/employee/notifications/${notificationId}/explanation`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ explanation_text: 'Прочитано' }),
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            showToast('Уведомление отмечено как прочитанное');
+            loadNotifications();
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || 'Ошибка', true);
+        }
+    } catch (err) {
+        showToast('Ошибка сети', true);
+    }
+}
 </script>
 </body>
 </html>

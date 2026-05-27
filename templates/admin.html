@@ -2518,7 +2518,10 @@ async function saveEditedNotification() {
             document.getElementById('editNotifError').innerText = err.detail || 'Ошибка обновления уведомления';
             return;
         }
-        if (newExplanation !== undefined) {
+
+        // Работа с объяснительной
+        if (newExplanation !== '') {
+            // Если поле не пустое – сохраняем или обновляем
             let expResp = await fetch(`/api/admin/notifications/${currentEditNotificationId}/explanation`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -2533,10 +2536,19 @@ async function saveEditedNotification() {
                     credentials: 'include'
                 });
             }
-
             if (!expResp.ok) {
                 const err = await expResp.json();
                 document.getElementById('editNotifError').innerText = err.detail || 'Ошибка сохранения объяснительной';
+                return;
+            }
+        } else {
+            const delResp = await fetch(`/api/admin/notifications/${currentEditNotificationId}/explanation`, {
+                method: 'DELETE',
+                credentials: 'include'
+            });
+            if (!delResp.ok && delResp.status !== 404) {
+                const err = await delResp.json();
+                document.getElementById('editNotifError').innerText = err.detail || 'Ошибка удаления объяснительной';
                 return;
             }
         }

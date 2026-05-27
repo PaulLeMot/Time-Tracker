@@ -73,6 +73,7 @@ class NotificationResponse(BaseModel):
     explanation: Optional[str] = None
     full_name: Optional[str] = None
     created_by: Optional[str] = None
+    has_explanation: bool = False
 
 class ExplanationUpdate(BaseModel):
     explanation_text: str
@@ -870,11 +871,12 @@ async def list_notifications(
     db: AsyncSession = Depends(get_db)
 ):
     AdminEmp = aliased(models.Employee, name="admin_emp")
-
+    
     stmt = (
         select(
             Notification,
             Explanation.explanation_text.label("explanation_text"),
+            Explanation.created_at.label("exp_created_at"),
             models.Employee.full_name.label("emp_full_name"),
             AdminEmp.full_name.label("admin_full_name")
         )
@@ -890,17 +892,17 @@ async def list_notifications(
             stmt = stmt.where(Notification.status == status_enum)
         except ValueError:
             raise HTTPException(400, "Invalid status value")
-
+            
     if employee_id is not None:
         stmt = stmt.where(Notification.employee_id == employee_id)
-
+        
     if start_date:
         try:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
             stmt = stmt.where(Notification.created_at >= datetime.combine(start_dt, time(5, 0, 0)))
         except ValueError:
             raise HTTPException(400, "Invalid start_date format, use YYYY-MM-DD")
-
+            
     if end_date:
         try:
             end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
@@ -912,7 +914,16 @@ async def list_notifications(
     rows = result.all()
 
     response = []
-    for notif, exp_text, emp_name, admin_name in rows:
+    for notif, exp_text, exp_created_at, emp_name, admin_name in rows:
+        # ✅ КЛЮЧЕВАЯ ЛОГИКА:
+        # Объяснительная считается актуальной ТОЛЬКО если она создана/изменена 
+        # ПОСЛЕ последнего обновления уведомления. Иначе фронтенд покажет "Ожидает ответа".
+        is_answered = (
+            bool(exp_text) and 
+            exp_created_at is not None and 
+            exp_created_at >= notif.updated_at
+        )
+
         created_by = "Авто" if notif.source == "auto" else (admin_name or "Админ")
         
         response.append(NotificationResponse(
@@ -926,7 +937,8 @@ async def list_notifications(
             updated_at=notif.updated_at,
             explanation=exp_text,
             full_name=emp_name,
-            created_by=created_by
+            created_by=created_by,
+            has_explanation=is_answered  # 👈 Это поле управляет статусом "Отвечено/Ожидает" на фронтенде
         ))
     return response
 
@@ -942,6 +954,16 @@ async def update_notification(
     if not notif:
         raise HTTPException(404, "Notification not found")
     
+    old_employee_id = notif.employee_id
+    employee_changed = data.employee_id is not None and data.employee_id != old_employee_id
+    
+    if employee_changed:
+        exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+        exp_result = await db.execute(exp_stmt)
+        explanation = exp_result.scalar_one_or_none()
+        if explanation:
+            await db.delete(explanation)
+            
     if data.type is not None:
         try:
             notif.type = NotificationType(data.type)
@@ -954,19 +976,20 @@ async def update_notification(
         emp_res = await db.execute(emp_stmt)
         if not emp_res.scalar_one_or_none():
             raise HTTPException(404, "Employee not found")
-        if data.employee_id is not None and data.employee_id != notif.employee_id:
-            from models import Explanation
-            exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
-            exp_result = await db.execute(exp_stmt)
-            explanation = exp_result.scalar_one_or_none()
-            if explanation:
-                await db.delete(explanation)
         notif.employee_id = data.employee_id
+
     if notif.status in (NotificationStatus.SENT, NotificationStatus.REJECTED):
         notif.status = NotificationStatus.DRAFT
-    
+        
     notif.updated_at = datetime.now()
     await db.commit()
+    
+    if employee_changed:
+        await notify_employee(old_employee_id)
+        await notify_employee(notif.employee_id)
+    else:
+        await notify_employee(notif.employee_id)
+        
     await notify_admin_clients()
     return {"id": notif.id, "status": notif.status.value}
 
@@ -1046,12 +1069,30 @@ async def delete_notification(
     await notify_admin_clients()
     return Response(status_code=204)
 
+@notifications_router.delete("/{notification_id}/explanation", status_code=204)
+async def delete_explanation(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+    result = await db.execute(stmt)
+    explanation = result.scalar_one_or_none()
+    if not explanation:
+        raise HTTPException(404, "Explanation not found")
+    await db.delete(explanation)
+    await db.commit()
+    await notify_admin_clients()
+    return Response(status_code=204)
+
 @notifications_router.put("/{notification_id}/explanation", response_model=dict)
 async def update_explanation(
     notification_id: int,
     data: ExplanationUpdate,
     db: AsyncSession = Depends(get_db)
 ):
+    if not data.explanation_text or not data.explanation_text.strip():
+        raise HTTPException(400, "Explanation cannot be empty")
+    
     stmt = select(Explanation).where(Explanation.notification_id == notification_id)
     result = await db.execute(stmt)
     explanation = result.scalar_one_or_none()
@@ -1069,6 +1110,9 @@ async def create_explanation(
     data: ExplanationUpdate,
     db: AsyncSession = Depends(get_db)
 ):
+    if not data.explanation_text or not data.explanation_text.strip():
+        raise HTTPException(400, "Explanation cannot be empty")
+    
     notif_stmt = select(Notification).where(Notification.id == notification_id)
     notif_res = await db.execute(notif_stmt)
     notif = notif_res.scalar_one_or_none()
