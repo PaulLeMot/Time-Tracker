@@ -838,19 +838,9 @@ async def create_notification(
     if not employee:
         raise HTTPException(404, "Employee not found")
     
-    if current_user.is_admin:
-        admin_id = current_user.id
-    else:
-        admin_stmt = select(models.Employee).where(models.Employee.is_admin == 1).limit(1)
-        admin_result = await db.execute(admin_stmt)
-        system_admin = admin_result.scalar_one_or_none()
-        if not system_admin:
-            raise HTTPException(500, "No admin found in system")
-        admin_id = system_admin.id
-    
     notification = Notification(
         employee_id=data.employee_id,
-        admin_id=admin_id,
+        admin_id=current_user.id,
         type=notif_type,
         message=data.message,
         status=NotificationStatus.DRAFT,
