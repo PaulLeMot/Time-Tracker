@@ -500,6 +500,20 @@
             text-decoration: underline !important;
             cursor: pointer;
         }
+
+        /* Стили для строк в таблице "Последние отметки" */
+        .recent-start {
+            background-color: rgba(34, 197, 94, 0.15); /* зелёный */
+        }
+        .recent-break-start {
+            background-color: rgba(250, 204, 21, 0.2); /* жёлтый */
+        }
+        .recent-break-end {
+            background-color: rgba(249, 115, 22, 0.2); /* оранжевый */
+        }
+        .recent-end {
+            background-color: rgba(239, 68, 68, 0.15); /* красный */
+        }
     </style>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -1813,7 +1827,18 @@
                     sourceDisplay = escapeHtml(sourceDisplay);
                 }
 
-                html += `<tr>
+                let rowClass = '';
+                if (recentEmployeeId) {
+                    switch (entry.action_code) {
+                        case 'start': rowClass = 'recent-start'; break;
+                        case 'break_start': rowClass = 'recent-break-start'; break;
+                        case 'break_end': rowClass = 'recent-break-end'; break;
+                        case 'end': rowClass = 'recent-end'; break;
+                        default: rowClass = '';
+                    }
+                }
+
+                html += `<tr class="${rowClass}">
                             <td>${time}</td>
                             <td>${escapeHtml(entry.full_name)}</td>
                             <td>${actionDisplay}</td>
