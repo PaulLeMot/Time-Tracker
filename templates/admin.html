@@ -2433,7 +2433,7 @@ function renderNotifications(notifications) {
         return;
     }
     let html = '<div class="recent-table"><table class="report-table"><thead>';
-    html += '<th>ФИО</th><th>Тип</th><th>Дата создания</th><th>Автор</th><th>Сообщение</th><th>Статус</th><th>Объяснительная</th><th>Действия</th></td></thead><tbody>';
+    html += '<th>ФИО</th><th>Тип</th><th>Дата создания</th><th>Автор</th><th>Сообщение</th><th>Объяснительная</th><th>Статус</th><th>Действия</th>';
     for (const n of notifications) {
         let typeIcon = '';
         switch (n.type) {
@@ -2466,8 +2466,8 @@ function renderNotifications(notifications) {
                     <td>${createdDate}</td>
                     <td>${escapeHtml(n.created_by || '—')}</td>
                     <td>${escapeHtml(n.message)}</td>
-                    <td>${statusText}</td>
                     <td>${explanationHtml}</td>
+                    <td>${statusText}</td>
                     <td>${actions.join(' ')}</td>
                 </tr>`;
     }
