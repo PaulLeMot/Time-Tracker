@@ -17,6 +17,7 @@ class NotificationResponse(BaseModel):
     message: str
     created_at: datetime
     has_explanation: bool
+    explanation_text: Optional[str] = None
 
 class ExplanationCreate(BaseModel):
     explanation_text: str
@@ -33,24 +34,27 @@ async def get_employee_notifications(
     employee: models.Employee = Depends(get_current_employee),
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(Notification).where(
-        Notification.employee_id == employee.id,
-        Notification.status == NotificationStatus.SENT
-    ).order_by(Notification.created_at.desc())
+    stmt = (
+        select(Notification, Explanation.explanation_text)
+        .outerjoin(Explanation, Explanation.notification_id == Notification.id)
+        .where(
+            Notification.employee_id == employee.id,
+            Notification.status == NotificationStatus.SENT
+        )
+        .order_by(Notification.created_at.desc())
+    )
     result = await db.execute(stmt)
-    notifications = result.scalars().all()
+    rows = result.all()
 
     response = []
-    for n in notifications:
-        exp_stmt = select(Explanation).where(Explanation.notification_id == n.id)
-        exp_result = await db.execute(exp_stmt)
-        has_exp = exp_result.scalar_one_or_none() is not None
+    for notif, explanation_text in rows:
         response.append(NotificationResponse(
-            id=n.id,
-            type=n.type.value,
-            message=n.message,
-            created_at=n.created_at,
-            has_explanation=has_exp
+            id=notif.id,
+            type=notif.type.value,
+            message=notif.message,
+            created_at=notif.created_at,
+            has_explanation=explanation_text is not None,
+            explanation_text=explanation_text
         ))
     return response
 

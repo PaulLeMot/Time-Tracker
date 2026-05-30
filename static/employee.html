@@ -1613,7 +1613,7 @@ function renderNotifications(notifications) {
             const hasExpl = n.has_explanation;
             let actionBtn = '';
             if (hasExpl) {
-                actionBtn = `<button class="btn-sm view-explanation-employee" data-id="${n.id}">📄 Показать</button>`;
+                actionBtn = `<span class="explanation-text">${escapeHtml(n.explanation_text || '')}</span>`;
             } else {
                 if (n.type === 'reprimand') {
                     actionBtn = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
@@ -1635,13 +1635,9 @@ function renderNotifications(notifications) {
         html += '</tbody></table></div>';
         container.innerHTML = html;
 
-        document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.view-explanation-employee):not(.mark-as-read)').forEach(btn => {
+        document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.mark-as-read)').forEach(btn => {
             const id = parseInt(btn.dataset.id);
             btn.addEventListener('click', () => openExplanationModal(id));
-        });
-        document.querySelectorAll('#notificationsContainer .view-explanation-employee').forEach(btn => {
-            const id = parseInt(btn.dataset.id);
-            btn.addEventListener('click', () => viewEmployeeExplanation(id));
         });
         document.querySelectorAll('#notificationsContainer .mark-as-read').forEach(btn => {
             const id = parseInt(btn.dataset.id);
@@ -1704,8 +1700,7 @@ function renderNotifications(notifications) {
                     <div class="notif-detail-row">
                         <div class="notif-detail-label">Объяснительная</div>
                         <div class="notif-detail-value">
-                            <div id="explanation-container-${n.id}" class="notif-explanation-text" style="display:none;"></div>
-                            <button class="btn-sm load-explanation" data-id="${n.id}" style="margin-top: 4px;">📄 Загрузить</button>
+                            <div class="notif-explanation-text">${escapeHtml(n.explanation_text || '')}</div>
                         </div>
                     </div>
                 `;
@@ -1760,40 +1755,13 @@ function renderNotifications(notifications) {
         container.innerHTML = html;
         
         document.querySelectorAll('.notifications-accordion-header').forEach(header => {
-            header.addEventListener('click', async (e) => {
+            header.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const item = header.closest('.notifications-accordion-item');
                 const wasOpen = item.classList.contains('open');
                 document.querySelectorAll('.notifications-accordion-item').forEach(i => i.classList.remove('open'));
                 if (!wasOpen) {
                     item.classList.add('open');
-                    const notifId = parseInt(item.dataset.id);
-                    const loadBtn = item.querySelector('.load-explanation');
-                    if (loadBtn && !item.querySelector('.explanation-loaded')) {
-                        item.setAttribute('data-explanation-loaded', 'true');
-                        try {
-                            const resp = await fetch(`/api/employee/notifications/${notifId}/explanation`, { credentials: 'include' });
-                            if (resp.ok) {
-                                const data = await resp.json();
-                                const container = document.getElementById(`explanation-container-${notifId}`);
-                                if (container) {
-                                    container.innerHTML = `<strong>Ваша объяснительная:</strong><br>${escapeHtml(data.explanation_text)}`;
-                                    container.style.display = 'block';
-                                    loadBtn.style.display = 'none';
-                                    item.classList.add('explanation-loaded');
-                                }
-                            } else {
-                                const errContainer = document.getElementById(`explanation-container-${notifId}`);
-                                if (errContainer) {
-                                    errContainer.innerHTML = '<span style="color:red;">Не удалось загрузить объяснительную</span>';
-                                    errContainer.style.display = 'block';
-                                    loadBtn.style.display = 'none';
-                                }
-                            }
-                        } catch (err) {
-                            console.error('Ошибка загрузки объяснения', err);
-                        }
-                    }
                 }
             });
         });
