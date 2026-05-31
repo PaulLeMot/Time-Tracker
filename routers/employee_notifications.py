@@ -109,3 +109,35 @@ async def get_explanation(
         explanation_text=explanation.explanation_text,
         created_at=explanation.created_at
     )
+
+class ProposedTimeRequest(BaseModel):
+    proposed_end_time: datetime
+
+@router.post("/notifications/{notification_id}/propose-end-time")
+async def propose_end_time(
+    notification_id: int,
+    data: ProposedTimeRequest,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db)
+):
+    # Находим уведомление
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif or notif.employee_id != employee.id:
+        raise HTTPException(404, "Уведомление не найдено")
+    
+    # Проверяем, что это автоматическое уведомление о незавершённом дне
+    if notif.type != NotificationType.WARNING or notif.message != "Не был завершен рабочий день":
+        raise HTTPException(400, "Недопустимый тип уведомления")
+    
+    # Сохраняем предложенное время
+    if notif.extra_data is None:
+        notif.extra_data = {}
+    notif.extra_data["proposed_end_time"] = data.proposed_end_time.isoformat()
+    notif.status = NotificationStatus.DRAFT   # переводим в черновик, чтобы админ увидел
+    await db.commit()
+    
+    # Оповещаем админов
+    await notify_admin_clients()
+    return {"message": "Предложение отправлено администратору"}

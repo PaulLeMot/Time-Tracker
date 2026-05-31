@@ -643,6 +643,16 @@
         .notifications-accordion-item.notif-pending {
             background-color: rgba(239, 68, 68, 0.1) !important;
         }
+        #fixEndTimeModal .close-fix-end {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        #fixEndTimeModal .close-fix-end:hover {
+            color: black;
+        }
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -795,6 +805,17 @@
         <span class="close-explanation-view">&times;</span>
         <h3>Объяснительная сотрудника</h3>
         <div id="explanationTextDisplay" style="background:#f8fafc; padding: 12px; border-radius: 8px; white-space: pre-wrap;"></div>
+    </div>
+</div>
+<div id="fixEndTimeModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <span class="close-fix-end">&times;</span>
+        <h3>Исправление времени завершения рабочего дня</h3>
+        <div id="fixEndDateInfo" style="margin-bottom: 12px;">Дата: <span id="fixEndDate"></span></div>
+        <label>Время завершения:</label>
+        <input type="time" id="fixEndTime" step="60" style="width: 100%;">
+        <button id="submitFixEndBtn" class="btn" style="margin-top: 12px;">Отправить на утверждение</button>
+        <div id="fixEndError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
 <script>
@@ -1625,18 +1646,40 @@ function renderNotifications(notifications) {
                     actionCell = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
                 }
             }
+            let fixAction = '';
+            if (n.type === 'warning' && n.message === 'Не был завершен рабочий день' && !hasExpl) {
+                fixAction = `<button class="btn-sm fix-end-time" data-id="${n.id}" data-date="${n.created_at}">✏️ Исправить</button>`;
+            }
             html += `<tr class="${rowClass}">
                         <td style="color:${typeColor}; font-size:1.2rem;">${typeIcon}</td>
                         <td>${escapeHtml(n.message)}</td>
                         <td>${dateStr}</td>
                         <td>${hasExpl ? 'Отвечено' : 'Ожидает'}</td>
                         <td>${explanationCell}</td>
-                        <td>${actionCell}</td>
+                        <td>${actionCell} ${fixAction}</td>
                     </tr>`;
         }
         html += '</tbody></table></div>';
         container.innerHTML = html;
 
+        // Обработчик для десктопных кнопок "Исправить"
+        document.querySelectorAll('.fix-end-time').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const notifId = btn.dataset.id;
+                const dateStr = btn.dataset.date;
+                const date = new Date(dateStr);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const formattedDate = `${day}.${month}.${year}`;
+                document.getElementById('fixEndDate').innerText = formattedDate;
+                document.getElementById('fixEndTime').value = '17:00';
+                document.getElementById('fixEndError').innerText = '';
+                document.getElementById('fixEndTimeModal').style.display = 'block';
+                window.currentFixNotificationId = notifId;
+            });
+        });
         document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.mark-as-read)').forEach(btn => {
             const id = parseInt(btn.dataset.id);
             btn.addEventListener('click', () => openExplanationModal(id));
@@ -1649,6 +1692,7 @@ function renderNotifications(notifications) {
             });
         });
     } else {
+        // Мобильная версия (аккордеон)
         let html = '<div class="notifications-accordion">';
         for (const n of notifications) {
             let typeIcon = '';
@@ -1737,6 +1781,18 @@ function renderNotifications(notifications) {
                 }
             }
             
+            // ДОБАВЛЯЕМ КНОПКУ ИСПРАВЛЕНИЯ ДЛЯ МОБИЛЬНЫХ
+            if (n.type === 'warning' && n.message === 'Не был завершен рабочий день' && !hasExpl) {
+                detailsHtml += `
+                    <div class="notif-detail-row">
+                        <div class="notif-detail-label">Исправление времени</div>
+                        <div class="notif-detail-value">
+                            <button class="btn-sm fix-end-time-mobile" data-id="${n.id}" data-date="${n.created_at}">✏️ Исправить</button>
+                        </div>
+                    </div>
+                `;
+            }
+            
             const accordionClass = hasExpl ? 'notif-answered' : 'notif-pending';
             html += `
                 <div class="notifications-accordion-item ${accordionClass}" data-id="${n.id}">
@@ -1756,6 +1812,7 @@ function renderNotifications(notifications) {
         html += '</div>';
         container.innerHTML = html;
         
+        // Обработчики для мобильной версии
         document.querySelectorAll('.notifications-accordion-header').forEach(header => {
             header.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1780,6 +1837,24 @@ function renderNotifications(notifications) {
                 e.stopPropagation();
                 const id = parseInt(btn.dataset.id);
                 markAsRead(id);
+            });
+        });
+        // Обработчик для мобильных кнопок "Исправить"
+        document.querySelectorAll('.fix-end-time-mobile').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const notifId = btn.dataset.id;
+                const dateStr = btn.dataset.date;
+                const date = new Date(dateStr);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                const formattedDate = `${day}.${month}.${year}`;
+                document.getElementById('fixEndDate').innerText = formattedDate;
+                document.getElementById('fixEndTime').value = '17:00';
+                document.getElementById('fixEndError').innerText = '';
+                document.getElementById('fixEndTimeModal').style.display = 'block';
+                window.currentFixNotificationId = notifId;
             });
         });
     }
@@ -1883,6 +1958,47 @@ document.getElementById('sendNotificationBtn')?.addEventListener('click', sendNo
 document.querySelector('.close-create-notif')?.addEventListener('click', () => {
     document.getElementById('createNotificationModal').style.display = 'none';
     document.getElementById('notifyEmployeeName').innerText = '—';
+});
+// Отправка предложения времени администратору
+document.getElementById('submitFixEndBtn')?.addEventListener('click', async () => {
+    const time = document.getElementById('fixEndTime').value;
+    if (!time) {
+        document.getElementById('fixEndError').innerText = 'Выберите время';
+        return;
+    }
+    const dateStr = document.getElementById('fixEndDate').innerText; // формат DD.MM.YYYY
+    const [day, month, year] = dateStr.split('.');
+    const isoDate = `${year}-${month}-${day}`;
+    const proposedDateTime = `${isoDate}T${time}:00`;
+    try {
+        const resp = await fetch(`/api/employee/notifications/${window.currentFixNotificationId}/propose-end-time`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proposed_end_time: proposedDateTime }),
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            showToast('Предложение отправлено администратору');
+            document.getElementById('fixEndTimeModal').style.display = 'none';
+            loadNotifications(); // обновить список уведомлений
+        } else {
+            const err = await resp.json();
+            document.getElementById('fixEndError').innerText = err.detail || 'Ошибка';
+        }
+    } catch (err) {
+        document.getElementById('fixEndError').innerText = 'Ошибка сети';
+    }
+});
+
+// Закрытие модального окна
+document.querySelector('#fixEndTimeModal .close-fix-end')?.addEventListener('click', () => {
+    document.getElementById('fixEndTimeModal').style.display = 'none';
+});
+
+// Также закрытие по клику вне модального окна (можно добавить в существующий обработчик)
+window.addEventListener('click', (e) => {
+    const fixModal = document.getElementById('fixEndTimeModal');
+    if (e.target === fixModal) fixModal.style.display = 'none';
 });
 window.addEventListener('click', (e) => {
     const modal = document.getElementById('createNotificationModal');

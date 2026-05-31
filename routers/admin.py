@@ -1122,3 +1122,74 @@ async def create_explanation(
     await db.commit()
     await notify_admin_clients()
     return {"message": "Created"}
+
+class ApproveEndTimeRequest(BaseModel):
+    end_time: datetime
+
+@notifications_router.post("/{notification_id}/approve-end-time")
+async def approve_end_time(
+    notification_id: int,
+    data: ApproveEndTimeRequest,
+    admin: models.Employee = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    # Находим уведомление
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Уведомление не найдено")
+    
+    if notif.extra_data is None or "proposed_end_time" not in notif.extra_data:
+        raise HTTPException(400, "Нет предложенного времени")
+    
+    # Определяем рабочий день (с 5:00 до 5:00 следующего дня)
+    proposed_dt = datetime.fromisoformat(notif.extra_data["proposed_end_time"])
+    workday_start = datetime.combine(proposed_dt.date(), time(5, 0, 0))
+    workday_end = workday_start + timedelta(days=1)
+    
+    # Ищем автоматическую end-запись за этот день
+    stmt_end = select(models.TimeEntry).where(
+        models.TimeEntry.employee_id == notif.employee_id,
+        models.TimeEntry.action == "end",
+        models.TimeEntry.source == "auto",
+        models.TimeEntry.timestamp >= workday_start,
+        models.TimeEntry.timestamp < workday_end
+    )
+    end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
+    if not end_entry:
+        raise HTTPException(404, "Автоматическая отметка завершения не найдена")
+    
+    # Обновляем время завершения
+    end_entry.timestamp = data.end_time
+    end_entry.source = f"admin_approved({admin.full_name})"
+    await db.commit()
+    
+    # Очищаем предложение в уведомлении
+    notif.extra_data.pop("proposed_end_time", None)
+    notif.status = NotificationStatus.SENT
+    await db.commit()
+    
+    # Оповещаем сотрудника и админов
+    await notify_employee(notif.employee_id)
+    await notify_admin_clients()
+    return {"message": "Время завершения обновлено"}
+
+# Дополнительно: эндпоинт для удаления предложения (отклонение)
+@notifications_router.delete("/{notification_id}/proposed-time")
+async def reject_proposed_time(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Уведомление не найдено")
+    
+    if notif.extra_data and "proposed_end_time" in notif.extra_data:
+        notif.extra_data.pop("proposed_end_time", None)
+        notif.status = NotificationStatus.SENT   # возвращаем в исходное состояние
+        await db.commit()
+        await notify_admin_clients()
+    return {"message": "Предложение отклонено"}

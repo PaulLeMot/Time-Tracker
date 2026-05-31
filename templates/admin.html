@@ -772,7 +772,16 @@
         <div id="createNotifError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
-
+<div id="editProposedTimeModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <span class="close-edit-proposed">&times;</span>
+        <h3>Редактирование предложенного времени</h3>
+        <div style="margin-bottom: 12px;">Сотрудник предложил завершить день в:</div>
+        <input type="datetime-local" id="editProposedTimeInput" style="width: 100%;">
+        <button id="saveEditProposedTimeBtn" class="btn" style="margin-top: 12px;">Сохранить и утвердить</button>
+        <div id="editProposedTimeError" style="color:red; margin-top:8px;"></div>
+    </div>
+</div>
 <script>
     let eventSource = null;
     let startDate = '';
@@ -2456,6 +2465,18 @@ function renderNotifications(notifications) {
         } else {
             actions.push(`<span style="color:gray;">—</span>`);
         }
+
+        // Дополнительные действия для предложения времени
+        let proposedActions = '';
+        if (n.extra_data && n.extra_data.proposed_end_time) {
+            const proposedTime = new Date(n.extra_data.proposed_end_time).toLocaleString('ru-RU');
+            proposedActions = `
+                <div style="font-size:0.75rem; margin-top:4px;">Предложено: ${proposedTime}</div>
+                <button class="btn-sm approve-end" data-id="${n.id}" data-time="${n.extra_data.proposed_end_time}">✅ Утвердить</button>
+                <button class="btn-sm edit-end" data-id="${n.id}" data-time="${n.extra_data.proposed_end_time}">✏️ Ред.</button>
+                <button class="btn-sm reject-end" data-id="${n.id}">❌ Отклонить</button>
+            `;
+        }
         let explanationHtml = n.explanation ? escapeHtml(n.explanation) : '—';
         let createdDate = '';
         if (n.created_at) {
@@ -2470,11 +2491,70 @@ function renderNotifications(notifications) {
                     <td>${escapeHtml(n.message)}</td>
                     <td>${explanationHtml}</td>
                     <td>${statusText}</td>
-                    <td>${actions.join(' ')}</td>
+                    <td>${actions.join(' ')} ${proposedActions}</td>
                 </tr>`;
     }
     html += '</tbody></table></div>';
     container.innerHTML = html;
+    container.querySelectorAll('.approve-end').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const notifId = btn.dataset.id;
+            const proposedTime = btn.dataset.time;
+            if (!confirm(`Утвердить завершение дня в ${new Date(proposedTime).toLocaleString()}?`)) return;
+            try {
+                const resp = await fetch(`/api/admin/notifications/${notifId}/approve-end-time`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ end_time: proposedTime }),
+                    credentials: 'include'
+                });
+                if (resp.ok) {
+                    showToast('Время завершения обновлено');
+                    loadNotifications(); // перезагрузить таблицу
+                } else {
+                    const err = await resp.json();
+                    showToast(err.detail || 'Ошибка', true);
+                }
+            } catch (err) {
+                showToast('Ошибка сети', true);
+            }
+        });
+    });
+
+    // Обработчик отклонения предложения
+    container.querySelectorAll('.reject-end').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const notifId = btn.dataset.id;
+            if (!confirm('Отклонить предложение?')) return;
+            try {
+                const resp = await fetch(`/api/admin/notifications/${notifId}/proposed-time`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (resp.ok) {
+                    showToast('Предложение отклонено');
+                    loadNotifications();
+                } else {
+                    const err = await resp.json();
+                    showToast(err.detail || 'Ошибка', true);
+                }
+            } catch (err) {
+                showToast('Ошибка сети', true);
+            }
+        });
+    });
+
+    // Обработчик редактирования предложения (открыть модалку)
+    container.querySelectorAll('.edit-end').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const notifId = btn.dataset.id;
+            const currentTime = btn.dataset.time;
+            openEditProposedTimeModal(notifId, currentTime);
+        });
+    });
     container.querySelectorAll('.delete-notif').forEach(btn => {
         btn.addEventListener('click', () => deleteNotification(parseInt(btn.dataset.id)));
     });
@@ -2822,6 +2902,58 @@ async function deleteNotification(id) {
         showToast('Ошибка сети', true);
     }
 }
+let currentEditProposedNotifId = null;
+
+function openEditProposedTimeModal(notifId, currentIsoTime) {
+    currentEditProposedNotifId = notifId;
+    const input = document.getElementById('editProposedTimeInput');
+    if (currentIsoTime) {
+        // input datetime-local ожидает формат "YYYY-MM-DDThh:mm"
+        let val = currentIsoTime.slice(0, 16);
+        input.value = val;
+    } else {
+        input.value = '';
+    }
+    document.getElementById('editProposedTimeError').innerText = '';
+    document.getElementById('editProposedTimeModal').style.display = 'block';
+}
+
+document.getElementById('saveEditProposedTimeBtn').addEventListener('click', async () => {
+    const newTime = document.getElementById('editProposedTimeInput').value;
+    if (!newTime) {
+        document.getElementById('editProposedTimeError').innerText = 'Выберите дату и время';
+        return;
+    }
+    // Преобразуем в ISO-строку с секундами
+    const isoDateTime = new Date(newTime).toISOString();
+    try {
+        const resp = await fetch(`/api/admin/notifications/${currentEditProposedNotifId}/approve-end-time`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ end_time: isoDateTime }),
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            showToast('Время завершения обновлено');
+            document.getElementById('editProposedTimeModal').style.display = 'none';
+            loadNotifications();
+        } else {
+            const err = await resp.json();
+            document.getElementById('editProposedTimeError').innerText = err.detail || 'Ошибка';
+        }
+    } catch (err) {
+        document.getElementById('editProposedTimeError').innerText = 'Ошибка сети';
+    }
+});
+
+// Закрытие модального окна
+document.querySelector('#editProposedTimeModal .close-edit-proposed').onclick = () => {
+    document.getElementById('editProposedTimeModal').style.display = 'none';
+};
+window.addEventListener('click', (e) => {
+    const modal = document.getElementById('editProposedTimeModal');
+    if (e.target === modal) modal.style.display = 'none';
+});
 </script>
 </body>
 </html>
