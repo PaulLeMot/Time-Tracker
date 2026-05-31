@@ -1648,7 +1648,18 @@ function renderNotifications(notifications) {
             }
             let fixAction = '';
             if (n.type === 'warning' && n.message === 'Не был завершен рабочий день' && !hasExpl) {
-                fixAction = `<button class="btn-sm fix-end-time" data-id="${n.id}" data-date="${n.created_at}">✏️ Исправить</button>`;
+                let workdayDate = n.created_at;
+                if (n.extra_data && n.extra_data.workday_date) {
+                    workdayDate = n.extra_data.workday_date;
+                } else {
+                    const created = new Date(n.created_at);
+                    if (created.getHours() === 5 && created.getMinutes() === 0) {
+                        const prevDay = new Date(created);
+                        prevDay.setDate(created.getDate() - 1);
+                        workdayDate = prevDay.toISOString();
+                    }
+                }
+                fixAction = `<button class="btn-sm fix-end-time" data-id="${n.id}" data-workday-date="${workdayDate}">✏️ Исправить</button>`;
             }
             html += `<tr class="${rowClass}">
                         <td style="color:${typeColor}; font-size:1.2rem;">${typeIcon}</td>
@@ -1667,8 +1678,8 @@ function renderNotifications(notifications) {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const notifId = btn.dataset.id;
-                const dateStr = btn.dataset.date;
-                const date = new Date(dateStr);
+                const workdayDateStr = btn.dataset.workdayDate;
+                const date = new Date(workdayDateStr);
                 const year = date.getFullYear();
                 const month = String(date.getMonth() + 1).padStart(2, '0');
                 const day = String(date.getDate()).padStart(2, '0');
@@ -1783,11 +1794,22 @@ function renderNotifications(notifications) {
             
             // ДОБАВЛЯЕМ КНОПКУ ИСПРАВЛЕНИЯ ДЛЯ МОБИЛЬНЫХ
             if (n.type === 'warning' && n.message === 'Не был завершен рабочий день' && !hasExpl) {
+                let workdayDateMobile = n.created_at;
+                if (n.extra_data && n.extra_data.workday_date) {
+                    workdayDateMobile = n.extra_data.workday_date;
+                } else {
+                    const createdMobile = new Date(n.created_at);
+                    if (createdMobile.getHours() === 5 && createdMobile.getMinutes() === 0) {
+                        const prevDayMobile = new Date(createdMobile);
+                        prevDayMobile.setDate(createdMobile.getDate() - 1);
+                        workdayDateMobile = prevDayMobile.toISOString();
+                    }
+                }
                 detailsHtml += `
                     <div class="notif-detail-row">
                         <div class="notif-detail-label">Исправление времени</div>
                         <div class="notif-detail-value">
-                            <button class="btn-sm fix-end-time-mobile" data-id="${n.id}" data-date="${n.created_at}">✏️ Исправить</button>
+                            <button class="btn-sm fix-end-time-mobile" data-id="${n.id}" data-workday-date="${workdayDateMobile}">✏️ Исправить</button>
                         </div>
                     </div>
                 `;
@@ -1844,8 +1866,8 @@ function renderNotifications(notifications) {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const notifId = btn.dataset.id;
-                const dateStr = btn.dataset.date;
-                const date = new Date(dateStr);
+                const workdayDateStr = btn.dataset.workdayDate;
+                const date = new Date(workdayDateStr);
                 const year = date.getFullYear();
                 const month = String(date.getMonth() + 1).padStart(2, '0');
                 const day = String(date.getDate()).padStart(2, '0');

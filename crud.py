@@ -220,13 +220,15 @@ async def auto_close_shifts(db: AsyncSession):
             )
             existing = await db.execute(notif_stmt)
             if not existing.scalar_one_or_none():
+                workday_start_date = (datetime.now() - timedelta(days=1)).date()
                 notification = Notification(
                     employee_id=emp.id,
                     admin_id=admin.id,
                     type=NotificationType.WARNING,
                     message="Не был завершен рабочий день",
                     status=NotificationStatus.SENT,
-                    source="auto"
+                    source="auto",
+                    extra_data={"workday_date": workday_start_date.isoformat()}
                 )
                 db.add(notification)
                 await db.commit()
