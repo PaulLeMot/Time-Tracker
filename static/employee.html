@@ -1680,7 +1680,7 @@ function renderNotifications(notifications) {
                 window.currentFixNotificationId = notifId;
             });
         });
-        document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.mark-as-read)').forEach(btn => {
+        document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.mark-as-read):not(.fix-end-time)').forEach(btn => {
             const id = parseInt(btn.dataset.id);
             btn.addEventListener('click', () => openExplanationModal(id));
         });
