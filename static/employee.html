@@ -1640,10 +1640,10 @@ function renderNotifications(notifications) {
             } else {
                 if (n.type === 'reprimand') {
                     actionCell = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
-                } else if (n.type === 'warning' || n.type === 'commendation') {
+                } else if (n.type === 'commendation') {
                     actionCell = `<button class="btn-sm mark-as-read" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>`;
-                } else {
-                    actionCell = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
+                } else if (n.type === 'warning' && n.message !== 'Не был завершен рабочий день') {
+                    actionCell = `<button class="btn-sm mark-as-read" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>`;
                 }
             }
             let fixAction = '';
@@ -1771,7 +1771,7 @@ function renderNotifications(notifications) {
                             </div>
                         </div>
                     `;
-                } else if (n.type === 'warning' || n.type === 'commendation') {
+                } else if (n.type === 'commendation') {
                     detailsHtml += `
                         <div class="notif-detail-row">
                             <div class="notif-detail-label">Действие</div>
@@ -1780,12 +1780,12 @@ function renderNotifications(notifications) {
                             </div>
                         </div>
                     `;
-                } else {
+                } else if (n.type === 'warning' && n.message !== 'Не был завершен рабочий день') {
                     detailsHtml += `
                         <div class="notif-detail-row">
                             <div class="notif-detail-label">Действие</div>
                             <div class="notif-detail-value">
-                                <button class="btn-sm write-explanation" data-id="${n.id}">✏️ Написать объяснительную</button>
+                                <button class="btn-sm mark-as-read-mobile" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>
                             </div>
                         </div>
                     `;

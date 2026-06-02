@@ -1190,6 +1190,13 @@ async def reject_proposed_time(
     if notif.extra_data and "proposed_end_time" in notif.extra_data:
         notif.extra_data.pop("proposed_end_time", None)
         notif.status = NotificationStatus.SENT   # возвращаем в исходное состояние
+        
+        exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+        exp_result = await db.execute(exp_stmt)
+        explanation = exp_result.scalar_one_or_none()
+        if explanation:
+            await db.delete(explanation)
+        
         await db.commit()
         await notify_admin_clients()
     return {"message": "Предложение отклонено"}

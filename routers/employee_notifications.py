@@ -120,24 +120,43 @@ async def propose_end_time(
     employee: models.Employee = Depends(get_current_employee),
     db: AsyncSession = Depends(get_db)
 ):
-    # Находим уведомление
+    # 1. Проверяем существование уведомления и его принадлежность сотруднику
     stmt = select(Notification).where(Notification.id == notification_id)
     result = await db.execute(stmt)
     notif = result.scalar_one_or_none()
     if not notif or notif.employee_id != employee.id:
         raise HTTPException(404, "Уведомление не найдено")
-    
-    # Проверяем, что это автоматическое уведомление о незавершённом дне
+
+    # 2. Проверяем, что это именно уведомление о незавершённом дне
     if notif.type != NotificationType.WARNING or notif.message != "Не был завершен рабочий день":
         raise HTTPException(400, "Недопустимый тип уведомления")
-    
-    # Сохраняем предложенное время
+
+    # 3. Сохраняем предложенное время в extra_data
     if notif.extra_data is None:
         notif.extra_data = {}
     notif.extra_data["proposed_end_time"] = data.proposed_end_time.isoformat()
-    notif.status = NotificationStatus.DRAFT   # переводим в черновик, чтобы админ увидел
+    notif.status = NotificationStatus.DRAFT   # переводим в черновик для админа
+
+    # 4. Создаём или обновляем объяснительную, чтобы уведомление считалось "отвеченным"
+    explanation_text = f"Предложено время завершения: {data.proposed_end_time.strftime('%d.%m.%Y %H:%M')}"
+    exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+    exp_result = await db.execute(exp_stmt)
+    explanation = exp_result.scalar_one_or_none()
+
+    if explanation:
+        explanation.explanation_text = explanation_text
+        explanation.created_at = datetime.now()
+    else:
+        explanation = Explanation(
+            notification_id=notification_id,
+            employee_id=employee.id,
+            explanation_text=explanation_text
+        )
+        db.add(explanation)
+
     await db.commit()
-    
-    # Оповещаем админов
+
+    # 5. Оповещаем админов
     await notify_admin_clients()
+
     return {"message": "Предложение отправлено администратору"}
