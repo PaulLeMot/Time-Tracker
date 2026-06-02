@@ -176,13 +176,19 @@ async def auto_close_shifts(db: AsyncSession):
     admin_stmt = select(Employee).where(Employee.is_admin == 1).limit(1)
     admin_result = await db.execute(admin_stmt)
     admin = admin_result.scalar_one_or_none()
+    
+    # Определяем дату рабочего дня, который закрываем (вчерашний)
+    workday_date = (now - timedelta(days=1)).date()
+    
     for emp in employees:
         last_entry = await get_last_entry(db, emp.id)
         if not last_entry:
             continue
         if last_entry.action == "end":
             continue
-        start_of_day = datetime.combine(now.date(), datetime.min.time())
+        
+        # Проверяем, не было ли уже автоматического закрытия за сегодня
+        start_of_day = datetime.combine(now.date(), time(5, 0, 0))
         stmt = select(TimeEntry).where(
             TimeEntry.employee_id == emp.id,
             TimeEntry.action == "end",
@@ -192,7 +198,9 @@ async def auto_close_shifts(db: AsyncSession):
         result = await db.execute(stmt)
         if result.scalar_one_or_none():
             continue
+        
         forced_end = False
+        # Если сотрудник был в перерыве, сначала закрываем перерыв
         if last_entry.action == "break_start":
             break_end_entry = TimeEntry(
                 employee_id=emp.id,
@@ -201,6 +209,8 @@ async def auto_close_shifts(db: AsyncSession):
                 source="auto"
             )
             db.add(break_end_entry)
+        
+        # Создаём end-запись
         end_entry = TimeEntry(
             employee_id=emp.id,
             action="end",
@@ -208,19 +218,26 @@ async def auto_close_shifts(db: AsyncSession):
             source="auto"
         )
         db.add(end_entry)
+        await db.flush()  # чтобы получить ID записи
         forced_end = True
+        
+        # Сохраняем изменения в БД (чтобы ID стал доступен)
         await db.commit()
+        
+        # Оповещаем
         await notify_admin_clients()
         await notify_monitor_clients()
+        
+        # Создаём уведомление, если админ существует
         if forced_end and admin:
             notif_stmt = select(Notification).where(
                 Notification.employee_id == emp.id,
                 Notification.type == NotificationType.WARNING,
-                Notification.created_at >= start_of_day
+                Notification.message == "Не был завершен рабочий день",
+                Notification.created_at >= datetime.combine(workday_date, time(5, 0, 0))
             )
             existing = await db.execute(notif_stmt)
             if not existing.scalar_one_or_none():
-                workday_start_date = (datetime.now() - timedelta(days=1)).date()
                 notification = Notification(
                     employee_id=emp.id,
                     admin_id=admin.id,
@@ -228,7 +245,10 @@ async def auto_close_shifts(db: AsyncSession):
                     message="Не был завершен рабочий день",
                     status=NotificationStatus.SENT,
                     source="auto",
-                    extra_data={"workday_date": workday_start_date.isoformat()}
+                    extra_data={
+                        "workday_date": workday_date.isoformat(),
+                        "auto_end_entry_id": end_entry.id
+                    }
                 )
                 db.add(notification)
                 await db.commit()
