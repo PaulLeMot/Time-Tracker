@@ -7,7 +7,7 @@ from datetime import datetime
 from database import get_db
 from routers.auth import get_current_employee
 import models
-from models import Notification, Explanation, NotificationStatus
+from models import Notification, Explanation, NotificationStatus, NotificationType
 
 router = APIRouter(prefix="/api/employee", tags=["employee"])
 
