@@ -986,6 +986,7 @@ async def update_notification(
 @notifications_router.post("/{notification_id}/approve", response_model=dict)
 async def approve_notification(
     notification_id: int,
+    admin: models.Employee = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     stmt = select(Notification).where(Notification.id == notification_id)
@@ -995,9 +996,24 @@ async def approve_notification(
         raise HTTPException(404, "Notification not found")
     if notif.status != NotificationStatus.DRAFT:
         raise HTTPException(400, "Only draft notifications can be approved")
+
+    if notif.extra_data and "proposed_end_time" in notif.extra_data:
+        end_entry_id = notif.extra_data.get("auto_end_entry_id")
+        if end_entry_id:
+            stmt_end = select(models.TimeEntry).where(models.TimeEntry.id == end_entry_id)
+            end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
+            if end_entry:
+                proposed_time = datetime.fromisoformat(notif.extra_data["proposed_end_time"])
+                end_entry.timestamp = proposed_time
+                end_entry.source = f"admin_approved({admin.full_name})"
+                notif.extra_data.pop("proposed_end_time", None)
+        else:
+            notif.extra_data.pop("proposed_end_time", None)
+
     notif.status = NotificationStatus.SENT
     notif.updated_at = datetime.now()
     await db.commit()
+
     await notify_employee(notif.employee_id)
     await notify_admin_clients()
     return {"id": notif.id, "status": notif.status.value}
