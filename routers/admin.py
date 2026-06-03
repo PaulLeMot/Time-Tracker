@@ -997,18 +997,44 @@ async def approve_notification(
     if notif.status != NotificationStatus.DRAFT:
         raise HTTPException(400, "Only draft notifications can be approved")
 
-    if notif.extra_data and "proposed_end_time" in notif.extra_data:
-        end_entry_id = notif.extra_data.get("auto_end_entry_id")
-        if end_entry_id:
-            stmt_end = select(models.TimeEntry).where(models.TimeEntry.id == end_entry_id)
-            end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
+    if notif.extra_data:
+        # Очистка ключей от возможных невидимых пробелов
+        clean_extra = {k.strip(): v for k, v in notif.extra_data.items()}
+        
+        if "proposed_end_time" in clean_extra:
+            end_entry_id = clean_extra.get("auto_end_entry_id")
+            
+            if not end_entry_id:
+                # Fallback: ищем последнюю авто-отметку end за нужный день
+                workday_date = clean_extra.get("workday_date")
+                if workday_date:
+                    workday_start = datetime.fromisoformat(workday_date + "T05:00:00")
+                else:
+                    workday_start = datetime.combine(notif.created_at.date(), time(5, 0))
+                    if notif.created_at.hour < 5:
+                        workday_start -= timedelta(days=1)
+                workday_end = workday_start + timedelta(days=1)
+                
+                stmt_end = select(models.TimeEntry).where(
+                    models.TimeEntry.employee_id == notif.employee_id,
+                    models.TimeEntry.action == 'end',
+                    models.TimeEntry.source == 'auto',
+                    models.TimeEntry.timestamp >= workday_start,
+                    models.TimeEntry.timestamp < workday_end
+                ).order_by(models.TimeEntry.timestamp.desc()).limit(1)
+                end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
+            else:
+                stmt_end = select(models.TimeEntry).where(models.TimeEntry.id == end_entry_id)
+                end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
+            
             if end_entry:
-                proposed_time = datetime.fromisoformat(notif.extra_data["proposed_end_time"])
+                proposed_time = datetime.fromisoformat(clean_extra["proposed_end_time"])
                 end_entry.timestamp = proposed_time
                 end_entry.source = f"admin_approved({admin.full_name})"
-                notif.extra_data.pop("proposed_end_time", None)
-        else:
-            notif.extra_data.pop("proposed_end_time", None)
+            
+            # Удаляем предложение и фиксируем изменение JSON
+            clean_extra.pop("proposed_end_time", None)
+            notif.extra_data = clean_extra   # ← заставляет SQLAlchemy записать изменения
 
     notif.status = NotificationStatus.SENT
     notif.updated_at = datetime.now()
@@ -1155,21 +1181,43 @@ async def approve_end_time(
     if not notif:
         raise HTTPException(404, "Уведомление не найдено")
     
-    if not notif.extra_data or "auto_end_entry_id" not in notif.extra_data:
-        raise HTTPException(400, "Нет связанной автоматической отметки")
-    
-    end_entry_id = notif.extra_data["auto_end_entry_id"]
-    stmt_end = select(models.TimeEntry).where(models.TimeEntry.id == end_entry_id)
-    end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
+    extra = notif.extra_data or {}
+    clean_extra = {k.strip(): v for k, v in extra.items()}
+
+    end_entry_id = clean_extra.get("auto_end_entry_id")
+    if not end_entry_id:
+        # Fallback: ищем последнюю авто-отметку end за нужный день
+        workday_date = clean_extra.get("workday_date")
+        if workday_date:
+            workday_start = datetime.fromisoformat(workday_date + "T05:00:00")
+        else:
+            workday_start = datetime.combine(notif.created_at.date(), time(5, 0))
+            if notif.created_at.hour < 5:
+                workday_start -= timedelta(days=1)
+        workday_end = workday_start + timedelta(days=1)
+        
+        stmt_end = select(models.TimeEntry).where(
+            models.TimeEntry.employee_id == notif.employee_id,
+            models.TimeEntry.action == 'end',
+            models.TimeEntry.source == 'auto',
+            models.TimeEntry.timestamp >= workday_start,
+            models.TimeEntry.timestamp < workday_end
+        ).order_by(models.TimeEntry.timestamp.desc()).limit(1)
+        end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
+    else:
+        stmt_end = select(models.TimeEntry).where(models.TimeEntry.id == end_entry_id)
+        end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
+
     if not end_entry:
         raise HTTPException(404, "Автоматическая отметка завершения не найдена")
-    
+
     # Обновляем время
     end_entry.timestamp = data.end_time
     end_entry.source = f"admin_approved({admin.full_name})"
-    
-    # Очищаем предложение в уведомлении
-    notif.extra_data.pop("proposed_end_time", None)
+
+    # Удаляем предложение и фиксируем изменение JSON
+    clean_extra.pop("proposed_end_time", None)
+    notif.extra_data = clean_extra
     notif.status = NotificationStatus.SENT
     await db.commit()
     
@@ -1190,8 +1238,12 @@ async def reject_proposed_time(
         raise HTTPException(404, "Уведомление не найдено")
     
     if notif.extra_data and "proposed_end_time" in notif.extra_data:
-        notif.extra_data.pop("proposed_end_time", None)
-        notif.status = NotificationStatus.SENT   # возвращаем в исходное состояние
+        extra = notif.extra_data or {}
+        clean_extra = {k.strip(): v for k, v in extra.items()}
+        clean_extra.pop("proposed_end_time", None)
+        notif.extra_data = clean_extra
+        
+        notif.status = NotificationStatus.SENT
         
         exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
         exp_result = await db.execute(exp_stmt)

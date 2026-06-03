@@ -2460,7 +2460,9 @@ function renderNotifications(notifications) {
         actions.push(`<button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>`);
         actions.push(`<button class="btn-sm delete-notif" data-id="${n.id}">🗑️</button>`);
         if (n.status === 'draft') {
-            actions.push(`<button class="btn-sm approve-notif" data-id="${n.id}">✅</button>`);
+            if (!n.extra_data || !n.extra_data.proposed_end_time) {
+                actions.push(`<button class="btn-sm approve-notif" data-id="${n.id}">✅</button>`);
+            }
             actions.push(`<button class="btn-sm reject-notif" data-id="${n.id}">❌</button>`);
         } else {
             actions.push(`<span style="color:gray;">—</span>`);

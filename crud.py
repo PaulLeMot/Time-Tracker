@@ -228,7 +228,7 @@ async def auto_close_shifts(db: AsyncSession):
         await notify_admin_clients()
         await notify_monitor_clients()
         
-        # Создаём уведомление, если админ существует
+        # Создаём или обновляем уведомление, если админ существует
         if forced_end and admin:
             notif_stmt = select(Notification).where(
                 Notification.employee_id == emp.id,
@@ -237,7 +237,18 @@ async def auto_close_shifts(db: AsyncSession):
                 Notification.created_at >= datetime.combine(workday_date, time(5, 0, 0))
             )
             existing = await db.execute(notif_stmt)
-            if not existing.scalar_one_or_none():
+            existing_notif = existing.scalar_one_or_none()
+            
+            if existing_notif:
+                # Уведомление уже существует: дополняем extra_data
+                extra = existing_notif.extra_data or {}
+                extra["auto_end_entry_id"] = end_entry.id
+                # Принудительно пересоздаём словарь, чтобы SQLAlchemy отследила изменение
+                existing_notif.extra_data = dict(extra)
+                await db.commit()
+                await notify_employee(emp.id)
+            else:
+                # Создаём новое уведомление
                 notification = Notification(
                     employee_id=emp.id,
                     admin_id=admin.id,
