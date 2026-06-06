@@ -133,10 +133,10 @@ async def propose_end_time(
         raise HTTPException(400, "Недопустимый тип уведомления")
 
     # 3. Сохраняем предложенное время в extra_data
-    if notif.extra_data is None:
-        notif.extra_data = {}
-    notif.extra_data["proposed_end_time"] = data.proposed_end_time.isoformat()
-    notif.status = NotificationStatus.DRAFT   # переводим в черновик для админа
+    current_extra = dict(notif.extra_data) if notif.extra_data else {}
+    current_extra["proposed_end_time"] = data.proposed_end_time.isoformat()
+    notif.extra_data = current_extra   # ← принудительное обновление
+    notif.status = NotificationStatus.DRAFT
 
     # 4. Создаём или обновляем объяснительную, чтобы уведомление считалось "отвеченным"
     explanation_text = f"Предложено время завершения: {data.proposed_end_time.strftime('%d.%m.%Y %H:%M')}"

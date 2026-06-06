@@ -1000,21 +1000,21 @@ async def approve_notification(
     if notif.extra_data:
         # Очистка ключей от возможных невидимых пробелов
         clean_extra = {k.strip(): v for k, v in notif.extra_data.items()}
-        
+
         if "proposed_end_time" in clean_extra:
             end_entry_id = clean_extra.get("auto_end_entry_id")
-            
+            workday_date = clean_extra.get("workday_date")
+
+            if workday_date:
+                workday_start = datetime.fromisoformat(workday_date + "T05:00:00")
+            else:
+                workday_start = datetime.combine(notif.created_at.date(), time(5, 0))
+                if notif.created_at.hour < 5:
+                    workday_start -= timedelta(days=1)
+            workday_end = workday_start + timedelta(days=1)
+
             if not end_entry_id:
                 # Fallback: ищем последнюю авто-отметку end за нужный день
-                workday_date = clean_extra.get("workday_date")
-                if workday_date:
-                    workday_start = datetime.fromisoformat(workday_date + "T05:00:00")
-                else:
-                    workday_start = datetime.combine(notif.created_at.date(), time(5, 0))
-                    if notif.created_at.hour < 5:
-                        workday_start -= timedelta(days=1)
-                workday_end = workday_start + timedelta(days=1)
-                
                 stmt_end = select(models.TimeEntry).where(
                     models.TimeEntry.employee_id == notif.employee_id,
                     models.TimeEntry.action == 'end',
@@ -1026,12 +1026,23 @@ async def approve_notification(
             else:
                 stmt_end = select(models.TimeEntry).where(models.TimeEntry.id == end_entry_id)
                 end_entry = (await db.execute(stmt_end)).scalar_one_or_none()
-            
+
             if end_entry:
                 proposed_time = datetime.fromisoformat(clean_extra["proposed_end_time"])
                 end_entry.timestamp = proposed_time
                 end_entry.source = f"admin_approved({admin.full_name})"
-            
+
+                # Удаляем все остальные авто-отметки end за тот же рабочий день, кроме только что обновлённой
+                delete_stmt = delete(models.TimeEntry).where(
+                    models.TimeEntry.employee_id == notif.employee_id,
+                    models.TimeEntry.action == 'end',
+                    models.TimeEntry.source == 'auto',
+                    models.TimeEntry.timestamp >= workday_start,
+                    models.TimeEntry.timestamp < workday_end,
+                    models.TimeEntry.id != end_entry.id
+                )
+                await db.execute(delete_stmt)
+
             # Удаляем предложение и фиксируем изменение JSON
             clean_extra.pop("proposed_end_time", None)
             notif.extra_data = clean_extra   # ← заставляет SQLAlchemy записать изменения
