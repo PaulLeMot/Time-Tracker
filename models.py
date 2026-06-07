@@ -57,3 +57,11 @@ class Explanation(Base):
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     explanation_text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
+
+class Product(Base):
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, nullable=False)
+    product_type = Column(String, nullable=False)
+    fandom = Column(String, nullable=True)
+    name = Column(String, nullable=False)
