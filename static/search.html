@@ -3,295 +3,407 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Поиск товара</title>
+    <title>Поиск товаров</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #f0f4ff 0%, #e6f0ff 100%);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #f0f4ff;
             min-height: 100vh;
             display: flex;
             justify-content: center;
-            align-items: flex-start;
-            padding: 40px 20px;
+            padding: 30px 15px;
         }
         .container {
+            max-width: 1300px;
             width: 100%;
-            max-width: 720px;
-            background: rgba(255,255,255,0.8);
-            backdrop-filter: blur(20px);
+            background: white;
             border-radius: 32px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.05), 0 0 0 1px rgba(255,255,255,0.5);
-            padding: 32px;
-            margin-top: 20px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.08);
+            padding: 30px 25px;
         }
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 28px;
+            margin-bottom: 25px;
         }
         .back-link {
+            background: #f0f4ff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 30px;
+            color: #1e293b;
+            font-weight: 500;
+            text-decoration: none;
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 60px;
-            padding: 10px 20px;
-            text-decoration: none;
-            color: #1e293b;
-            font-weight: 500;
-            font-size: 0.9rem;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+            font-size: 0.95rem;
         }
-        .back-link:hover {
-            background: #f8fafc;
-            border-color: #cbd5e1;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        .back-link:hover { background: #e2e8f0; }
+        h2 { font-weight: 700; font-size: 1.8rem; color: #0f172a; }
+
+        .search-panel {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            align-items: flex-start;
         }
-        h2 {
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: #0f172a;
+        .field {
+            position: relative;
+            flex: 1 1 180px;
+            min-width: 160px;
+        }
+        .field label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .input-wrapper {
+            position: relative;
             display: flex;
             align-items: center;
-            gap: 8px;
         }
-        .search-wrapper {
-            position: relative;
-            margin-bottom: 8px;
-        }
-        #search {
+        input, select {
             width: 100%;
-            padding: 16px 24px;
-            font-size: 1rem;
+            padding: 12px 40px 12px 15px;
+            font-size: 0.95rem;
             border: 1px solid #e2e8f0;
-            border-radius: 60px;
+            border-radius: 40px;
             outline: none;
             background: white;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-            transition: all 0.2s ease;
-            padding-left: 48px;
+            transition: 0.2s;
+            appearance: none;
         }
-        #search:focus {
+        input:focus, select:focus {
             border-color: #3b82f6;
-            box-shadow: 0 4px 20px rgba(59,130,246,0.15);
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
         }
-        .search-icon {
+        .clear-btn {
             position: absolute;
-            left: 18px;
-            top: 50%;
-            transform: translateY(-50%);
+            right: 12px;
+            background: none;
+            border: none;
             font-size: 1.2rem;
-            color: #94a3b8;
-        }
-        #results {
-            list-style: none;
-            padding: 8px 0;
-            margin-top: 8px;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-            border: 1px solid #f1f5f9;
-            max-height: 280px;
-            overflow-y: auto;
-            transition: all 0.2s ease;
-        }
-        #results li {
-            padding: 12px 20px;
             cursor: pointer;
-            font-size: 0.95rem;
-            color: #334155;
-            border-bottom: 1px solid #f8fafc;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transition: background 0.15s;
-        }
-        #results li:last-child {
-            border-bottom: none;
-        }
-        #results li:hover {
-            background: #f0f7ff;
-        }
-        .result-code {
-            font-weight: 600;
-            color: #3b82f6;
-            min-width: 70px;
-        }
-        .result-desc {
-            flex: 1;
-            color: #334155;
-        }
-        .result-meta {
-            font-size: 0.8rem;
-            color: #64748b;
-            margin-left: auto;
-        }
-        .empty-result {
-            padding: 16px 20px;
             color: #94a3b8;
-            text-align: center;
+            padding: 0;
+            display: none;
+            line-height: 1;
         }
-        #selected {
-            margin-top: 24px;
-            text-align: center;
-            animation: fadeSlide 0.4s ease;
-        }
-        @keyframes fadeSlide {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .product-card {
+        .clear-btn.visible { display: block; }
+        .clear-btn:hover { color: #ef4444; }
+
+        .dropdown-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 100%;
             background: white;
-            border-radius: 24px;
-            padding: 24px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.04);
-            border: 1px solid #f1f5f9;
-        }
-        #productImage {
-            max-width: 250px;
-            max-height: 250px;
-            object-fit: contain;
-            border-radius: 20px;
-            background: #f8fafc;
-            padding: 12px;
-            margin-bottom: 16px;
-            transition: transform 0.2s;
-        }
-        #productImage:hover {
-            transform: scale(1.02);
-        }
-        #productName {
-            font-weight: 600;
-            font-size: 1.1rem;
-            color: #0f172a;
-            margin-bottom: 4px;
-        }
-        .product-code {
-            font-size: 0.9rem;
-            color: #64748b;
-        }
-        .hidden {
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            max-height: 220px;
+            overflow-y: auto;
+            z-index: 1000;
             display: none;
         }
-        @media (max-width: 480px) {
-            .container {
-                padding: 20px;
-            }
-            #results li {
-                flex-wrap: wrap;
-            }
+        .dropdown-list.open { display: block; }
+        .dropdown-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .dropdown-item:hover { background: #f0f7ff; }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        @media (max-width: 1024px) {
+            .products-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .products-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+            .search-panel { flex-direction: column; }
+            .field { flex: 1 1 auto; }
+        }
+
+        .product-card {
+            background: #f8fafc;
+            border-radius: 20px;
+            padding: 15px;
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid #f1f5f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .product-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 25px rgba(0,0,0,0.05);
+        }
+        .product-card img {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            object-fit: contain;
+            background: white;
+            border-radius: 12px;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+        .product-card .code {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+        .product-card .name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #0f172a;
+            line-height: 1.3;
+            margin-bottom: 4px;
+        }
+        .product-card .meta {
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .pagination button {
+            background: #f0f4ff;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+        .pagination button.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .pagination button:disabled {
+            opacity: 0.4;
+            cursor: default;
+        }
+        .results-info {
+            text-align: center;
+            color: #64748b;
+            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h2>Поиск товара</h2>
-            <a href="/static/employee.html" class="back-link">← Личный кабинет</a>
+<div class="container">
+    <div class="header">
+        <h2>🔎</h2>
+        <a href="/static/employee.html" class="back-link">← Личный кабинет</a>
+    </div>
+
+    <div class="search-panel">
+        <div class="field">
+            <label>Код товара</label>
+            <div class="input-wrapper">
+                <input type="text" id="codeInput" placeholder="Введите код или часть">
+                <button class="clear-btn" id="clearCode">✕</button>
+            </div>
         </div>
 
-        <div class="search-wrapper">
-            <span class="search-icon">🔍</span>
-            <input type="text" id="search" placeholder="Введите код, название, фандом или вид товара..." autocomplete="off">
+        <div class="field">
+            <label>Вид товара</label>
+            <div class="input-wrapper">
+                <select id="typeSelect"><option value="">Все виды</option></select>
+                <button class="clear-btn" id="clearType">✕</button>
+            </div>
         </div>
-        <ul id="results" class="hidden"></ul>
 
-        <div id="selected" class="hidden">
-            <div class="product-card">
-                <img id="productImage" src="" alt="Изображение товара">
-                <div id="productName"></div>
-                <div id="productCode" class="product-code"></div>
+        <div class="field">
+            <label>Фандом</label>
+            <div class="input-wrapper">
+                <select id="fandomSelect"><option value="">Все фандомы</option></select>
+                <button class="clear-btn" id="clearFandom">✕</button>
             </div>
         </div>
     </div>
 
-    <script>
-        const searchInput = document.getElementById('search');
-        const resultsList = document.getElementById('results');
-        const selectedDiv = document.getElementById('selected');
-        const productImage = document.getElementById('productImage');
-        const productName = document.getElementById('productName');
-        const productCode = document.getElementById('productCode');
+    <div class="results-info" id="resultsInfo">Загрузка...</div>
+    <div class="products-grid" id="productsGrid"></div>
+    <div class="pagination" id="pagination"></div>
+</div>
 
-        let debounceTimer;
-        searchInput.addEventListener('input', function() {
-            clearTimeout(debounceTimer);
-            const query = this.value.trim();
-            if (query.length === 0) {
-                resultsList.innerHTML = '';
-                resultsList.classList.add('hidden');
-                return;
-            }
-            debounceTimer = setTimeout(() => {
-                fetchResults(query);
-            }, 300);
+<script>
+    // Состояние
+    let currentPage = 0;
+    const limit = 30;
+
+    // Элементы
+    const codeInput = document.getElementById('codeInput');
+    const typeSelect = document.getElementById('typeSelect');
+    const fandomSelect = document.getElementById('fandomSelect');
+    const clearCode = document.getElementById('clearCode');
+    const clearType = document.getElementById('clearType');
+    const clearFandom = document.getElementById('clearFandom');
+    const grid = document.getElementById('productsGrid');
+    const info = document.getElementById('resultsInfo');
+    const paginationDiv = document.getElementById('pagination');
+
+    // Загрузка фильтров при старте
+    async function loadFilterOptions() {
+        const resp = await fetch('/api/products/filter-options');
+        const data = await resp.json();
+        populateSelect(typeSelect, data.product_types);
+        populateSelect(fandomSelect, data.fandoms);
+    }
+
+    function populateSelect(select, items) {
+        const current = select.value;
+        select.innerHTML = '<option value="">Все</option>';
+        items.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item;
+            opt.textContent = item;
+            select.appendChild(opt);
+        });
+        select.value = current;
+    }
+
+    // Получение и отрисовка товаров
+    async function loadProducts(page = 0) {
+        const code = codeInput.value.trim();
+        const type = typeSelect.value;
+        const fandom = fandomSelect.value;
+        const offset = page * limit;
+
+        let url = `/api/products/filtered?limit=${limit}&offset=${offset}`;
+        if (code) url += `&code=${encodeURIComponent(code)}`;
+        if (type) url += `&product_type=${encodeURIComponent(type)}`;
+        if (fandom) url += `&fandom=${encodeURIComponent(fandom)}`;
+
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        // Информация о количестве
+        info.textContent = `Найдено товаров: ${data.total}`;
+
+        // Отрисовка сетки
+        grid.innerHTML = '';
+        if (data.items.length === 0) {
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px;">Ничего не найдено</div>';
+            paginationDiv.innerHTML = '';
+            return;
+        }
+        data.items.forEach(p => {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+            card.innerHTML = `
+                <img src="${p.image_url}" alt="${p.name}" onerror="this.src='/static/ttr.png'">
+                <div class="code">${p.code}</div>
+                <div class="name">${escapeHtml(p.name)}</div>
+                <div class="meta">${p.product_type} ${p.fandom ? '· '+escapeHtml(p.fandom) : ''}</div>
+            `;
+            grid.appendChild(card);
         });
 
-        async function fetchResults(query) {
-            try {
-                const resp = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
-                if (!resp.ok) throw new Error('Ошибка сети');
-                const data = await resp.json();
-                renderResults(data);
-            } catch (err) {
-                console.error(err);
-                resultsList.innerHTML = '<li class="empty-result">Ошибка загрузки</li>';
-                resultsList.classList.remove('hidden');
-            }
+        // Пагинация
+        renderPagination(data.total, page);
+    }
+
+    function renderPagination(total, current) {
+        const totalPages = Math.ceil(total / limit);
+        paginationDiv.innerHTML = '';
+        if (totalPages <= 1) return;
+
+        const maxButtons = 7;
+        let start = Math.max(0, current - Math.floor(maxButtons/2));
+        let end = Math.min(totalPages, start + maxButtons);
+        if (end - start < maxButtons) start = Math.max(0, end - maxButtons);
+
+        // Назад
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = '←';
+        prevBtn.disabled = current === 0;
+        prevBtn.onclick = () => loadProducts(current - 1);
+        paginationDiv.appendChild(prevBtn);
+
+        for (let i = start; i < end; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i + 1;
+            if (i === current) btn.classList.add('active');
+            btn.onclick = () => loadProducts(i);
+            paginationDiv.appendChild(btn);
         }
 
-        function renderResults(products) {
-            resultsList.innerHTML = '';
-            if (products.length === 0) {
-                resultsList.innerHTML = '<li class="empty-result">Ничего не найдено</li>';
-                resultsList.classList.remove('hidden');
-                return;
-            }
-            products.forEach(p => {
-                const li = document.createElement('li');
-                li.innerHTML = `
-                    <span class="result-code">${escapeHtml(p.code)}</span>
-                    <span class="result-desc">${escapeHtml(p.name)}</span>
-                    <span class="result-meta">${escapeHtml(p.product_type)}${p.fandom ? ', ' + escapeHtml(p.fandom) : ''}</span>
-                `;
-                li.addEventListener('click', () => selectProduct(p));
-                resultsList.appendChild(li);
-            });
-            resultsList.classList.remove('hidden');
-        }
+        // Вперёд
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = '→';
+        nextBtn.disabled = current >= totalPages - 1;
+        nextBtn.onclick = () => loadProducts(current + 1);
+        paginationDiv.appendChild(nextBtn);
+    }
 
-        function selectProduct(product) {
-            productImage.src = product.image_url;
-            productImage.alt = product.name;
-            productName.textContent = product.name;
-            productCode.textContent = `Код: ${product.code}`;
-            selectedDiv.classList.remove('hidden');
-            searchInput.value = `${product.code} - ${product.name}`;
-            resultsList.classList.add('hidden');
-        }
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
+    }
 
-        function escapeHtml(text) {
-            if (!text) return '';
-            return text.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
-        }
+    // Очистка полей
+    function clearAndSearch(input, clearBtn) {
+        input.value = '';
+        clearBtn.classList.remove('visible');
+        loadProducts(0);
+    }
+    clearCode.onclick = () => clearAndSearch(codeInput, clearCode);
+    clearType.onclick = () => {
+        typeSelect.value = '';
+        clearType.classList.remove('visible');
+        loadProducts(0);
+    };
+    clearFandom.onclick = () => {
+        fandomSelect.value = '';
+        clearFandom.classList.remove('visible');
+        loadProducts(0);
+    };
 
-        document.addEventListener('click', (e) => {
-            if (!searchInput.contains(e.target) && !resultsList.contains(e.target)) {
-                resultsList.classList.add('hidden');
-            }
-        });
+    // Отображение кнопок очистки
+    codeInput.addEventListener('input', () => {
+        clearCode.classList.toggle('visible', codeInput.value.length > 0);
+    });
+    typeSelect.addEventListener('change', () => {
+        clearType.classList.toggle('visible', typeSelect.value !== '');
+        loadProducts(0);
+    });
+    fandomSelect.addEventListener('change', () => {
+        clearFandom.classList.toggle('visible', fandomSelect.value !== '');
+        loadProducts(0);
+    });
 
-        searchInput.focus();
-    </script>
+    // Поиск с задержкой для кода
+    let searchTimer;
+    codeInput.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => loadProducts(0), 400);
+    });
+
+    // Инициализация
+    loadFilterOptions().then(() => loadProducts(0));
+</script>
 </body>
 </html>
