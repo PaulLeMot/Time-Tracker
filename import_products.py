@@ -10,7 +10,7 @@ async def import_products():
     engine = create_async_engine(DATABASE_URL)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    file_path = '/app/static/img/products.xlsx'
+    file_path = '/app/static/img/goods_export.xlsx'
     df = pd.read_excel(file_path)
 
     df.columns = ['code', 'product_type', 'fandom', 'name']
@@ -22,9 +22,11 @@ async def import_products():
             stmt = select(Product).where(Product.code == code)
             result = await session.execute(stmt)
             existing = result.scalar_one_or_none()
+
             if existing:
                 print(f"Пропущен существующий код: {code}")
                 continue
+
             product = Product(
                 code=code,
                 product_type=str(row['product_type']).strip(),
@@ -32,6 +34,7 @@ async def import_products():
                 name=str(row['name']).strip()
             )
             session.add(product)
+
         await session.commit()
     print("✅ Импорт завершён")
 

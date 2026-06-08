@@ -32,6 +32,7 @@ services:
     volumes:
       - .:/app
       - ./backups:/app/backups
+      - "/mnt/f/!img/250:/app/static/img"
     restart: unless-stopped
 
 volumes:
