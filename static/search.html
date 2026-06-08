@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поиск товара</title>
+    <link rel="icon" type="image/png" href="/static/ttr.png">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e6f0ff 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 720px;
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05), 0 0 0 1px rgba(255,255,255,0.5);
+            padding: 32px;
+            margin-top: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+        }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 60px;
+            padding: 10px 20px;
+            text-decoration: none;
+            color: #1e293b;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        }
+        .back-link:hover {
+            background: #f8fafc;
+            border-color: #cbd5e1;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        h2 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .search-wrapper {
+            position: relative;
+            margin-bottom: 8px;
+        }
+        #search {
+            width: 100%;
+            padding: 16px 24px;
+            font-size: 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 60px;
+            outline: none;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            transition: all 0.2s ease;
+            padding-left: 48px;
+        }
+        #search:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 20px rgba(59,130,246,0.15);
+        }
+        .search-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2rem;
+            color: #94a3b8;
+        }
+        #results {
+            list-style: none;
+            padding: 8px 0;
+            margin-top: 8px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            border: 1px solid #f1f5f9;
+            max-height: 280px;
+            overflow-y: auto;
+            transition: all 0.2s ease;
+        }
+        #results li {
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            color: #334155;
+            border-bottom: 1px solid #f8fafc;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.15s;
+        }
+        #results li:last-child {
+            border-bottom: none;
+        }
+        #results li:hover {
+            background: #f0f7ff;
+        }
+        .result-code {
+            font-weight: 600;
+            color: #3b82f6;
+            min-width: 70px;
+        }
+        .result-desc {
+            flex: 1;
+            color: #334155;
+        }
+        .result-meta {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-left: auto;
+        }
+        .empty-result {
+            padding: 16px 20px;
+            color: #94a3b8;
+            text-align: center;
+        }
+        #selected {
+            margin-top: 24px;
+            text-align: center;
+            animation: fadeSlide 0.4s ease;
+        }
+        @keyframes fadeSlide {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .product-card {
+            background: white;
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.04);
+            border: 1px solid #f1f5f9;
+        }
+        #productImage {
+            max-width: 250px;
+            max-height: 250px;
+            object-fit: contain;
+            border-radius: 20px;
+            background: #f8fafc;
+            padding: 12px;
+            margin-bottom: 16px;
+            transition: transform 0.2s;
+        }
+        #productImage:hover {
+            transform: scale(1.02);
+        }
+        #productName {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+        .product-code {
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+        .hidden {
+            display: none;
+        }
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+            #results li {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Поиск товара</h2>
+            <a href="/static/employee.html" class="back-link">← Личный кабинет</a>
+        </div>
+
+        <div class="search-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search" placeholder="Введите код, название, фандом или вид товара..." autocomplete="off">
+        </div>
+        <ul id="results" class="hidden"></ul>
+
+        <div id="selected" class="hidden">
+            <div class="product-card">
+                <img id="productImage" src="" alt="Изображение товара">
+                <div id="productName"></div>
+                <div id="productCode" class="product-code"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('search');
+        const resultsList = document.getElementById('results');
+        const selectedDiv = document.getElementById('selected');
+        const productImage = document.getElementById('productImage');
+        const productName = document.getElementById('productName');
+        const productCode = document.getElementById('productCode');
+
+        let debounceTimer;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            const query = this.value.trim();
+            if (query.length === 0) {
+                resultsList.innerHTML = '';
+                resultsList.classList.add('hidden');
+                return;
+            }
+            debounceTimer = setTimeout(() => {
+                fetchResults(query);
+            }, 300);
+        });
+
+        async function fetchResults(query) {
+            try {
+                const resp = await fetch(`/api/products/search?q=${encodeURIComponent(query)}`);
+                if (!resp.ok) throw new Error('Ошибка сети');
+                const data = await resp.json();
+                renderResults(data);
+            } catch (err) {
+                console.error(err);
+                resultsList.innerHTML = '<li class="empty-result">Ошибка загрузки</li>';
+                resultsList.classList.remove('hidden');
+            }
+        }
+
+        function renderResults(products) {
+            resultsList.innerHTML = '';
+            if (products.length === 0) {
+                resultsList.innerHTML = '<li class="empty-result">Ничего не найдено</li>';
+                resultsList.classList.remove('hidden');
+                return;
+            }
+            products.forEach(p => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span class="result-code">${escapeHtml(p.code)}</span>
+                    <span class="result-desc">${escapeHtml(p.name)}</span>
+                    <span class="result-meta">${escapeHtml(p.product_type)}${p.fandom ? ', ' + escapeHtml(p.fandom) : ''}</span>
+                `;
+                li.addEventListener('click', () => selectProduct(p));
+                resultsList.appendChild(li);
+            });
+            resultsList.classList.remove('hidden');
+        }
+
+        function selectProduct(product) {
+            productImage.src = product.image_url;
+            productImage.alt = product.name;
+            productName.textContent = product.name;
+            productCode.textContent = `Код: ${product.code}`;
+            selectedDiv.classList.remove('hidden');
+            searchInput.value = `${product.code} - ${product.name}`;
+            resultsList.classList.add('hidden');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && !resultsList.contains(e.target)) {
+                resultsList.classList.add('hidden');
+            }
+        });
+
+        searchInput.focus();
+    </script>
+</body>
+</html>
