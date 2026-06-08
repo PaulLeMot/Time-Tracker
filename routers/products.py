@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
@@ -19,7 +19,7 @@ class ProductOut(BaseModel):
 @router.get("/search", response_model=List[ProductOut])
 async def search_products(
     q: str = Query(..., min_length=1, description="Поисковый запрос"),
-    db: AsyncSession = get_db
+    db: AsyncSession = Depends(get_db)
 ):
     stmt = select(Product).where(
         or_(
