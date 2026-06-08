@@ -8,3 +8,5 @@ python-barcode
 pillow
 itsdangerous
 apscheduler
+openpyxl
+pandas
