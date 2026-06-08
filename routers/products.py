@@ -45,7 +45,7 @@ async def search_products(
     ]
 
 @router.get("/{code}", response_model=ProductOut)
-async def get_product_by_code(code: str, db: AsyncSession = get_db):
+async def get_product_by_code(code: str, db: AsyncSession = Depends(get_db)):
     stmt = select(Product).where(Product.code == code)
     result = await db.execute(stmt)
     product = result.scalar_one_or_none()
