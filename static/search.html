@@ -16,7 +16,7 @@
             width: 100%;
             max-width: 100%;
             background: white;
-            padding: 15px 10px;
+            padding: 5px 10px;      /* уменьшенный верхний и боковой отступ */
             min-height: 100vh;
         }
 
@@ -24,13 +24,13 @@
         .search-panel {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 6px;               /* уменьшенный зазор между строками */
+            margin-bottom: 5px;     /* минимальное расстояние до карточек */
             position: sticky;
-            top: 0;
+            top: 5px;               /* фиксированный отступ от верха при прилипании */
             background: white;
             z-index: 100;
-            padding: 8px 0;
+            padding: 5px 0;         /* уменьшенные внутренние отступы */
         }
 
         /* общие поля */
@@ -160,7 +160,7 @@
         @media (max-width: 768px) {
             .products-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
             .container {
-                padding: 10px 5px;
+                padding: 5px 5px;   /* ещё меньше на мобильных */
             }
         }
 
