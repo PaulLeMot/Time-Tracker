@@ -169,40 +169,22 @@
         }
         .product-card .name {
             font-weight: 600;
-            font-size: 0.6rem;
+            font-size: 0.8rem;
             color: #0f172a;
             line-height: 1.3;
             margin-bottom: 4px;
         }
         .product-card .code {
-            font-size: 0.6rem;
-            color: #0f172a;
+            font-size: 0.8rem;
+            color: #475569;
             font-weight: 500;
         }
 
-        .pagination {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 15px;
-            flex-wrap: wrap;
-        }
-        .pagination button {
-            background: #f0f4ff;
-            border: none;
-            padding: 10px 18px;
-            border-radius: 30px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: 0.2s;
-        }
-        .pagination button.active {
-            background: #3b82f6;
-            color: white;
-        }
-        .pagination button:disabled {
-            opacity: 0.4;
-            cursor: default;
+        .loader {
+            text-align: center;
+            padding: 20px;
+            color: #64748b;
+            display: none;
         }
     </style>
 </head>
@@ -239,17 +221,20 @@
     </div>
 
     <div class="products-grid" id="productsGrid"></div>
-    <div class="pagination" id="pagination"></div>
+    <div class="loader" id="loader">Загрузка...</div>
 </div>
 
 <script>
     // Состояние
-    let currentPage = 0;
     const limit = 30;
     let allTypes = [];
     let allFandoms = [];
     let selectedType = '';
     let selectedFandom = '';
+    let currentOffset = 0;
+    let totalProducts = 0;
+    let isLoading = false;
+    let hasMore = true;
 
     // Элементы
     const codeInput = document.getElementById('codeInput');
@@ -260,21 +245,62 @@
     const clearFandomBtn = document.getElementById('clearFandom');
     const grid = document.getElementById('productsGrid');
     const totalCountSpan = document.getElementById('totalCount');
-    const paginationDiv = document.getElementById('pagination');
     const typeDropdown = document.getElementById('typeDropdown');
     const fandomDropdown = document.getElementById('fandomDropdown');
+    const loader = document.getElementById('loader');
 
     // Функция обновления видимости крестика
     function updateClearButton(input, btn) {
         btn.classList.toggle('visible', input.value.length > 0);
     }
 
-    // Загрузка фильтров
-    async function loadFilterOptions() {
-        const resp = await fetch('/api/products/filter-options');
+    // Загрузка фильтров (всех или отфильтрованных)
+    async function loadFilterOptions(productType = '', fandom = '') {
+        let url = '/api/products/filter-options';
+        const params = new URLSearchParams();
+        if (productType) params.append('product_type', productType);
+        if (fandom) params.append('fandom', fandom);
+        if (params.toString()) url += '?' + params.toString();
+
+        const resp = await fetch(url);
         const data = await resp.json();
+        return data;
+    }
+
+    // Обновление дропдаунов с учётом контекста
+    async function updateDropdowns() {
+        const data = await loadFilterOptions(selectedType, selectedFandom);
         allTypes = data.product_types;
         allFandoms = data.fandoms;
+
+        // Обновляем список типов, если поле ввода типа не равно выбранному значению (чтобы не сбрасывать ввод)
+        if (!selectedType || typeInput.value === selectedType) {
+            // Оставляем текущий ввод, но фильтруем варианты
+            filterAndShowDropdown(typeInput, typeDropdown, allTypes, (value) => {
+                selectedType = value;
+                typeInput.value = value;
+                updateClearButton(typeInput, clearTypeBtn);
+                updateDropdowns();   // обновить фандомы
+                resetAndLoad();
+            });
+        }
+        if (!selectedFandom || fandomInput.value === selectedFandom) {
+            filterAndShowDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
+                selectedFandom = value;
+                fandomInput.value = value;
+                updateClearButton(fandomInput, clearFandomBtn);
+                updateDropdowns();   // обновить виды
+                resetAndLoad();
+            });
+        }
+    }
+
+    // Инициализация фильтров при загрузке
+    async function initFilters() {
+        const data = await loadFilterOptions();
+        allTypes = data.product_types;
+        allFandoms = data.fandoms;
+        // Первоначально не открываем дропдауны
     }
 
     // Фильтрация и отображение выпадающего списка
@@ -298,7 +324,7 @@
                     e.preventDefault();
                     input.value = item;
                     container.classList.remove('open');
-                    updateClearButton(input, input.nextElementSibling); // показать крестик
+                    updateClearButton(input, input.nextElementSibling);
                     onSelect(item);
                 });
                 container.appendChild(div);
@@ -311,41 +337,52 @@
         fandomDropdown.classList.remove('open');
     }
 
-    // Обработчики для поля "Вид товара"
+    // Обработчики ввода для типа и фандома
     typeInput.addEventListener('input', () => {
         updateClearButton(typeInput, clearTypeBtn);
         filterAndShowDropdown(typeInput, typeDropdown, allTypes, (value) => {
             selectedType = value;
-            loadProducts(0);
+            typeInput.value = value;
+            updateClearButton(typeInput, clearTypeBtn);
+            updateDropdowns();
+            resetAndLoad();
         });
     });
     typeInput.addEventListener('focus', () => {
         if (!typeDropdown.classList.contains('open')) {
             filterAndShowDropdown(typeInput, typeDropdown, allTypes, (value) => {
                 selectedType = value;
-                loadProducts(0);
+                typeInput.value = value;
+                updateClearButton(typeInput, clearTypeBtn);
+                updateDropdowns();
+                resetAndLoad();
             });
         }
     });
 
-    // Обработчики для поля "Фандом"
     fandomInput.addEventListener('input', () => {
         updateClearButton(fandomInput, clearFandomBtn);
         filterAndShowDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
             selectedFandom = value;
-            loadProducts(0);
+            fandomInput.value = value;
+            updateClearButton(fandomInput, clearFandomBtn);
+            updateDropdowns();
+            resetAndLoad();
         });
     });
     fandomInput.addEventListener('focus', () => {
         if (!fandomDropdown.classList.contains('open')) {
             filterAndShowDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
                 selectedFandom = value;
-                loadProducts(0);
+                fandomInput.value = value;
+                updateClearButton(fandomInput, clearFandomBtn);
+                updateDropdowns();
+                resetAndLoad();
             });
         }
     });
 
-    // Скрытие выпадающих списков при клике вне поля
+    // Скрытие выпадашек при клике вне поля
     document.addEventListener('click', (e) => {
         if (!e.target.closest('#typeField')) typeDropdown.classList.remove('open');
         if (!e.target.closest('#fandomField')) fandomDropdown.classList.remove('open');
@@ -357,36 +394,46 @@
         clearBtn.classList.remove('visible');
         closeAllDropdowns();
         resetCallback();
-        loadProducts(0);
+        resetAndLoad();
     }
 
     clearCode.onclick = () => clearField(codeInput, clearCode, () => {});
     clearTypeBtn.onclick = (e) => {
         e.stopPropagation();
-        clearField(typeInput, clearTypeBtn, () => { selectedType = ''; });
+        clearField(typeInput, clearTypeBtn, () => { selectedType = ''; updateDropdowns(); });
     };
     clearFandomBtn.onclick = (e) => {
         e.stopPropagation();
-        clearField(fandomInput, clearFandomBtn, () => { selectedFandom = ''; });
+        clearField(fandomInput, clearFandomBtn, () => { selectedFandom = ''; updateDropdowns(); });
     };
 
-    // Для поля кода
     codeInput.addEventListener('input', () => {
         updateClearButton(codeInput, clearCode);
     });
+
     // Поиск с задержкой для кода
     let searchTimer;
     codeInput.addEventListener('input', () => {
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => loadProducts(0), 400);
+        searchTimer = setTimeout(() => resetAndLoad(), 400);
     });
 
-    // Загрузка товаров
-    async function loadProducts(page = 0) {
-        const code = codeInput.value.trim();
-        const offset = page * limit;
+    // Сброс и загрузка с начала
+    function resetAndLoad() {
+        currentOffset = 0;
+        hasMore = true;
+        grid.innerHTML = '';
+        loadProducts();
+    }
 
-        let url = `/api/products/filtered?limit=${limit}&offset=${offset}`;
+    // Загрузка товаров (бесконечный скролл)
+    async function loadProducts() {
+        if (isLoading || !hasMore) return;
+        isLoading = true;
+        loader.style.display = 'block';
+
+        const code = codeInput.value.trim();
+        let url = `/api/products/filtered?limit=${limit}&offset=${currentOffset}`;
         if (code) url += `&code=${encodeURIComponent(code)}`;
         if (selectedType) url += `&product_type=${encodeURIComponent(selectedType)}`;
         if (selectedFandom) url += `&fandom=${encodeURIComponent(selectedFandom)}`;
@@ -394,58 +441,40 @@
         const resp = await fetch(url);
         const data = await resp.json();
         totalCountSpan.textContent = data.total;
+        totalProducts = data.total;
 
-        grid.innerHTML = '';
-        if (data.items.length === 0) {
+        if (data.items.length === 0 && currentOffset === 0) {
             grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px;">Ничего не найдено</div>';
-            paginationDiv.innerHTML = '';
-            return;
+        } else {
+            data.items.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'product-card';
+                card.innerHTML = `
+                    <img src="${p.image_url}" alt="${p.name}" onerror="this.src='/static/ttr.png'">
+                    <div class="name">${escapeHtml(p.name)}</div>
+                    <div class="code">${p.code}</div>
+                `;
+                grid.appendChild(card);
+            });
         }
 
-        data.items.forEach(p => {
-            const card = document.createElement('div');
-            card.className = 'product-card';
-            card.innerHTML = `
-                <img src="${p.image_url}" alt="${p.name}" onerror="this.src='/static/ttr.png'">
-                <div class="name">${escapeHtml(p.name)}</div>
-                <div class="code">${p.code}</div>
-            `;
-            grid.appendChild(card);
-        });
-
-        renderPagination(data.total, page);
+        currentOffset += data.items.length;
+        hasMore = currentOffset < totalProducts;
+        loader.style.display = hasMore ? 'block' : 'none';
+        isLoading = false;
     }
 
-    function renderPagination(total, current) {
-        const totalPages = Math.ceil(total / limit);
-        paginationDiv.innerHTML = '';
-        if (totalPages <= 1) return;
+    // Intersection Observer для бесконечного скролла
+    const sentinel = document.createElement('div');
+    sentinel.id = 'scrollSentinel';
+    grid.after(sentinel);
 
-        const maxButtons = 7;
-        let start = Math.max(0, current - Math.floor(maxButtons/2));
-        let end = Math.min(totalPages, start + maxButtons);
-        if (end - start < maxButtons) start = Math.max(0, end - maxButtons);
-
-        const prevBtn = document.createElement('button');
-        prevBtn.textContent = '←';
-        prevBtn.disabled = current === 0;
-        prevBtn.onclick = () => loadProducts(current - 1);
-        paginationDiv.appendChild(prevBtn);
-
-        for (let i = start; i < end; i++) {
-            const btn = document.createElement('button');
-            btn.textContent = i + 1;
-            if (i === current) btn.classList.add('active');
-            btn.onclick = () => loadProducts(i);
-            paginationDiv.appendChild(btn);
+    const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoading) {
+            loadProducts();
         }
-
-        const nextBtn = document.createElement('button');
-        nextBtn.textContent = '→';
-        nextBtn.disabled = current >= totalPages - 1;
-        nextBtn.onclick = () => loadProducts(current + 1);
-        paginationDiv.appendChild(nextBtn);
-    }
+    }, { threshold: 0.1 });
+    observer.observe(sentinel);
 
     function escapeHtml(text) {
         if (!text) return '';
@@ -453,7 +482,10 @@
     }
 
     // Инициализация
-    loadFilterOptions().then(() => loadProducts(0));
+    initFilters().then(() => {
+        updateDropdowns();   // заполним начальные списки
+        loadProducts();
+    });
 </script>
 </body>
 </html>

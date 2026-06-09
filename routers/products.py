@@ -28,17 +28,30 @@ class FilteredProductsOut(BaseModel):
 # 1. Получение уникальных значений для выпадающих списков (видов и фандомов)
 # ----------------------------------------------------------------------
 @router.get("/filter-options", response_model=FilterOptionsOut)
-async def get_filter_options(db: AsyncSession = Depends(get_db)):
-    # Получаем уникальные product_type
-    stmt_types = select(Product.product_type).distinct().where(Product.product_type.isnot(None)).order_by(Product.product_type)
+async def get_filter_options(
+    product_type: Optional[str] = Query(None, description="Выбранный тип товара (для фильтрации фандомов)"),
+    fandom: Optional[str] = Query(None, description="Выбранный фандом (для фильтрации типов)"),
+    db: AsyncSession = Depends(get_db)
+):
+    # Базовые запросы
+    stmt_types = select(Product.product_type).distinct().where(Product.product_type.isnot(None))
+    stmt_fandoms = select(Product.fandom).distinct().where(Product.fandom.isnot(None))
+
+    # Применяем контекстные ограничения
+    if product_type:
+        stmt_fandoms = stmt_fandoms.where(Product.product_type == product_type)
+    if fandom:
+        stmt_types = stmt_types.where(Product.fandom == fandom)
+
+    stmt_types = stmt_types.order_by(Product.product_type)
+    stmt_fandoms = stmt_fandoms.order_by(Product.fandom)
+
     result_types = await db.execute(stmt_types)
     product_types = [row[0] for row in result_types.all() if row[0]]
-    
-    # Получаем уникальные fandom
-    stmt_fandoms = select(Product.fandom).distinct().where(Product.fandom.isnot(None)).order_by(Product.fandom)
+
     result_fandoms = await db.execute(stmt_fandoms)
     fandoms = [row[0] for row in result_fandoms.all() if row[0]]
-    
+
     return FilterOptionsOut(product_types=product_types, fandoms=fandoms)
 
 
@@ -56,7 +69,7 @@ async def get_filtered_products(
 ):
     # Базовый запрос
     query = select(Product)
-    
+
     # Применяем фильтры
     if code and code.strip():
         query = query.where(Product.code.ilike(f"%{code.strip()}%"))
@@ -64,20 +77,20 @@ async def get_filtered_products(
         query = query.where(Product.product_type == product_type)
     if fandom:
         query = query.where(Product.fandom == fandom)
-    
-    # Сортировка для стабильности
-    query = query.order_by(Product.code)
-    
-    # Считаем общее количество (для пагинации)
+
+    # Сортировка по названию (алфавит)
+    query = query.order_by(Product.name)
+
+    # Считаем общее количество (для пагинации/бесконечного скролла)
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
-    
+
     # Применяем пагинацию
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     products = result.scalars().all()
-    
+
     items = [
         ProductOut(
             id=p.id,
@@ -89,7 +102,7 @@ async def get_filtered_products(
         )
         for p in products
     ]
-    
+
     return FilteredProductsOut(items=items, total=total)
 
 
