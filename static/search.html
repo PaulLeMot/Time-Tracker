@@ -133,14 +133,14 @@
             .products-grid { grid-template-columns: repeat(4, 1fr); }
         }
         @media (max-width: 768px) {
-            .products-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+            .products-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
             .search-panel {
                 flex-direction: column;
                 gap: 10px;
-                margin-bottom: 10px;   /* уменьшено расстояние до карточек */
+                margin-bottom: 8px;   /* ещё меньше расстояние до карточек */
             }
             .container {
-                padding: 15px 10px;    /* уменьшены боковые поля */
+                padding: 10px 5px;    /* минимальные боковые поля */
             }
             /* обёртка для первых двух полей на мобильных */
             .search-row {
@@ -148,14 +148,14 @@
                 gap: 10px;
                 width: 100%;
             }
-            /* поле кода — 25% ширины */
+            /* поле кода — немного шире (35% вместо 25%) */
             .search-row .field:first-child {
-                flex: 1 1 25%;
+                flex: 1 1 35%;
                 min-width: 0;
             }
-            /* поле вида товара — 75% ширины */
+            /* поле вида товара — оставшиеся 65% */
             .search-row .field:last-child {
-                flex: 3 1 75%;
+                flex: 1 1 65%;
                 min-width: 0;
             }
             /* поле фандома идёт отдельно на всю ширину */
@@ -226,7 +226,7 @@
         <div class="search-row">
             <div class="field">
                 <div class="input-wrapper">
-                    <input type="text" id="codeInput" placeholder="Код товара">
+                    <input type="text" id="codeInput" placeholder="Код">
                     <button class="clear-btn" id="clearCode">✕</button>
                 </div>
             </div>
