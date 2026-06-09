@@ -9,19 +9,15 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background: #f0f4ff;
+            background: white;
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            padding: 30px 15px;
         }
         .container {
-            max-width: 1300px;
             width: 100%;
+            max-width: 100%;
             background: white;
-            border-radius: 32px;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.08);
-            padding: 30px 25px;
+            padding: 20px 25px;
+            min-height: 100vh;
         }
         .header {
             display: flex;
@@ -62,7 +58,6 @@
             background: white;
             z-index: 100;
             padding: 10px 0;
-            border-radius: 32px 32px 0 0;
         }
         .field {
             position: relative;
@@ -139,8 +134,35 @@
         }
         @media (max-width: 768px) {
             .products-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-            .search-panel { flex-direction: column; }
-            .field { flex: 1 1 auto; }
+            .search-panel {
+                flex-direction: column;
+                gap: 10px;
+            }
+            /* обёртка для первых двух полей на мобильных */
+            .search-row {
+                display: flex;
+                gap: 10px;
+                width: 100%;
+            }
+            /* поле кода — 25% ширины */
+            .search-row .field:first-child {
+                flex: 1 1 25%;
+                min-width: 0;
+            }
+            /* поле вида товара — 75% ширины */
+            .search-row .field:last-child {
+                flex: 3 1 75%;
+                min-width: 0;
+            }
+            /* поле фандома идёт отдельно на всю ширину */
+            .search-panel > .field:last-child {
+                flex: 1 1 100%;
+            }
+        }
+        @media (min-width: 769px) {
+            .search-row {
+                display: contents; /* на десктопе обёртка не влияет */
+            }
         }
 
         .product-card {
@@ -175,8 +197,8 @@
             margin-bottom: 4px;
         }
         .product-card .code {
-            font-size: 1.0rem;
-            color: #0f172a;
+            font-size: 0.8rem;
+            color: #475569;
             font-weight: 500;
         }
 
@@ -196,21 +218,25 @@
     </div>
 
     <div class="search-panel">
-        <div class="field">
-            <div class="input-wrapper">
-                <input type="text" id="codeInput" placeholder="Код товара">
-                <button class="clear-btn" id="clearCode">✕</button>
+        <!-- обёртка для полей "код" и "вид товара" -->
+        <div class="search-row">
+            <div class="field">
+                <div class="input-wrapper">
+                    <input type="text" id="codeInput" placeholder="Код товара">
+                    <button class="clear-btn" id="clearCode">✕</button>
+                </div>
+            </div>
+
+            <div class="field" id="typeField">
+                <div class="input-wrapper">
+                    <input type="text" id="typeInput" placeholder="Вид товара" autocomplete="off">
+                    <button class="clear-btn" id="clearType">✕</button>
+                </div>
+                <div class="dropdown-list" id="typeDropdown"></div>
             </div>
         </div>
 
-        <div class="field" id="typeField">
-            <div class="input-wrapper">
-                <input type="text" id="typeInput" placeholder="Вид товара" autocomplete="off">
-                <button class="clear-btn" id="clearType">✕</button>
-            </div>
-            <div class="dropdown-list" id="typeDropdown"></div>
-        </div>
-
+        <!-- поле "фандом" без обёртки -->
         <div class="field" id="fandomField">
             <div class="input-wrapper">
                 <input type="text" id="fandomInput" placeholder="Фандом" autocomplete="off">
