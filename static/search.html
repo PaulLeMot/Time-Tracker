@@ -267,44 +267,20 @@
         return data;
     }
 
-    // Обновление дропдаунов с учётом контекста
+    // Обновление глобальных списков типов/фандомов (без открытия)
     async function updateDropdowns() {
         const data = await loadFilterOptions(selectedType, selectedFandom);
         allTypes = data.product_types;
         allFandoms = data.fandoms;
-
-        // Обновляем список типов, если поле ввода типа не равно выбранному значению (чтобы не сбрасывать ввод)
-        if (!selectedType || typeInput.value === selectedType) {
-            // Оставляем текущий ввод, но фильтруем варианты
-            filterAndShowDropdown(typeInput, typeDropdown, allTypes, (value) => {
-                selectedType = value;
-                typeInput.value = value;
-                updateClearButton(typeInput, clearTypeBtn);
-                updateDropdowns();   // обновить фандомы
-                resetAndLoad();
-            });
-        }
-        if (!selectedFandom || fandomInput.value === selectedFandom) {
-            filterAndShowDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
-                selectedFandom = value;
-                fandomInput.value = value;
-                updateClearButton(fandomInput, clearFandomBtn);
-                updateDropdowns();   // обновить виды
-                resetAndLoad();
-            });
-        }
     }
 
     // Инициализация фильтров при загрузке
     async function initFilters() {
-        const data = await loadFilterOptions();
-        allTypes = data.product_types;
-        allFandoms = data.fandoms;
-        // Первоначально не открываем дропдауны
+        await updateDropdowns();
     }
 
-    // Фильтрация и отображение выпадающего списка
-    function filterAndShowDropdown(input, dropdown, items, onSelect) {
+    // Отображение выпадающего списка для конкретного поля
+    function showDropdown(input, dropdown, items, onSelect) {
         const query = input.value.trim().toLowerCase();
         const filtered = items.filter(item => item.toLowerCase().includes(query));
         renderDropdownItems(dropdown, filtered, input, onSelect);
@@ -337,49 +313,47 @@
         fandomDropdown.classList.remove('open');
     }
 
-    // Обработчики ввода для типа и фандома
+    // Обработчики полей
+    // Тип товара
     typeInput.addEventListener('input', () => {
         updateClearButton(typeInput, clearTypeBtn);
-        filterAndShowDropdown(typeInput, typeDropdown, allTypes, (value) => {
+        showDropdown(typeInput, typeDropdown, allTypes, (value) => {
             selectedType = value;
             typeInput.value = value;
             updateClearButton(typeInput, clearTypeBtn);
-            updateDropdowns();
-            resetAndLoad();
+            closeAllDropdowns();
+            updateDropdowns().then(() => resetAndLoad());
         });
     });
     typeInput.addEventListener('focus', () => {
-        if (!typeDropdown.classList.contains('open')) {
-            filterAndShowDropdown(typeInput, typeDropdown, allTypes, (value) => {
-                selectedType = value;
-                typeInput.value = value;
-                updateClearButton(typeInput, clearTypeBtn);
-                updateDropdowns();
-                resetAndLoad();
-            });
-        }
+        showDropdown(typeInput, typeDropdown, allTypes, (value) => {
+            selectedType = value;
+            typeInput.value = value;
+            updateClearButton(typeInput, clearTypeBtn);
+            closeAllDropdowns();
+            updateDropdowns().then(() => resetAndLoad());
+        });
     });
 
+    // Фандом
     fandomInput.addEventListener('input', () => {
         updateClearButton(fandomInput, clearFandomBtn);
-        filterAndShowDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
+        showDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
             selectedFandom = value;
             fandomInput.value = value;
             updateClearButton(fandomInput, clearFandomBtn);
-            updateDropdowns();
-            resetAndLoad();
+            closeAllDropdowns();
+            updateDropdowns().then(() => resetAndLoad());
         });
     });
     fandomInput.addEventListener('focus', () => {
-        if (!fandomDropdown.classList.contains('open')) {
-            filterAndShowDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
-                selectedFandom = value;
-                fandomInput.value = value;
-                updateClearButton(fandomInput, clearFandomBtn);
-                updateDropdowns();
-                resetAndLoad();
-            });
-        }
+        showDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
+            selectedFandom = value;
+            fandomInput.value = value;
+            updateClearButton(fandomInput, clearFandomBtn);
+            closeAllDropdowns();
+            updateDropdowns().then(() => resetAndLoad());
+        });
     });
 
     // Скрытие выпадашек при клике вне поля
@@ -400,11 +374,17 @@
     clearCode.onclick = () => clearField(codeInput, clearCode, () => {});
     clearTypeBtn.onclick = (e) => {
         e.stopPropagation();
-        clearField(typeInput, clearTypeBtn, () => { selectedType = ''; updateDropdowns(); });
+        clearField(typeInput, clearTypeBtn, () => {
+            selectedType = '';
+            updateDropdowns();
+        });
     };
     clearFandomBtn.onclick = (e) => {
         e.stopPropagation();
-        clearField(fandomInput, clearFandomBtn, () => { selectedFandom = ''; updateDropdowns(); });
+        clearField(fandomInput, clearFandomBtn, () => {
+            selectedFandom = '';
+            updateDropdowns();
+        });
     };
 
     codeInput.addEventListener('input', () => {
@@ -483,7 +463,6 @@
 
     // Инициализация
     initFilters().then(() => {
-        updateDropdowns();   // заполним начальные списки
         loadProducts();
     });
 </script>
