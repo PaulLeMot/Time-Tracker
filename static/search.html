@@ -57,6 +57,12 @@
             margin-bottom: 25px;
             flex-wrap: wrap;
             align-items: flex-start;
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 100;
+            padding: 10px 0;
+            border-radius: 32px 32px 0 0;
         }
         .field {
             position: relative;
@@ -163,14 +169,14 @@
         }
         .product-card .name {
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.6rem;
             color: #0f172a;
             line-height: 1.3;
             margin-bottom: 4px;
         }
         .product-card .code {
-            font-size: 0.9rem;
-            color: #475569;
+            font-size: 0.6rem;
+            color: #0f172a;
             font-weight: 500;
         }
 
@@ -258,6 +264,11 @@
     const typeDropdown = document.getElementById('typeDropdown');
     const fandomDropdown = document.getElementById('fandomDropdown');
 
+    // Функция обновления видимости крестика
+    function updateClearButton(input, btn) {
+        btn.classList.toggle('visible', input.value.length > 0);
+    }
+
     // Загрузка фильтров
     async function loadFilterOptions() {
         const resp = await fetch('/api/products/filter-options');
@@ -284,9 +295,10 @@
                 div.className = 'dropdown-item';
                 div.textContent = item;
                 div.addEventListener('mousedown', (e) => {
-                    e.preventDefault(); // чтобы не терять фокус
+                    e.preventDefault();
                     input.value = item;
                     container.classList.remove('open');
+                    updateClearButton(input, input.nextElementSibling); // показать крестик
                     onSelect(item);
                 });
                 container.appendChild(div);
@@ -299,9 +311,9 @@
         fandomDropdown.classList.remove('open');
     }
 
-    // Обработчики ввода для полей типа и фандома
+    // Обработчики для поля "Вид товара"
     typeInput.addEventListener('input', () => {
-        clearTypeBtn.classList.toggle('visible', typeInput.value.length > 0);
+        updateClearButton(typeInput, clearTypeBtn);
         filterAndShowDropdown(typeInput, typeDropdown, allTypes, (value) => {
             selectedType = value;
             loadProducts(0);
@@ -316,8 +328,9 @@
         }
     });
 
+    // Обработчики для поля "Фандом"
     fandomInput.addEventListener('input', () => {
-        clearFandomBtn.classList.toggle('visible', fandomInput.value.length > 0);
+        updateClearButton(fandomInput, clearFandomBtn);
         filterAndShowDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
             selectedFandom = value;
             loadProducts(0);
@@ -332,7 +345,7 @@
         }
     });
 
-    // Скрытие выпадашек при клике вне поля
+    // Скрытие выпадающих списков при клике вне поля
     document.addEventListener('click', (e) => {
         if (!e.target.closest('#typeField')) typeDropdown.classList.remove('open');
         if (!e.target.closest('#fandomField')) fandomDropdown.classList.remove('open');
@@ -357,10 +370,10 @@
         clearField(fandomInput, clearFandomBtn, () => { selectedFandom = ''; });
     };
 
+    // Для поля кода
     codeInput.addEventListener('input', () => {
-        clearCode.classList.toggle('visible', codeInput.value.length > 0);
+        updateClearButton(codeInput, clearCode);
     });
-
     // Поиск с задержкой для кода
     let searchTimer;
     codeInput.addEventListener('input', () => {
