@@ -527,6 +527,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h1 style="margin:0;">📋 Админ-панель TimeTracker</h1>
         <div style="display: flex; align-items: center; gap: 15px;">
+            <button id="importProductsBtn" class="btn" style="background: #10b981;">📥</button>
             <span id="adminNameLink" style="color: #3b82f6; font-size: 1.1rem; cursor: pointer; text-decoration: underline;"></span>
             <button id="logoutAdminBtn" class="btn" style="background: #ef4444;">Выйти</button>
         </div>
@@ -2955,6 +2956,21 @@ document.querySelector('#editProposedTimeModal .close-edit-proposed').onclick = 
 window.addEventListener('click', (e) => {
     const modal = document.getElementById('editProposedTimeModal');
     if (e.target === modal) modal.style.display = 'none';
+});
+document.getElementById('importProductsBtn')?.addEventListener('click', async () => {
+    if (!confirm('ВНИМАНИЕ! Все данные товаров будут удалены и заменены данными из файла img.xlsx. Продолжить?')) return;
+    try {
+        const resp = await fetch('/api/products/import', { method: 'POST', credentials: 'include' });
+        if (resp.ok) {
+            const result = await resp.json();
+            showToast(`✅ ${result.message}. Загружено записей: ${result.count}`);
+        } else {
+            const err = await resp.json();
+            showToast(`Ошибка: ${err.detail}`, true);
+        }
+    } catch (err) {
+        showToast('Ошибка сети', true);
+    }
 });
 </script>
 </body>

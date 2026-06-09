@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
-from models import Product
+from models import Product, Employee
 from typing import List, Optional
 from pydantic import BaseModel
+import pandas as pd
+from routers.auth import get_current_admin
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -25,7 +27,7 @@ class FilteredProductsOut(BaseModel):
     total: int
 
 # ----------------------------------------------------------------------
-# 1. Получение уникальных значений для выпадающих списков (видов и фандомов)
+# 1. Получение уникальных значений для выпадающих списков
 # ----------------------------------------------------------------------
 @router.get("/filter-options", response_model=FilterOptionsOut)
 async def get_filter_options(
@@ -33,11 +35,9 @@ async def get_filter_options(
     fandom: Optional[str] = Query(None, description="Выбранный фандом (для фильтрации типов)"),
     db: AsyncSession = Depends(get_db)
 ):
-    # Базовые запросы
     stmt_types = select(Product.product_type).distinct().where(Product.product_type.isnot(None))
     stmt_fandoms = select(Product.fandom).distinct().where(Product.fandom.isnot(None))
 
-    # Применяем контекстные ограничения
     if product_type:
         stmt_fandoms = stmt_fandoms.where(Product.product_type == product_type)
     if fandom:
@@ -54,9 +54,8 @@ async def get_filter_options(
 
     return FilterOptionsOut(product_types=product_types, fandoms=fandoms)
 
-
 # ----------------------------------------------------------------------
-# 2. Фильтрованный поиск с пагинацией (основной эндпоинт для фронта)
+# 2. Фильтрованный поиск с пагинацией
 # ----------------------------------------------------------------------
 @router.get("/filtered", response_model=FilteredProductsOut)
 async def get_filtered_products(
@@ -67,10 +66,8 @@ async def get_filtered_products(
     offset: int = Query(0, ge=0, description="Смещение (пагинация)"),
     db: AsyncSession = Depends(get_db)
 ):
-    # Базовый запрос
     query = select(Product)
 
-    # Применяем фильтры
     if code and code.strip():
         query = query.where(Product.code.ilike(f"%{code.strip()}%"))
     if product_type:
@@ -78,15 +75,12 @@ async def get_filtered_products(
     if fandom:
         query = query.where(Product.fandom == fandom)
 
-    # Сортировка по названию (алфавит)
     query = query.order_by(Product.name)
 
-    # Считаем общее количество (для пагинации/бесконечного скролла)
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
-    # Применяем пагинацию
     query = query.offset(offset).limit(limit)
     result = await db.execute(query)
     products = result.scalars().all()
@@ -105,9 +99,8 @@ async def get_filtered_products(
 
     return FilteredProductsOut(items=items, total=total)
 
-
 # ----------------------------------------------------------------------
-# 3. Поиск по одному товару по коду (оставляем как есть)
+# 3. Поиск по коду
 # ----------------------------------------------------------------------
 @router.get("/{code}", response_model=ProductOut)
 async def get_product_by_code(code: str, db: AsyncSession = Depends(get_db)):
@@ -124,3 +117,34 @@ async def get_product_by_code(code: str, db: AsyncSession = Depends(get_db)):
         name=product.name,
         image_url=f"/static/img/{product.code}.jpg"
     )
+
+# ----------------------------------------------------------------------
+# 4. Импорт товаров из Excel (только для администратора)
+# ----------------------------------------------------------------------
+@router.post("/import", status_code=200)
+async def import_products(
+    admin: Employee = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        # Удаляем все старые записи
+        await db.execute(delete(Product))
+
+        # Читаем Excel-файл из примонтированной папки
+        df = pd.read_excel('/app/import_data/img.xlsx')
+        df.columns = ['code', 'product_type', 'fandom', 'name']
+
+        for _, row in df.iterrows():
+            product = Product(
+                code=str(row['code']).strip(),
+                product_type=str(row['product_type']).strip(),
+                fandom=str(row['fandom']).strip() if pd.notna(row['fandom']) else None,
+                name=str(row['name']).strip()
+            )
+            db.add(product)
+
+        await db.commit()
+        return {"message": "Импорт успешно завершён", "count": len(df)}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка импорта: {str(e)}")
