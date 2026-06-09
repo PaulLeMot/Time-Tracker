@@ -43,7 +43,14 @@
             font-size: 0.95rem;
         }
         .back-link:hover { background: #e2e8f0; }
-        h2 { font-weight: 700; font-size: 1.8rem; color: #0f172a; }
+        h2 {
+            font-weight: 700;
+            font-size: 1.8rem;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
 
         .search-panel {
             display: flex;
@@ -57,21 +64,12 @@
             flex: 1 1 180px;
             min-width: 160px;
         }
-        .field label {
-            display: block;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #475569;
-            margin-bottom: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
         .input-wrapper {
             position: relative;
             display: flex;
             align-items: center;
         }
-        input, select {
+        input, .custom-select {
             width: 100%;
             padding: 12px 40px 12px 15px;
             font-size: 0.95rem;
@@ -82,7 +80,7 @@
             transition: 0.2s;
             appearance: none;
         }
-        input:focus, select:focus {
+        input:focus, .custom-select.focus {
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
         }
@@ -97,9 +95,30 @@
             padding: 0;
             display: none;
             line-height: 1;
+            z-index: 2;
         }
         .clear-btn.visible { display: block; }
         .clear-btn:hover { color: #ef4444; }
+
+        .custom-select {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 40px;
+        }
+        .custom-select .arrow {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            pointer-events: none;
+        }
+        .custom-select .text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
 
         .dropdown-list {
             position: absolute;
@@ -114,6 +133,7 @@
             overflow-y: auto;
             z-index: 1000;
             display: none;
+            margin-top: 5px;
         }
         .dropdown-list.open { display: block; }
         .dropdown-item {
@@ -123,6 +143,7 @@
             border-bottom: 1px solid #f1f5f9;
         }
         .dropdown-item:hover { background: #f0f7ff; }
+        .dropdown-item.active { background: #e0f2fe; }
 
         .products-grid {
             display: grid;
@@ -163,11 +184,6 @@
             padding: 5px;
             margin-bottom: 10px;
         }
-        .product-card .code {
-            font-size: 0.8rem;
-            color: #64748b;
-            margin-bottom: 4px;
-        }
         .product-card .name {
             font-weight: 600;
             font-size: 0.95rem;
@@ -175,9 +191,11 @@
             line-height: 1.3;
             margin-bottom: 4px;
         }
-        .product-card .meta {
-            font-size: 0.75rem;
-            color: #94a3b8;
+        .product-card .code {
+            font-size: 0.9rem;
+            color: #475569;
+            font-weight: 500;
+            margin-bottom: 2px;
         }
 
         .pagination {
@@ -214,37 +232,41 @@
 <body>
 <div class="container">
     <div class="header">
-        <h2>🔎</h2>
+        <h2>🔎 <span id="totalCount">0</span></h2>
         <a href="/static/employee.html" class="back-link">← Личный кабинет</a>
     </div>
 
     <div class="search-panel">
         <div class="field">
-            <label>Код товара</label>
             <div class="input-wrapper">
-                <input type="text" id="codeInput" placeholder="Введите код или часть">
+                <input type="text" id="codeInput" placeholder="Код товара">
                 <button class="clear-btn" id="clearCode">✕</button>
             </div>
         </div>
 
-        <div class="field">
-            <label>Вид товара</label>
+        <div class="field" id="typeField">
             <div class="input-wrapper">
-                <select id="typeSelect"><option value="">Все виды</option></select>
+                <div class="custom-select" id="typeSelect">
+                    <span class="text">Вид товара</span>
+                    <span class="arrow">▼</span>
+                </div>
                 <button class="clear-btn" id="clearType">✕</button>
             </div>
+            <div class="dropdown-list" id="typeDropdown"></div>
         </div>
 
-        <div class="field">
-            <label>Фандом</label>
+        <div class="field" id="fandomField">
             <div class="input-wrapper">
-                <select id="fandomSelect"><option value="">Все фандомы</option></select>
+                <div class="custom-select" id="fandomSelect">
+                    <span class="text">Фандом</span>
+                    <span class="arrow">▼</span>
+                </div>
                 <button class="clear-btn" id="clearFandom">✕</button>
             </div>
+            <div class="dropdown-list" id="fandomDropdown"></div>
         </div>
     </div>
 
-    <div class="results-info" id="resultsInfo">Загрузка...</div>
     <div class="products-grid" id="productsGrid"></div>
     <div class="pagination" id="pagination"></div>
 </div>
@@ -253,76 +275,145 @@
     // Состояние
     let currentPage = 0;
     const limit = 30;
+    let allTypes = [];
+    let allFandoms = [];
 
     // Элементы
     const codeInput = document.getElementById('codeInput');
     const typeSelect = document.getElementById('typeSelect');
     const fandomSelect = document.getElementById('fandomSelect');
     const clearCode = document.getElementById('clearCode');
-    const clearType = document.getElementById('clearType');
-    const clearFandom = document.getElementById('clearFandom');
+    const clearTypeBtn = document.getElementById('clearType');
+    const clearFandomBtn = document.getElementById('clearFandom');
     const grid = document.getElementById('productsGrid');
-    const info = document.getElementById('resultsInfo');
+    const totalCountSpan = document.getElementById('totalCount');
     const paginationDiv = document.getElementById('pagination');
+    const typeDropdown = document.getElementById('typeDropdown');
+    const fandomDropdown = document.getElementById('fandomDropdown');
 
-    // Загрузка фильтров при старте
+    // Храним выбранные значения
+    let selectedType = '';
+    let selectedFandom = '';
+
+    // Загрузка фильтров
     async function loadFilterOptions() {
         const resp = await fetch('/api/products/filter-options');
         const data = await resp.json();
-        populateSelect(typeSelect, data.product_types);
-        populateSelect(fandomSelect, data.fandoms);
+        allTypes = data.product_types;
+        allFandoms = data.fandoms;
+        renderDropdown(typeDropdown, allTypes, 'type');
+        renderDropdown(fandomDropdown, allFandoms, 'fandom');
     }
 
-    function populateSelect(select, items) {
-        const current = select.value;
-        select.innerHTML = '<option value="">Все</option>';
+    function renderDropdown(container, items, type) {
+        container.innerHTML = '';
         items.forEach(item => {
-            const opt = document.createElement('option');
-            opt.value = item;
-            opt.textContent = item;
-            select.appendChild(opt);
+            const div = document.createElement('div');
+            div.className = 'dropdown-item';
+            div.textContent = item;
+            div.addEventListener('click', () => {
+                if (type === 'type') {
+                    selectedType = item;
+                    typeSelect.querySelector('.text').textContent = item;
+                    clearTypeBtn.classList.add('visible');
+                } else {
+                    selectedFandom = item;
+                    fandomSelect.querySelector('.text').textContent = item;
+                    clearFandomBtn.classList.add('visible');
+                }
+                closeAllDropdowns();
+                loadProducts(0);
+            });
+            container.appendChild(div);
         });
-        select.value = current;
     }
 
-    // Получение и отрисовка товаров
+    // Открытие/закрытие дропдаунов
+    function openDropdown(dropdown) {
+        closeAllDropdowns();
+        dropdown.classList.add('open');
+    }
+    function closeAllDropdowns() {
+        typeDropdown.classList.remove('open');
+        fandomDropdown.classList.remove('open');
+    }
+
+    typeSelect.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDropdown(typeDropdown);
+    });
+    fandomSelect.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDropdown(fandomDropdown);
+    });
+    document.addEventListener('click', () => closeAllDropdowns());
+
+    // Очистка полей
+    clearCode.onclick = () => {
+        codeInput.value = '';
+        clearCode.classList.remove('visible');
+        loadProducts(0);
+    };
+    clearTypeBtn.onclick = (e) => {
+        e.stopPropagation();
+        selectedType = '';
+        typeSelect.querySelector('.text').textContent = 'Вид товара';
+        clearTypeBtn.classList.remove('visible');
+        loadProducts(0);
+    };
+    clearFandomBtn.onclick = (e) => {
+        e.stopPropagation();
+        selectedFandom = '';
+        fandomSelect.querySelector('.text').textContent = 'Фандом';
+        clearFandomBtn.classList.remove('visible');
+        loadProducts(0);
+    };
+
+    // Показ/скрытие кнопки очистки для поля кода
+    codeInput.addEventListener('input', () => {
+        clearCode.classList.toggle('visible', codeInput.value.length > 0);
+    });
+
+    // Поиск с задержкой для кода
+    let searchTimer;
+    codeInput.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => loadProducts(0), 400);
+    });
+
+    // Загрузка товаров
     async function loadProducts(page = 0) {
         const code = codeInput.value.trim();
-        const type = typeSelect.value;
-        const fandom = fandomSelect.value;
         const offset = page * limit;
 
         let url = `/api/products/filtered?limit=${limit}&offset=${offset}`;
         if (code) url += `&code=${encodeURIComponent(code)}`;
-        if (type) url += `&product_type=${encodeURIComponent(type)}`;
-        if (fandom) url += `&fandom=${encodeURIComponent(fandom)}`;
+        if (selectedType) url += `&product_type=${encodeURIComponent(selectedType)}`;
+        if (selectedFandom) url += `&fandom=${encodeURIComponent(selectedFandom)}`;
 
         const resp = await fetch(url);
         const data = await resp.json();
 
-        // Информация о количестве
-        info.textContent = `Найдено товаров: ${data.total}`;
+        totalCountSpan.textContent = data.total;
 
-        // Отрисовка сетки
         grid.innerHTML = '';
         if (data.items.length === 0) {
             grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px;">Ничего не найдено</div>';
             paginationDiv.innerHTML = '';
             return;
         }
+
         data.items.forEach(p => {
             const card = document.createElement('div');
             card.className = 'product-card';
             card.innerHTML = `
                 <img src="${p.image_url}" alt="${p.name}" onerror="this.src='/static/ttr.png'">
-                <div class="code">${p.code}</div>
                 <div class="name">${escapeHtml(p.name)}</div>
-                <div class="meta">${p.product_type} ${p.fandom ? '· '+escapeHtml(p.fandom) : ''}</div>
+                <div class="code">${p.code}</div>
             `;
             grid.appendChild(card);
         });
 
-        // Пагинация
         renderPagination(data.total, page);
     }
 
@@ -336,7 +427,6 @@
         let end = Math.min(totalPages, start + maxButtons);
         if (end - start < maxButtons) start = Math.max(0, end - maxButtons);
 
-        // Назад
         const prevBtn = document.createElement('button');
         prevBtn.textContent = '←';
         prevBtn.disabled = current === 0;
@@ -351,7 +441,6 @@
             paginationDiv.appendChild(btn);
         }
 
-        // Вперёд
         const nextBtn = document.createElement('button');
         nextBtn.textContent = '→';
         nextBtn.disabled = current >= totalPages - 1;
@@ -363,44 +452,6 @@
         if (!text) return '';
         return text.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
     }
-
-    // Очистка полей
-    function clearAndSearch(input, clearBtn) {
-        input.value = '';
-        clearBtn.classList.remove('visible');
-        loadProducts(0);
-    }
-    clearCode.onclick = () => clearAndSearch(codeInput, clearCode);
-    clearType.onclick = () => {
-        typeSelect.value = '';
-        clearType.classList.remove('visible');
-        loadProducts(0);
-    };
-    clearFandom.onclick = () => {
-        fandomSelect.value = '';
-        clearFandom.classList.remove('visible');
-        loadProducts(0);
-    };
-
-    // Отображение кнопок очистки
-    codeInput.addEventListener('input', () => {
-        clearCode.classList.toggle('visible', codeInput.value.length > 0);
-    });
-    typeSelect.addEventListener('change', () => {
-        clearType.classList.toggle('visible', typeSelect.value !== '');
-        loadProducts(0);
-    });
-    fandomSelect.addEventListener('change', () => {
-        clearFandom.classList.toggle('visible', fandomSelect.value !== '');
-        loadProducts(0);
-    });
-
-    // Поиск с задержкой для кода
-    let searchTimer;
-    codeInput.addEventListener('input', () => {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => loadProducts(0), 400);
-    });
 
     // Инициализация
     loadFilterOptions().then(() => loadProducts(0));
