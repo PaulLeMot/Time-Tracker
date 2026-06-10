@@ -127,32 +127,48 @@ async def import_products(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        # Удаляем старые записи
+        # 1. Удаляем старые записи
         await db.execute(delete(Product))
 
-        # Читаем Excel, принудительно преобразуя все ячейки в строки
+        # 2. Читаем Excel, все столбцы как строки
         df = pd.read_excel('/app/import_data/img.xlsx', dtype=str)
         df.columns = ['code', 'product_type', 'fandom', 'name']
 
+        # 3. Очистка: заменяем неразрывные пробелы и другие невидимые символы, strip
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.replace('\u00a0', ' ', regex=False).str.strip()
+
+        # 4. Удаляем строки, где код или название пустые, 'nan', 'None'
+        invalid_mask = (
+            df['code'].isna() | df['name'].isna() |
+            df['code'].isin(['nan', 'None', '']) |
+            df['name'].isin(['nan', 'None', ''])
+        )
+        df = df[~invalid_mask]
+
+        # 5. Удаляем дубликаты по коду (оставляем первое вхождение)
+        df = df.drop_duplicates(subset=['code'])
+
+        # 6. Вставка в базу
         added = 0
         for _, row in df.iterrows():
-            code = str(row['code']).strip() if pd.notna(row['code']) else ''
-            name = str(row['name']).strip() if pd.notna(row['name']) else ''
-            # Пропускаем строки, где код или название пустые, "nan" или "None"
-            if not code or not name or code.lower() in ('nan', 'none') or name.lower() in ('nan', 'none'):
-                continue
-
             product = Product(
-                code=code,
-                product_type=str(row['product_type']).strip() if pd.notna(row['product_type']) else None,
-                fandom=str(row['fandom']).strip() if pd.notna(row['fandom']) else None,
-                name=name
+                code=row['code'],
+                product_type=row['product_type'] if row['product_type'] not in ('nan', 'None', '') else None,
+                fandom=row['fandom'] if row['fandom'] not in ('nan', 'None', '') else None,
+                name=row['name']
             )
             db.add(product)
             added += 1
 
         await db.commit()
-        return {"message": "Импорт успешно завершён", "count": added}
+        return {
+            "message": f"Импорт успешно завершён администратором {admin.full_name}",
+            "count": added
+        }
+
     except Exception as e:
         await db.rollback()
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Ошибка импорта: {str(e)}")
