@@ -6,6 +6,7 @@ from models import Product, Employee
 from typing import List, Optional
 from pydantic import BaseModel
 import pandas as pd
+import re
 from routers.auth import get_current_admin
 
 router = APIRouter(prefix="/api/products", tags=["products"])
@@ -130,24 +131,30 @@ async def import_products(
         # 1. Удаляем старые записи
         await db.execute(delete(Product))
 
-        # 2. Читаем Excel, всё как строки
+        # 2. Читаем Excel, все столбцы как строки
         df = pd.read_excel('/app/import_data/img.xlsx', dtype=str)
         df.columns = ['code', 'product_type', 'fandom', 'name']
 
-        # 3. Очистка: для кода оставляем только цифры, для остальных – убираем неразрывные пробелы и обрезаем
-        df['code'] = df['code'].astype(str).str.replace(r'\D', '', regex=True)
+        # 3. Очистка кода: оставляем ТОЛЬКО цифры (удаляем все невидимые символы и буквы)
+        df['code'] = df['code'].apply(
+            lambda x: re.sub(r'[^\d]', '', str(x)) if pd.notna(x) else ''
+        )
+
+        # 4. Удаление строк с пустым кодом
+        df = df[df['code'] != '']
+
+        # 5. Очистка остальных столбцов (неразрывные пробелы и обрезка)
         for col in ['product_type', 'fandom', 'name']:
             df[col] = df[col].astype(str).str.replace('\u00a0', ' ', regex=False).str.strip()
             df[col] = df[col].replace({'nan': None, 'None': None, '': None})
 
-        # 4. Удаляем строки, где код пустой или название отсутствует
-        df = df[df['code'] != '']
-        df = df[df['name'].notna()]
-
-        # 5. Удаляем дубликаты по коду
+        # 6. Удаление дубликатов по коду
+        dup_count = df.duplicated(subset=['code'], keep=False).sum()
+        if dup_count:
+            print(f"⚠️ Найдено {dup_count} строк с дублирующимися кодами. Оставлены первые вхождения.")
         df = df.drop_duplicates(subset=['code'])
 
-        # 6. Вставка
+        # 7. Вставка
         added = 0
         for _, row in df.iterrows():
             product = Product(
@@ -162,7 +169,8 @@ async def import_products(
         await db.commit()
         return {
             "message": f"Импорт успешно завершён администратором {admin.full_name}",
-            "count": added
+            "count": added,
+            "duplicates_removed": dup_count
         }
 
     except Exception as e:
