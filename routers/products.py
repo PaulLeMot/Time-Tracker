@@ -134,22 +134,21 @@ async def import_products(
         df = pd.read_excel('/app/import_data/img.xlsx', dtype=str)
         df.columns = ['code', 'product_type', 'fandom', 'name']
 
-        # 3. Очистка: заменяем неразрывные пробелы и другие невидимые символы, strip
+        # 3. Очистка ВСЕХ значений от неразрывных пробелов и strip
         for col in df.columns:
             df[col] = df[col].astype(str).str.replace('\u00a0', ' ', regex=False).str.strip()
 
         # 4. Удаляем строки, где код или название пустые, 'nan', 'None'
-        invalid_mask = (
-            df['code'].isna() | df['name'].isna() |
-            df['code'].isin(['nan', 'None', '']) |
-            df['name'].isin(['nan', 'None', ''])
+        invalid = (
+            df['code'].isin(['', 'nan', 'None']) |
+            df['name'].isin(['', 'nan', 'None'])
         )
-        df = df[~invalid_mask]
+        df = df[~invalid]
 
-        # 5. Удаляем дубликаты по коду (оставляем первое вхождение)
+        # 5. Удаляем дубликаты по коду (после очистки!)
         df = df.drop_duplicates(subset=['code'])
 
-        # 6. Вставка в базу
+        # 6. Вставка
         added = 0
         for _, row in df.iterrows():
             product = Product(
