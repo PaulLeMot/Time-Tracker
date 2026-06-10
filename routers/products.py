@@ -128,33 +128,26 @@ async def import_products(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        # 1. Удаляем старые записи
         await db.execute(delete(Product))
 
-        # 2. Читаем Excel, все столбцы как строки
         df = pd.read_excel('/app/import_data/img.xlsx', dtype=str)
         df.columns = ['code', 'product_type', 'fandom', 'name']
 
-        # 3. Очистка кода: оставляем ТОЛЬКО цифры (удаляем все невидимые символы и буквы)
+        # очистка кода
         df['code'] = df['code'].apply(
             lambda x: re.sub(r'[^\d]', '', str(x)) if pd.notna(x) else ''
         )
-
-        # 4. Удаление строк с пустым кодом
         df = df[df['code'] != '']
 
-        # 5. Очистка остальных столбцов (неразрывные пробелы и обрезка)
         for col in ['product_type', 'fandom', 'name']:
             df[col] = df[col].astype(str).str.replace('\u00a0', ' ', regex=False).str.strip()
             df[col] = df[col].replace({'nan': None, 'None': None, '': None})
 
-        # 6. Удаление дубликатов по коду
         dup_count = df.duplicated(subset=['code'], keep=False).sum()
         if dup_count:
-            print(f"⚠️ Найдено {dup_count} строк с дублирующимися кодами. Оставлены первые вхождения.")
+            print(f"Найдено {dup_count} строк с дублирующимися кодами. Оставлены первые вхождения.")
         df = df.drop_duplicates(subset=['code'])
 
-        # 7. Вставка
         added = 0
         for _, row in df.iterrows():
             product = Product(
@@ -170,7 +163,7 @@ async def import_products(
         return {
             "message": f"Импорт успешно завершён администратором {admin.full_name}",
             "count": added,
-            "duplicates_removed": dup_count
+            "duplicates_removed": int(dup_count)   # обязательно int()
         }
 
     except Exception as e:
