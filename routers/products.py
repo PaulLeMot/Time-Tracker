@@ -127,24 +127,32 @@ async def import_products(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        # Удаляем все старые записи
+        # Удаляем старые записи
         await db.execute(delete(Product))
 
-        # Читаем Excel-файл из примонтированной папки
-        df = pd.read_excel('/app/import_data/img.xlsx')
+        # Читаем Excel, принудительно преобразуя все ячейки в строки
+        df = pd.read_excel('/app/import_data/img.xlsx', dtype=str)
         df.columns = ['code', 'product_type', 'fandom', 'name']
 
+        added = 0
         for _, row in df.iterrows():
+            code = str(row['code']).strip() if pd.notna(row['code']) else ''
+            name = str(row['name']).strip() if pd.notna(row['name']) else ''
+            # Пропускаем строки, где код или название пустые, "nan" или "None"
+            if not code or not name or code.lower() in ('nan', 'none') or name.lower() in ('nan', 'none'):
+                continue
+
             product = Product(
-                code=str(row['code']).strip(),
-                product_type=str(row['product_type']).strip(),
+                code=code,
+                product_type=str(row['product_type']).strip() if pd.notna(row['product_type']) else None,
                 fandom=str(row['fandom']).strip() if pd.notna(row['fandom']) else None,
-                name=str(row['name']).strip()
+                name=name
             )
             db.add(product)
+            added += 1
 
         await db.commit()
-        return {"message": "Импорт успешно завершён", "count": len(df)}
+        return {"message": "Импорт успешно завершён", "count": added}
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка импорта: {str(e)}")
