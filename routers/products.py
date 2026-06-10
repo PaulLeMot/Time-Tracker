@@ -130,22 +130,21 @@ async def import_products(
         # 1. Удаляем старые записи
         await db.execute(delete(Product))
 
-        # 2. Читаем Excel, все столбцы как строки
+        # 2. Читаем Excel, всё как строки
         df = pd.read_excel('/app/import_data/img.xlsx', dtype=str)
         df.columns = ['code', 'product_type', 'fandom', 'name']
 
-        # 3. Очистка ВСЕХ значений от неразрывных пробелов и strip
-        for col in df.columns:
+        # 3. Очистка: для кода оставляем только цифры, для остальных – убираем неразрывные пробелы и обрезаем
+        df['code'] = df['code'].astype(str).str.replace(r'\D', '', regex=True)
+        for col in ['product_type', 'fandom', 'name']:
             df[col] = df[col].astype(str).str.replace('\u00a0', ' ', regex=False).str.strip()
+            df[col] = df[col].replace({'nan': None, 'None': None, '': None})
 
-        # 4. Удаляем строки, где код или название пустые, 'nan', 'None'
-        invalid = (
-            df['code'].isin(['', 'nan', 'None']) |
-            df['name'].isin(['', 'nan', 'None'])
-        )
-        df = df[~invalid]
+        # 4. Удаляем строки, где код пустой или название отсутствует
+        df = df[df['code'] != '']
+        df = df[df['name'].notna()]
 
-        # 5. Удаляем дубликаты по коду (после очистки!)
+        # 5. Удаляем дубликаты по коду
         df = df.drop_duplicates(subset=['code'])
 
         # 6. Вставка
@@ -153,8 +152,8 @@ async def import_products(
         for _, row in df.iterrows():
             product = Product(
                 code=row['code'],
-                product_type=row['product_type'] if row['product_type'] not in ('nan', 'None', '') else None,
-                fandom=row['fandom'] if row['fandom'] not in ('nan', 'None', '') else None,
+                product_type=row['product_type'] if pd.notna(row['product_type']) else None,
+                fandom=row['fandom'] if pd.notna(row['fandom']) else None,
                 name=row['name']
             )
             db.add(product)
