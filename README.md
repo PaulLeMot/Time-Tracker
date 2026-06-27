@@ -154,4 +154,4 @@ GitHub: [PaulLeMot](https://github.com/PaulLeMot)
 
 ## 📄 Лицензия
 
-Этот проект распространяется под лицензией **MIT**. Подробнее — в файле [LICENSE](LICENSE).
+Этот проект распространяется под лицензией **GPL-3.0 license**. Подробнее — в файле [LICENSE](LICENSE).
