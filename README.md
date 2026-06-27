@@ -1,6 +1,6 @@
-
-```markdown
 # ⏱️ TimeTracker — СКУД-система для малого бизнеса
+
+Система учёта рабочего времени для малого предприятия: сотрудники отмечают приход и уход по QR-коду, руководство получает готовую отчётность без бумажных табелей.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
@@ -144,8 +144,8 @@ Time-Tracker/
 
 ## 🤝 Контакты
 
-Автор: **Кузнецов Дмитрий**  
-Email: [paullemot@proton.me](mailto:paullemot@proton.me)  
+Автор: **Кузнецов Дмитрий**
+Email: [paullemot@proton.me](mailto:paullemot@proton.me)
 GitHub: [PaulLeMot](https://github.com/PaulLeMot)
 
 По вопросам сотрудничества, стажировок или предложений по проекту — пишите!
@@ -155,4 +155,3 @@ GitHub: [PaulLeMot](https://github.com/PaulLeMot)
 ## 📄 Лицензия
 
 Этот проект распространяется под лицензией **MIT**. Подробнее — в файле [LICENSE](LICENSE).
-
