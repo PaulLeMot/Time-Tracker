@@ -32,8 +32,8 @@ services:
     volumes:
       - .:/app
       - ./backups:/app/backups
-      - "/mnt/f/!img/250:/app/static/img"
-      - "/mnt/f/!img:/app/import_data"
+      - "/mnt/c/wsl/img:/app/static/img"
+      - "/mnt/c/wsl/img:/app/import_data"
     restart: unless-stopped
 
 volumes:
