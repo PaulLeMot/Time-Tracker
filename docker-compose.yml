@@ -1,6 +1,8 @@
 services:
   db:
     image: postgres:15
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -35,6 +37,19 @@ services:
       - "/mnt/c/wsl/img:/app/static/img"
       - "/mnt/c/wsl/img:/app/import_data"
     restart: unless-stopped
-
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+          
+  adminer:
+    image: adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
 volumes:
   postgres_data:

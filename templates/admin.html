@@ -1254,12 +1254,26 @@
             }
             report.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
             let html = '<div class="recent-table"><table class="report-table"><thead>';
+            // Парсим понедельник
+            const startDateObj = new Date(weekStart + 'T00:00:00');
+
+            // Первая строка заголовков (названия дней + даты)
             html += '<tr><th>Сотрудник</th>';
             for (let i = 0; i < 7; i++) {
-                const dayName = report[0].days[i].weekday;
-                html += `<th colspan="2" data-day-header-index="${i}" class="day-header-cell">${dayName}</th>`;
+                const dateObj = new Date(startDateObj);
+                dateObj.setDate(startDateObj.getDate() + i);
+                const dayStr = String(dateObj.getDate()).padStart(2, '0');
+                const monthStr = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const dateDisplay = `${dayStr}.${monthStr}`;
+                const dayName = report[0].days[i].weekday; // или можно использовать массив ['Пн','Вт',...]
+                html += `<th colspan="2" data-day-header-index="${i}" class="day-header-cell">
+                            ${dayName}<br>
+                            <span style="font-size:0.7rem; color:#64748b;">${dateDisplay}</span>
+                        </th>`;
             }
             html += '<th>Всего часов</th><th>Всего п-вы</th></tr>';
+
+            // Вторая строка заголовков (часы и перерывы) остаётся без изменений
             html += '<tr><th></th>';
             for (let i = 0; i < 7; i++) {
                 html += `<th class="hour-header-cell" data-day-index="${i}">часы</th>`;
@@ -2264,6 +2278,8 @@ async function insertScheduleRow(row, empId, expandBtn) {
     const emp = employees.find(e => e.id == empId);
     const scheduleData = emp.schedule_data || {};
     const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const today = new Date();
+    const monday = getMonday(today);
     const cols = row.cells.length;
     const tr = document.createElement('tr');
     tr.className = 'schedule-row';
@@ -2272,7 +2288,17 @@ async function insertScheduleRow(row, empId, expandBtn) {
                   <table style="width: 100%; border-collapse: collapse; text-align: center;">
                     <thead><tr>`;
     for (let i = 0; i < weekdays.length; i++) {
-        html += `<th style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${weekdays[i]}</th>`;
+        // Получаем дату для i-го дня недели (понедельник + i дней)
+        const dateObj = new Date(monday);
+        dateObj.setDate(monday.getDate() + i);
+        const dayStr = String(dateObj.getDate()).padStart(2, '0');
+        const monthStr = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const dateDisplay = `${dayStr}.${monthStr}`;
+        
+        html += `<th style="padding: 8px; border-bottom: 1px solid #e2e8f0;">
+                    ${weekdays[i]}<br>
+                    <span style="font-size:0.7rem; color:#64748b;">${dateDisplay}</span>
+                 </th>`;
     }
     html += `</td></thead><tbody>
               <tr class="schedule-start-row">`;
