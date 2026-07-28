@@ -3,6 +3,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from datetime import datetime
+import re
 
 router = APIRouter(tags=["mark"])
 
@@ -22,7 +23,6 @@ def get_excel_file_path() -> str:
     return os.path.join(base_path, f"{today}_mp_rep.xlsx")
 
 def load_excel_data(file_path: str):
-    # Загружаем только колонки от K до AL (включительно)
     df = pd.read_excel(file_path, sheet_name="ids", usecols="A:AL", dtype=str).fillna('')
     col_names = list(df.columns)
     data = df.to_dict(orient='records')
@@ -60,6 +60,12 @@ async def mark_barcode(barcode: str):
     barcode = barcode.strip()
     if not barcode:
         raise HTTPException(status_code=400, detail="Штрих-код не указан")
+    
+    # Обработка локального EAN13: 2000000NNNNNX -> NNNNN
+    if re.match(r'^2000000\d{5}\d$', barcode):
+        # Извлекаем 5 цифр после "2000000"
+        barcode = barcode[7:12]  # индексы с 7 по 11 (0-based)
+    
     data, index, col_names = get_cached_data()
     if barcode not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
