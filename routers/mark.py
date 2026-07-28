@@ -66,13 +66,15 @@ async def mark_barcode(barcode: str):
     results = []
     for row_idx, col_idx in index[barcode]:
         row = data[row_idx]
-        # Идём влево от найденной колонки до маркировки
+        # Идём влево до первой колонки-маркировки
         marking_col = None
         for c in range(col_idx, -1, -1):
             if col_names[c] in MARKING_KEYS:
                 marking_col = col_names[c]
                 break
-        marking_value = row.get(marking_col, '').strip() if marking_col else ''
+        # Выводим ИМЯ колонки, а не её значение
+        marking_value = marking_col if marking_col else ''
+
         item = {
             "Код": row.get("Код", ""),
             "Вид": row.get("Вид товара", ""),
