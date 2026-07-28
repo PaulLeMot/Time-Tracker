@@ -16,14 +16,18 @@ _cache = {
 
 MARKING_KEYS = {"sia", "ktv", "reg", "kpd"}
 
+# Индексы колонок, которые нужно исключить из поиска (0-based, A=0)
+# M=12, P=15, T=19, W=22, AA=26, AD=29, AH=33, AK=36
+EXCLUDED_COLUMNS = {12, 15, 19, 22, 26, 29, 33, 36}
+
 def normalize_barcode(barcode: str) -> str:
     """
-    Преобразует локальный EAN13 (формат 2400000NNNNNX) в код товара NNNNN.
+    Преобразует локальный EAN13 (формат 2000000NNNNNX) в код товара NNNNN.
     Если штрих-код не соответствует формату, возвращает его без изменений.
     """
     barcode = barcode.strip()
-    if barcode.startswith("2400000") and len(barcode) == 13:
-        return barcode[7:12]
+    if barcode.startswith("2000000") and len(barcode) == 13:
+        return barcode[7:12]  # берём 5 цифр
     return barcode
 
 def get_excel_file_path() -> str:
@@ -32,12 +36,16 @@ def get_excel_file_path() -> str:
     return os.path.join(base_path, f"{today}_mp_rep.xlsx")
 
 def load_excel_data(file_path: str):
+    # Загружаем колонки от A до AL
     df = pd.read_excel(file_path, sheet_name="ids", usecols="A:AL", dtype=str).fillna('')
     col_names = list(df.columns)
     data = df.to_dict(orient='records')
     index = {}
     for row_idx, row in enumerate(data):
         for col_idx, col_name in enumerate(col_names):
+            # Пропускаем исключённые колонки
+            if col_idx in EXCLUDED_COLUMNS:
+                continue
             value = row.get(col_name, '')
             if value and value.strip():
                 val = value.strip()
@@ -70,8 +78,6 @@ async def mark_barcode(barcode: str):
     if not barcode:
         raise HTTPException(status_code=400, detail="Штрих-код не указан")
     
-    # Преобразуем локальный EAN13 в код товара
-    original_barcode = barcode
     normalized = normalize_barcode(barcode)
     if not normalized or len(normalized) < 5:
         raise HTTPException(status_code=400, detail="Некорректный штрих-код")
@@ -90,7 +96,6 @@ async def mark_barcode(barcode: str):
                 marking_col = col_names[c]
                 break
         marking_value = marking_col if marking_col else ''
-        # Если маркировка отсутствует – пропускаем товар
         if not marking_value:
             continue
         item = {
@@ -109,4 +114,4 @@ async def mark_barcode(barcode: str):
 
 @router.get("/mark")
 async def mark_page():
-    return FileResponse("static/mark.html")
+    return FileResponse("static/mark.html") 
