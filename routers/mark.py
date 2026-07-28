@@ -6,9 +6,6 @@ from datetime import datetime
 
 router = APIRouter(tags=["mark"])
 
-# ===========================
-# КЕШ ДЛЯ ДАННЫХ EXCEL
-# ===========================
 _cache = {
     "file_path": None,
     "file_mtime": None,
@@ -22,7 +19,8 @@ def get_excel_file_path() -> str:
     return os.path.join(base_path, f"{today}_mp_rep.xlsx")
 
 def load_excel_data(file_path: str):
-    df = pd.read_excel(file_path, dtype=str).fillna('')
+    # Читаем конкретный лист "ids"
+    df = pd.read_excel(file_path, sheet_name="ids", dtype=str).fillna('')
     data = df.to_dict(orient='records')
     index = {}
     for idx, row in enumerate(data):
@@ -47,9 +45,6 @@ def get_cached_data():
         _cache.update({"file_path": file_path, "file_mtime": mtime, "data": data, "index": index})
     return _cache["data"], _cache["index"]
 
-# ===========================
-# API – поиск по штрих-коду
-# ===========================
 @router.get("/api/mark/{barcode:path}")
 async def mark_barcode(barcode: str):
     barcode = barcode.strip()
@@ -60,9 +55,6 @@ async def mark_barcode(barcode: str):
         raise HTTPException(status_code=404, detail="Товар не найден")
     return [data[idx] for idx in index[barcode]]
 
-# ===========================
-# Страница маркировки
-# ===========================
 @router.get("/mark")
 async def mark_page():
     return FileResponse("static/mark.html")
