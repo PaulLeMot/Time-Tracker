@@ -19,7 +19,7 @@
             justify-content: center;
         }
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             width: 100%;
             background: white;
             border-radius: 32px;
@@ -70,21 +70,15 @@
             background: white;
         }
         #scanInput::placeholder { color: #94a3b8; }
-        .scan-hint {
-            color: #64748b;
-            font-size: 0.9rem;
-            text-align: center;
-            margin-top: -8px;
-        }
         #scanResult { margin-top: 24px; }
 
         .product-card {
             display: flex;
-            gap: 20px;
+            gap: 30px;
             border: 1px solid #e2e8f0;
             border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
             background: white;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
             align-items: flex-start;
@@ -96,18 +90,18 @@
         .product-info h3 {
             margin-top: 0;
             color: #0f172a;
-            font-size: 1.2rem;
+            font-size: 1.3rem;
         }
         .field {
             display: flex;
-            padding: 4px 0;
+            padding: 6px 0;
             border-bottom: 1px solid #f1f5f9;
         }
         .field:last-child { border-bottom: none; }
         .field-label {
             font-weight: 600;
             color: #334155;
-            width: 120px;
+            width: 140px;
             flex-shrink: 0;
         }
         .field-value {
@@ -117,8 +111,9 @@
 
         .product-image {
             flex-shrink: 0;
-            width: 150px;
-            height: 150px;
+            width: 100%;
+            max-width: 350px;
+            min-height: 300px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -129,14 +124,15 @@
         }
         .product-image img {
             width: 100%;
-            height: 100%;
+            height: auto;
+            max-height: 400px;
             object-fit: contain;
         }
         .product-image .no-image {
             color: #94a3b8;
-            font-size: 0.9rem;
+            font-size: 1rem;
             text-align: center;
-            padding: 10px;
+            padding: 20px;
         }
 
         .no-result { color: #ef4444; text-align: center; padding: 40px 0; font-size: 1.1rem; }
@@ -149,16 +145,15 @@
             border-radius: 12px;
         }
 
-        @media (max-width: 600px) {
+        @media (max-width: 700px) {
             .product-card {
                 flex-direction: column;
                 align-items: center;
             }
             .product-image {
+                max-width: 100%;
                 width: 100%;
-                max-width: 200px;
-                height: auto;
-                aspect-ratio: 1 / 1;
+                min-height: 200px;
             }
             .field {
                 flex-direction: column;
@@ -175,7 +170,6 @@
     </div>
     <div class="scan-area">
         <input type="text" id="scanInput" placeholder="Отсканируйте штрих-код или введите артикул..." autofocus>
-        <div class="scan-hint">Поддерживаются EAN13 и внутренние артикулы (например, OZN1699190953)</div>
     </div>
     <div id="scanResult">
         <p style="color: #64748b; text-align: center;">Ожидание сканирования...</p>
@@ -213,7 +207,6 @@
             const name = product['Название'] || '—';
             const marking = product['Маркировка'] || null;
 
-            // Формируем URL картинки
             const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
             html += `
@@ -252,7 +245,8 @@
     const SCAN_DELAY = 300;
 
     function isValidBarcode(code) {
-        if (!code || code.length < 8) return false;
+        if (!code || code.length < 5) return false;
+        // разрешены буквы, цифры, дефис, подчёркивание – без пробелов
         return /^[A-Za-zА-Яа-я0-9_-]+$/.test(code);
     }
 
@@ -260,7 +254,7 @@
         if (!code || code.trim() === '') return;
         code = code.trim();
         if (!isValidBarcode(code)) {
-            showError('Некорректный штрих-код. Допустимы только буквы, цифры, дефис и подчёркивание (минимум 8 символов).');
+            showError('Некорректный штрих-код. Допустимы только буквы, цифры, дефис и подчёркивание (минимум 5 символов).');
             return;
         }
         showLoading();
@@ -301,7 +295,7 @@
         input.addEventListener('input', function() {
             clearTimeout(scanTimeout);
             const val = this.value.trim();
-            if (val.length >= 8) {
+            if (val.length >= 5) {
                 scanTimeout = setTimeout(() => {
                     if (val === this.value.trim()) {
                         performScan(val);
