@@ -11,7 +11,10 @@ _cache = {
     "file_mtime": None,
     "data": None,
     "index": None,
+    "col_names": None,  # список названий колонок в порядке следования
 }
+
+MARKING_KEYS = {"sia", "ktv", "reg", "kpd"}
 
 def get_excel_file_path() -> str:
     today = datetime.now().strftime("%y%m%d")
@@ -20,17 +23,20 @@ def get_excel_file_path() -> str:
 
 def load_excel_data(file_path: str):
     df = pd.read_excel(file_path, sheet_name="ids", dtype=str).fillna('')
+    col_names = list(df.columns)
     data = df.to_dict(orient='records')
+    # Индекс: код -> список (индекс строки, индекс колонки)
     index = {}
-    for idx, row in enumerate(data):
-        for col, value in row.items():
+    for row_idx, row in enumerate(data):
+        for col_idx, col_name in enumerate(col_names):
+            value = row.get(col_name, '')
             if value and value.strip():
                 val = value.strip()
                 if val not in index:
                     index[val] = []
-                if idx not in index[val]:
-                    index[val].append(idx)
-    return data, index
+                # добавляем пару (row_idx, col_idx)
+                index[val].append((row_idx, col_idx))
+    return data, index, col_names
 
 def get_cached_data():
     file_path = get_excel_file_path()
@@ -40,47 +46,44 @@ def get_cached_data():
     if (_cache["file_path"] != file_path or 
         _cache["file_mtime"] != mtime or 
         _cache["data"] is None):
-        data, index = load_excel_data(file_path)
-        _cache.update({"file_path": file_path, "file_mtime": mtime, "data": data, "index": index})
-    return _cache["data"], _cache["index"]
+        data, index, col_names = load_excel_data(file_path)
+        _cache.update({
+            "file_path": file_path,
+            "file_mtime": mtime,
+            "data": data,
+            "index": index,
+            "col_names": col_names
+        })
+    return _cache["data"], _cache["index"], _cache["col_names"]
 
 @router.get("/api/mark/{barcode:path}")
 async def mark_barcode(barcode: str):
     barcode = barcode.strip()
     if not barcode:
         raise HTTPException(status_code=400, detail="Штрих-код не указан")
-    data, index = get_cached_data()
+    data, index, col_names = get_cached_data()
     if barcode not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    marking_keys = ["sia", "ktv", "reg", "kpd"]
     results = []
-
-    for idx in index[barcode]:
-        row = data[idx]
-        found_in_cols = [col for col, val in row.items() if val and val.strip() == barcode]
-        marking = None
-
-        for col in found_in_cols:
-            for mk in marking_keys:
-                if col.startswith(mk + "_"):
-                    # Берём значение из колонки с именем mk
-                    if mk in row and row[mk].strip():
-                        marking = row[mk].strip()
-                        break
-            if marking:
+    for row_idx, col_idx in index[barcode]:
+        row = data[row_idx]
+        # Идём влево от найденной колонки до маркировки
+        marking_col = None
+        for c in range(col_idx, -1, -1):
+            if col_names[c] in MARKING_KEYS:
+                marking_col = col_names[c]
                 break
-
+        marking_value = row.get(marking_col, '') if marking_col else ''
         item = {
             "Код": row.get("Код", ""),
             "Вид": row.get("Вид товара", ""),
             "Фандом": row.get("Фандом", "") or row.get("Фандом 4ek", ""),
             "Название": row.get("Название", ""),
         }
-        if marking:
-            item["Маркировка"] = marking
+        if marking_value:
+            item["Маркировка"] = marking_value
         results.append(item)
-
     return results
 
 @router.get("/mark")
