@@ -22,7 +22,8 @@ def get_excel_file_path() -> str:
     return os.path.join(base_path, f"{today}_mp_rep.xlsx")
 
 def load_excel_data(file_path: str):
-    df = pd.read_excel(file_path, sheet_name="ids", dtype=str).fillna('')
+    # Загружаем только колонки от K до AL (включительно)
+    df = pd.read_excel(file_path, sheet_name="ids", usecols="K:AL", dtype=str).fillna('')
     col_names = list(df.columns)
     data = df.to_dict(orient='records')
     index = {}
@@ -66,15 +67,12 @@ async def mark_barcode(barcode: str):
     results = []
     for row_idx, col_idx in index[barcode]:
         row = data[row_idx]
-        # Идём влево до первой колонки-маркировки
         marking_col = None
         for c in range(col_idx, -1, -1):
             if col_names[c] in MARKING_KEYS:
                 marking_col = col_names[c]
                 break
-        # Выводим ИМЯ колонки, а не её значение
         marking_value = marking_col if marking_col else ''
-
         item = {
             "Код": row.get("Код", ""),
             "Вид": row.get("Вид товара", ""),
