@@ -18,13 +18,12 @@ MARKING_KEYS = {"sia", "ktv", "reg", "kpd"}
 
 def normalize_barcode(barcode: str) -> str:
     """
-    Преобразует локальный EAN13 (формат 2000000NNNNNX) в код товара NNNNN.
+    Преобразует локальный EAN13 (формат 2400000NNNNNX) в код товара NNNNN.
     Если штрих-код не соответствует формату, возвращает его без изменений.
     """
     barcode = barcode.strip()
     if barcode.startswith("2400000") and len(barcode) == 13:
-        # 2000000 (7 символов) + 5 цифр кода + 1 контрольная цифра
-        return barcode[7:12]  # берём 5 цифр
+        return barcode[7:12]
     return barcode
 
 def get_excel_file_path() -> str:
@@ -33,7 +32,6 @@ def get_excel_file_path() -> str:
     return os.path.join(base_path, f"{today}_mp_rep.xlsx")
 
 def load_excel_data(file_path: str):
-    # Загружаем колонки от A до AL
     df = pd.read_excel(file_path, sheet_name="ids", usecols="A:AL", dtype=str).fillna('')
     col_names = list(df.columns)
     data = df.to_dict(orient='records')

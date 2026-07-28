@@ -26,51 +26,50 @@
             box-shadow: 0 8px 20px rgba(0,0,0,0.05);
             padding: 32px;
         }
-        h1 {
-            color: #0f172a;
-            font-size: 1.8rem;
-            margin-top: 0;
+        .scan-row {
             display: flex;
             align-items: center;
             gap: 12px;
-        }
-        .back-btn {
-            background: #e2e8f0;
-            border: none;
-            color: #0f172a;
-            padding: 8px 16px;
-            border-radius: 40px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: 0.2s;
-            text-decoration: none;
-            display: inline-block;
-            margin-bottom: 20px;
-        }
-        .back-btn:hover { background: #cbd5e1; }
-        .scan-area {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            margin-top: 20px;
+            flex-wrap: nowrap;
         }
         #scanInput {
-            width: 100%;
-            padding: 16px 20px;
-            font-size: 1.2rem;
+            flex: 1;
+            min-width: 0;
+            padding: 14px 20px;
+            font-size: 1.1rem;
             border: 2px solid #3b82f6;
             border-radius: 60px;
             outline: none;
-            transition: 0.2s;
             background: #f8fafc;
+            transition: 0.2s;
         }
         #scanInput:focus {
             border-color: #2563eb;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
             background: white;
         }
-        #scanInput::placeholder { color: #94a3b8; }
-        #scanResult { margin-top: 24px; }
+        #scanInput::placeholder {
+            color: #94a3b8;
+        }
+        .back-btn {
+            background: #e2e8f0;
+            border: none;
+            color: #0f172a;
+            padding: 10px 20px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            white-space: nowrap;
+            transition: 0.2s;
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+        .back-btn:hover {
+            background: #cbd5e1;
+        }
+        #scanResult {
+            margin-top: 24px;
+        }
 
         .product-card {
             display: flex;
@@ -146,6 +145,7 @@
         }
 
         @media (max-width: 700px) {
+            .container { padding: 20px; }
             .product-card {
                 flex-direction: column;
                 align-items: center;
@@ -159,20 +159,24 @@
                 flex-direction: column;
             }
             .field-label { width: 100%; }
+            .scan-row {
+                flex-wrap: wrap;
+            }
+            #scanInput {
+                min-width: 100%;
+            }
+            .back-btn {
+                width: 100%;
+                text-align: center;
+            }
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-        <h1>📷 Маркировка</h1>
-        <button onclick="window.location.href='/static/employee.html'" class="back-btn">Личный кабинет</button>
-    </div>
-    <div class="scan-area">
+    <div class="scan-row">
         <input type="text" id="scanInput" placeholder="Отсканируйте штрих-код или введите артикул..." autofocus>
-    </div>
-    <div id="scanResult">
-        <p style="color: #64748b; text-align: center;">Ожидание сканирования...</p>
+        <button onclick="window.location.href='/static/employee.html'" class="back-btn">Личный кабинет</button>
     </div>
 </div>
 <script>
@@ -288,9 +292,6 @@
                 }
             }
         });
-        if (!input.value) {
-            document.getElementById('scanResult').innerHTML = '<p style="color: #64748b; text-align: center;">Отсканируйте штрих-код для поиска товара</p>';
-        }
     });
 </script>
 </body>
