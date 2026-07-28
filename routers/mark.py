@@ -22,7 +22,7 @@ def normalize_barcode(barcode: str) -> str:
     Если штрих-код не соответствует формату, возвращает его без изменений.
     """
     barcode = barcode.strip()
-    if barcode.startswith("2000000") and len(barcode) == 13:
+    if barcode.startswith("2400000") and len(barcode) == 13:
         # 2000000 (7 символов) + 5 цифр кода + 1 контрольная цифра
         return barcode[7:12]  # берём 5 цифр
     return barcode
