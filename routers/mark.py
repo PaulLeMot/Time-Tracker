@@ -23,7 +23,7 @@ def get_excel_file_path() -> str:
 
 def load_excel_data(file_path: str):
     # Загружаем только колонки от K до AL (включительно)
-    df = pd.read_excel(file_path, sheet_name="ids", usecols="K:AL", dtype=str).fillna('')
+    df = pd.read_excel(file_path, sheet_name="ids", usecols="A:AL", dtype=str).fillna('')
     col_names = list(df.columns)
     data = df.to_dict(orient='records')
     index = {}
