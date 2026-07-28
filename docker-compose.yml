@@ -37,6 +37,7 @@ services:
       - /mnt/work/it/TimeTracker/backups:/app/backups
       - "/mnt/work/_img_(orig_copy)/250:/app/static/img"
       - "/mnt/work/_img_(orig_copy)/250:/app/import_data"
+      - "/mnt/work:/work"
     restart: unless-stopped
     deploy:
       resources:

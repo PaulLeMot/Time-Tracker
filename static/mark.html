@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Маркировка</title>
+    <link rel="icon" type="image/png" href="/static/ttr.png">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #f1f5f9;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            border-radius: 32px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+            padding: 32px;
+        }
+        h1 {
+            color: #0f172a;
+            font-size: 1.8rem;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .back-btn {
+            background: #e2e8f0;
+            border: none;
+            color: #0f172a;
+            padding: 8px 16px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .back-btn:hover { background: #cbd5e1; }
+        .scan-area {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-top: 20px;
+        }
+        #scanInput {
+            width: 100%;
+            padding: 16px 20px;
+            font-size: 1.2rem;
+            border: 2px solid #3b82f6;
+            border-radius: 60px;
+            outline: none;
+            transition: 0.2s;
+            background: #f8fafc;
+        }
+        #scanInput:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+            background: white;
+        }
+        #scanInput::placeholder { color: #94a3b8; }
+        .scan-hint {
+            color: #64748b;
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: -8px;
+        }
+        #scanResult { margin-top: 24px; }
+        .product-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: 0.2s;
+        }
+        .product-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .product-card h3 {
+            margin-top: 0;
+            color: #0f172a;
+            font-size: 1.2rem;
+        }
+        .field {
+            display: flex;
+            padding: 4px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .field:last-child { border-bottom: none; }
+        .field-label {
+            font-weight: 600;
+            color: #334155;
+            width: 120px;
+            flex-shrink: 0;
+        }
+        .field-value {
+            color: #0f172a;
+            word-break: break-word;
+        }
+        .no-result { color: #ef4444; text-align: center; padding: 40px 0; font-size: 1.1rem; }
+        .loading { text-align: center; color: #64748b; padding: 40px 0; }
+        .error {
+            color: #ef4444;
+            text-align: center;
+            padding: 20px;
+            background: #fee2e2;
+            border-radius: 12px;
+        }
+        @media (max-width: 480px) {
+            .container { padding: 20px; }
+            .field { flex-direction: column; }
+            .field-label { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <h1>📷 Маркировка</h1>
+        <button onclick="window.location.href='/employee'" class="back-btn">⬅ Назад</button>
+    </div>
+    <div class="scan-area">
+        <input type="text" id="scanInput" placeholder="Отсканируйте штрих-код или введите артикул..." autofocus>
+        <div class="scan-hint">Поддерживаются EAN13 и внутренние артикулы (например, OZN1699190953)</div>
+    </div>
+    <div id="scanResult">
+        <p style="color: #64748b; text-align: center;">Ожидание сканирования...</p>
+    </div>
+</div>
+<script>
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>"]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            if (m === '"') return '&quot;';
+            return m;
+        });
+    }
+    function showError(message) {
+        document.getElementById('scanResult').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
+    }
+    function showLoading() {
+        document.getElementById('scanResult').innerHTML = '<div class="loading">⏳ Поиск...</div>';
+    }
+    function renderResults(products) {
+        const resultDiv = document.getElementById('scanResult');
+        if (!products || products.length === 0) {
+            resultDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
+            return;
+        }
+        let html = '';
+        for (const product of products) {
+            const code = product['Код'] || '—';
+            const type = product['Вид товара'] || '—';
+            const fandom = product['Фандом'] || product['Фандом 4ek'] || '—';
+            const name = product['Название'] || product['Название old'] || '—';
+            const otherFields = Object.entries(product)
+                .filter(([key, value]) => 
+                    !['Код', 'Вид товара', 'Фандом', 'Фандом 4ek', 'Название', 'Название old'].includes(key) && 
+                    value && value.trim()
+                )
+                .map(([key, value]) => 
+                    `<div class="field">
+                        <span class="field-label">${escapeHtml(key)}</span>
+                        <span class="field-value">${escapeHtml(value)}</span>
+                    </div>`
+                )
+                .join('');
+            html += `
+                <div class="product-card">
+                    <h3>${escapeHtml(name)}</h3>
+                    <div class="field"><span class="field-label">Код</span><span class="field-value">${escapeHtml(code)}</span></div>
+                    <div class="field"><span class="field-label">Вид</span><span class="field-value">${escapeHtml(type)}</span></div>
+                    <div class="field"><span class="field-label">Фандом</span><span class="field-value">${escapeHtml(fandom)}</span></div>
+                    ${otherFields}
+                </div>
+            `;
+        }
+        resultDiv.innerHTML = html;
+    }
+
+    async function checkAuth() {
+        try {
+            const resp = await fetch('/api/auth/profile', { credentials: 'include' });
+            if (!resp.ok) {
+                window.location.replace('/static/login.html');
+                return false;
+            }
+            return true;
+        } catch (e) {
+            window.location.replace('/static/login.html');
+            return false;
+        }
+    }
+
+    let scanTimeout = null;
+    const SCAN_DELAY = 300;
+
+    async function performScan(code) {
+        if (!code || code.trim() === '') return;
+        code = code.trim();
+        showLoading();
+        try {
+            const resp = await fetch(`/api/mark/${encodeURIComponent(code)}`, { credentials: 'include' });
+            if (!resp.ok) {
+                let errorMsg = `Ошибка ${resp.status}`;
+                try {
+                    const err = await resp.json();
+                    errorMsg = err.detail || errorMsg;
+                } catch(e) {}
+                showError(errorMsg);
+                return;
+            }
+            const data = await resp.json();
+            renderResults(data);
+        } catch (err) {
+            showError('Ошибка соединения с сервером');
+            console.error(err);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', async function() {
+        const ok = await checkAuth();
+        if (!ok) return;
+        const input = document.getElementById('scanInput');
+        input.addEventListener('focus', function() { this.select(); });
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const code = this.value.trim();
+                if (code) {
+                    performScan(code);
+                    this.value = '';
+                }
+            }
+        });
+        input.addEventListener('input', function() {
+            clearTimeout(scanTimeout);
+            const val = this.value.trim();
+            if (val.length >= 8) {
+                scanTimeout = setTimeout(() => {
+                    if (val === this.value.trim()) {
+                        performScan(val);
+                        this.value = '';
+                    }
+                }, SCAN_DELAY);
+            }
+        });
+        if (!input.value) {
+            document.getElementById('scanResult').innerHTML = '<p style="color: #64748b; text-align: center;">Отсканируйте штрих-код для поиска товара</p>';
+        }
+    });
+</script>
+</body>
+</html>
