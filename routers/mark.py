@@ -19,7 +19,6 @@ def get_excel_file_path() -> str:
     return os.path.join(base_path, f"{today}_mp_rep.xlsx")
 
 def load_excel_data(file_path: str):
-    # Читаем конкретный лист "ids"
     df = pd.read_excel(file_path, sheet_name="ids", dtype=str).fillna('')
     data = df.to_dict(orient='records')
     index = {}
@@ -53,7 +52,31 @@ async def mark_barcode(barcode: str):
     data, index = get_cached_data()
     if barcode not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
-    return [data[idx] for idx in index[barcode]]
+
+    results = []
+    for idx in index[barcode]:
+        row = data[idx]
+        # Определяем, в каких колонках найден штрих-код
+        found_in_cols = [col for col, val in row.items() if val and val.strip() == barcode]
+        # Ищем колонку, заканчивающуюся на "_bar"
+        bar_col = None
+        for col in found_in_cols:
+            if col.endswith("_bar"):
+                bar_col = col
+                break
+        # Собираем нужные поля
+        item = {
+            "Код": row.get("Код", ""),
+            "Вид": row.get("Вид товара", ""),
+            "Фандом": row.get("Фандом", "") or row.get("Фандом 4ek", ""),
+            "Название": row.get("Название", ""),
+        }
+        if bar_col:
+            prefix = bar_col[:-4]  # убираем "_bar"
+            if prefix in row:
+                item["Маркировка"] = row[prefix]
+        results.append(item)
+    return results
 
 @router.get("/mark")
 async def mark_page():
