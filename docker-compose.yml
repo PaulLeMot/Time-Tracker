@@ -22,6 +22,7 @@ services:
     build: .
     ports:
       - "8000:8000"
+    user: "1000:1000"
     depends_on:
       db:
         condition: service_healthy
@@ -34,8 +35,8 @@ services:
     volumes:
       - .:/app
       - ./backups:/app/backups
-      - "/mnt/c/wsl/img:/app/static/img"
-      - "/mnt/c/wsl/img:/app/import_data"
+      - "/mnt/work/_img_(orig_copy)/250:/app/static/img"
+      - "/mnt/work/_img_(orig_copy)/250:/app/import_data"
     restart: unless-stopped
     deploy:
       resources:
