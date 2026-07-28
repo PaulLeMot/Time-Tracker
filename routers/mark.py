@@ -3,7 +3,6 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from datetime import datetime
-import re
 
 router = APIRouter(tags=["mark"])
 
@@ -17,12 +16,24 @@ _cache = {
 
 MARKING_KEYS = {"sia", "ktv", "reg", "kpd"}
 
+def normalize_barcode(barcode: str) -> str:
+    """
+    Преобразует локальный EAN13 (формат 2000000NNNNNX) в код товара NNNNN.
+    Если штрих-код не соответствует формату, возвращает его без изменений.
+    """
+    barcode = barcode.strip()
+    if barcode.startswith("2000000") and len(barcode) == 13:
+        # 2000000 (7 символов) + 5 цифр кода + 1 контрольная цифра
+        return barcode[7:12]  # берём 5 цифр
+    return barcode
+
 def get_excel_file_path() -> str:
     today = datetime.now().strftime("%y%m%d")
     base_path = "/work/!МП_(FSk)/!Rep"
     return os.path.join(base_path, f"{today}_mp_rep.xlsx")
 
 def load_excel_data(file_path: str):
+    # Загружаем колонки от A до AL
     df = pd.read_excel(file_path, sheet_name="ids", usecols="A:AL", dtype=str).fillna('')
     col_names = list(df.columns)
     data = df.to_dict(orient='records')
@@ -61,33 +72,41 @@ async def mark_barcode(barcode: str):
     if not barcode:
         raise HTTPException(status_code=400, detail="Штрих-код не указан")
     
-    # Обработка локального EAN13: 2000000NNNNNX -> NNNNN
-    if re.match(r'^2000000\d{5}\d$', barcode):
-        # Извлекаем 5 цифр после "2000000"
-        barcode = barcode[7:12]  # индексы с 7 по 11 (0-based)
+    # Преобразуем локальный EAN13 в код товара
+    original_barcode = barcode
+    normalized = normalize_barcode(barcode)
+    if not normalized or len(normalized) < 5:
+        raise HTTPException(status_code=400, detail="Некорректный штрих-код")
     
     data, index, col_names = get_cached_data()
-    if barcode not in index:
+    if normalized not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
     results = []
-    for row_idx, col_idx in index[barcode]:
+    for row_idx, col_idx in index[normalized]:
         row = data[row_idx]
+        # Идём влево до первой колонки-маркировки
         marking_col = None
         for c in range(col_idx, -1, -1):
             if col_names[c] in MARKING_KEYS:
                 marking_col = col_names[c]
                 break
         marking_value = marking_col if marking_col else ''
+        # Если маркировка отсутствует – пропускаем товар
+        if not marking_value:
+            continue
         item = {
             "Код": row.get("Код", ""),
             "Вид": row.get("Вид товара", ""),
             "Фандом": row.get("Фандом", "") or row.get("Фандом 4ek", ""),
             "Название": row.get("Название", ""),
+            "Маркировка": marking_value
         }
-        if marking_value:
-            item["Маркировка"] = marking_value
         results.append(item)
+    
+    if not results:
+        raise HTTPException(status_code=404, detail="Товар не найден (нет маркировки)")
+    
     return results
 
 @router.get("/mark")
