@@ -62,13 +62,11 @@ async def mark_barcode(barcode: str):
         marking = None
 
         for col in found_in_cols:
-            # Пытаемся найти маркировку в названии колонки
             for mk in marking_keys:
-                # Проверяем, что mk встречается как отдельное слово или в начале колонки
-                # Например, "sia_WB_bar" или "sia" (но в "sia" не может быть штрих-кода)
-                if col.startswith(mk + "_") or col == mk:
-                    if mk in row:
-                        marking = row[mk]
+                if col.startswith(mk + "_"):
+                    # Берём значение из колонки с именем mk
+                    if mk in row and row[mk].strip():
+                        marking = row[mk].strip()
                         break
             if marking:
                 break
