@@ -53,29 +53,36 @@ async def mark_barcode(barcode: str):
     if barcode not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
+    marking_keys = ["sia", "ktv", "reg", "kpd"]
     results = []
+
     for idx in index[barcode]:
         row = data[idx]
-        # Определяем, в каких колонках найден штрих-код
         found_in_cols = [col for col, val in row.items() if val and val.strip() == barcode]
-        # Ищем колонку, заканчивающуюся на "_bar"
-        bar_col = None
+        marking = None
+
         for col in found_in_cols:
-            if col.endswith("_bar"):
-                bar_col = col
+            # Пытаемся найти маркировку в названии колонки
+            for mk in marking_keys:
+                # Проверяем, что mk встречается как отдельное слово или в начале колонки
+                # Например, "sia_WB_bar" или "sia" (но в "sia" не может быть штрих-кода)
+                if col.startswith(mk + "_") or col == mk:
+                    if mk in row:
+                        marking = row[mk]
+                        break
+            if marking:
                 break
-        # Собираем нужные поля
+
         item = {
             "Код": row.get("Код", ""),
             "Вид": row.get("Вид товара", ""),
             "Фандом": row.get("Фандом", "") or row.get("Фандом 4ek", ""),
             "Название": row.get("Название", ""),
         }
-        if bar_col:
-            prefix = bar_col[:-4]  # убираем "_bar"
-            if prefix in row:
-                item["Маркировка"] = row[prefix]
+        if marking:
+            item["Маркировка"] = marking
         results.append(item)
+
     return results
 
 @router.get("/mark")
