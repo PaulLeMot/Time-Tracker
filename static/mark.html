@@ -241,12 +241,8 @@
         }
     }
 
-    let scanTimeout = null;
-    const SCAN_DELAY = 300;
-
     function isValidBarcode(code) {
         if (!code || code.length < 5) return false;
-        // разрешены буквы, цифры, дефис, подчёркивание – без пробелов
         return /^[A-Za-zА-Яа-я0-9_-]+$/.test(code);
     }
 
@@ -290,18 +286,6 @@
                     performScan(code);
                     this.value = '';
                 }
-            }
-        });
-        input.addEventListener('input', function() {
-            clearTimeout(scanTimeout);
-            const val = this.value.trim();
-            if (val.length >= 5) {
-                scanTimeout = setTimeout(() => {
-                    if (val === this.value.trim()) {
-                        performScan(val);
-                        this.value = '';
-                    }
-                }, SCAN_DELAY);
             }
         });
         if (!input.value) {
