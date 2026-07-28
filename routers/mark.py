@@ -11,7 +11,7 @@ _cache = {
     "file_mtime": None,
     "data": None,
     "index": None,
-    "col_names": None,  # список названий колонок в порядке следования
+    "col_names": None,
 }
 
 MARKING_KEYS = {"sia", "ktv", "reg", "kpd"}
@@ -25,7 +25,6 @@ def load_excel_data(file_path: str):
     df = pd.read_excel(file_path, sheet_name="ids", dtype=str).fillna('')
     col_names = list(df.columns)
     data = df.to_dict(orient='records')
-    # Индекс: код -> список (индекс строки, индекс колонки)
     index = {}
     for row_idx, row in enumerate(data):
         for col_idx, col_name in enumerate(col_names):
@@ -34,7 +33,6 @@ def load_excel_data(file_path: str):
                 val = value.strip()
                 if val not in index:
                     index[val] = []
-                # добавляем пару (row_idx, col_idx)
                 index[val].append((row_idx, col_idx))
     return data, index, col_names
 
@@ -74,7 +72,7 @@ async def mark_barcode(barcode: str):
             if col_names[c] in MARKING_KEYS:
                 marking_col = col_names[c]
                 break
-        marking_value = row.get(marking_col, '') if marking_col else ''
+        marking_value = row.get(marking_col, '').strip() if marking_col else ''
         item = {
             "Код": row.get("Код", ""),
             "Вид": row.get("Вид товара", ""),
