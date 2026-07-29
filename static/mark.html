@@ -125,7 +125,10 @@
             overflow: hidden;
         }
 
-        /* Болванка 3×3 – верхняя часть правой колонки */
+        /* Болванка 3×3 – верхняя часть правой колонки.
+           Высота задаётся динамически через JS (syncPlaceholderHeight),
+           поэтому max-height/aspect-ratio здесь - только запасной вариант
+           на случай, если JS ещё не отработал. */
         .placeholder-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -364,17 +367,26 @@
         document.getElementById('scanResult').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('markingDisplay').textContent = '';
         resetImage();
+        resetPlaceholderHeight();
     }
     function showLoading() {
         document.getElementById('scanResult').innerHTML = '<div class="loading">⏳ Поиск...</div>';
         document.getElementById('markingDisplay').textContent = '⏳';
         resetImage();
+        resetPlaceholderHeight();
     }
     function resetImage() {
         const img = document.getElementById('productImage');
         const noImg = document.getElementById('noImageLabel');
         img.style.display = 'none';
         noImg.style.display = 'flex';
+    }
+    function resetPlaceholderHeight() {
+        const grid = document.getElementById('placeholderGrid');
+        if (grid) {
+            grid.style.height = '';
+            grid.style.maxHeight = '150px';
+        }
     }
 
     function renderResults(products) {
@@ -387,6 +399,7 @@
             resultDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             markingSpan.textContent = '';
             resetImage();
+            resetPlaceholderHeight();
             return;
         }
 
@@ -439,7 +452,10 @@
 
         resultDiv.innerHTML = infoHtml + tableHtml;
 
-        // Синхронизация высоты болванки с высотой product-info
+        // Синхронизация высоты болванки: она должна равняться высоте
+        // (поисковая строка + карточка товара), чтобы:
+        //  - низ болванки совпал с верхом таблицы маркировок (с отступом),
+        //  - верх картинки совпал по уровню с верхом таблицы маркировок.
         syncPlaceholderHeight();
 
         if (imageUrl) {
@@ -457,14 +473,19 @@
     }
 
     function syncPlaceholderHeight() {
-        const info = document.querySelector('.table-container');
+        const searchRow = document.querySelector('.search-row');
+        const info = document.querySelector('.product-info');
         const grid = document.getElementById('placeholderGrid');
-        if (info && grid) {
-            const infoHeight = info.offsetHeight;
-            const gap = 12;
-            grid.style.height = (infoHeight + gap) + 'px';
-            grid.style.maxHeight = 'none';
-        }
+        if (!searchRow || !info || !grid) return;
+
+        // Высота болванки = высота поисковой строки + высота карточки товара.
+        // Именно это расстояние отделяет верх left-col от верха table-container,
+        // поскольку между search-row и scanResult есть один gap (12px) у .left-col,
+        // а такой же gap (12px) есть у .right-col между болванкой и картинкой —
+        // они компенсируют друг друга.
+        const targetHeight = searchRow.offsetHeight + info.offsetHeight;
+        grid.style.maxHeight = 'none';
+        grid.style.height = targetHeight + 'px';
     }
 
     async function checkAuth() {
@@ -533,6 +554,14 @@
                 document.getElementById('markingDisplay').textContent = '';
                 document.getElementById('scanResult').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
                 resetImage();
+                resetPlaceholderHeight();
+            }
+        });
+        // Пересчитывать высоту болванки при изменении размеров окна
+        // (например, если карточка товара перестроилась в несколько строк).
+        window.addEventListener('resize', function() {
+            if (document.querySelector('.product-info')) {
+                syncPlaceholderHeight();
             }
         });
     });
