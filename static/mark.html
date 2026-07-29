@@ -175,7 +175,7 @@
             padding-right: 4px;
         }
 
-        /* Таблица стикеров – теперь идёт первой (вместо болванки) */
+        /* Таблица стикеров – идёт первой (вместо болванки) */
         .sticker-table {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -358,7 +358,7 @@
     }
 
     function showLoading() {
-        document.getElementById('productInfoContainer').innerHTML = '<div class="loading"></div>';
+        document.getElementById('productInfoContainer').innerHTML = '<div class="loading">Загрузка...</div>';
         document.getElementById('tablesScroll').innerHTML = '';
         document.getElementById('markingDisplay').textContent = '⏳';
         resetImage();
@@ -412,8 +412,7 @@
             </div>
         `;
 
-        // --- Строим скролл-блок ---
-        // Болванку больше не выводим – вместо неё таблица стикеров
+        // --- Строим скролл-блок (без болванки!) ---
         let scrollHtml = '';
 
         // 1. Таблица стикеров (на месте болванки)
