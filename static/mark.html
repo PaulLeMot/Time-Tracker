@@ -199,6 +199,7 @@
             color: #94a3b8;
         }
 
+        /* Таблица маркировок (старая) */
         .table-container {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -211,28 +212,20 @@
             border-collapse: collapse;
             font-size: 0.9rem;
         }
+        .table-container th {
+            background: #f1f5f9;
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #0f172a;
+            border-bottom: 2px solid #e2e8f0;
+        }
         .table-container td {
             padding: 6px 12px;
             border-bottom: 1px solid #e2e8f0;
         }
         .table-container tr:last-child td {
             border-bottom: none;
-        }
-        .table-container .sticker-count {
-            padding: 8px 12px;
-            font-weight: 600;
-            border-bottom: 2px solid #e2e8f0;
-            background: #f1f5f9;
-            border-radius: 8px 8px 0 0;
-        }
-        .table-container .sticker-last {
-            font-weight: 700;
-            font-size: 1.5rem;
-        }
-        .table-container .no-stickers {
-            padding: 12px;
-            text-align: center;
-            color: #94a3b8;
         }
 
         .badge {
@@ -248,6 +241,43 @@
         .badge-wb { background: #6b21a5; }
         .badge-oz { background: #1e40af; }
         .badge-fsk { background: #64748b; }
+
+        /* Новая таблица стикеров */
+        .sticker-table {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 8px;
+            background: #fafafa;
+            flex-shrink: 0;
+        }
+        .sticker-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .sticker-table td {
+            padding: 6px 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .sticker-table tr:last-child td {
+            border-bottom: none;
+        }
+        .sticker-count {
+            padding: 8px 12px;
+            font-weight: 600;
+            border-bottom: 2px solid #e2e8f0;
+            background: #f1f5f9;
+            border-radius: 8px 8px 0 0;
+        }
+        .sticker-last {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .no-stickers {
+            padding: 12px;
+            text-align: center;
+            color: #94a3b8;
+        }
 
         .image-wrapper {
             flex: 1;
@@ -304,8 +334,10 @@
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
             .table-container td, .table-container th { padding: 4px 8px; }
+            .sticker-table { font-size: 0.8rem; }
+            .sticker-table td { padding: 4px 8px; }
             .left-col { padding-top: 8px; }
-            .table-container .sticker-last { font-size: 1.2rem; }
+            .sticker-last { font-size: 1.2rem; }
         }
     </style>
 </head>
@@ -409,17 +441,7 @@
             </div>
         `;
 
-        // Сбор стикеров из всех WB-строк
-        let allStickers = [];
-        for (const row of tableData) {
-            if (row.stickers && row.stickers.length > 0) {
-                allStickers = allStickers.concat(row.stickers.map(s => s));
-            }
-        }
-
-        const foundCount = products.length;
-
-        // Формируем скролл-блок: болванка + таблица стикеров
+        // --- Строим содержимое скролл-блока ---
         let scrollHtml = `
             <div class="placeholder-grid">
                 <div class="cell">1</div>
@@ -434,8 +456,45 @@
             </div>
         `;
 
-        // Таблица стикеров
-        let stickerHtml = `<div class="table-container">`;
+        // 1. Старая таблица маркировок (ID, штрих-код)
+        if (tableData.length) {
+            let tableHtml = `<div class="table-container"><table>
+                <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
+            for (const row of tableData) {
+                let badgeClass = '';
+                if (row.platform === 'WB') {
+                    badgeClass = 'badge-wb';
+                } else if (row.platform === 'OZ') {
+                    badgeClass = 'badge-oz';
+                } else {
+                    badgeClass = 'badge-fsk';
+                }
+                tableHtml += `<tr>
+                    <td><span class="badge ${badgeClass}">${escapeHtml(row.marking)}</span></td>
+                    <td>${escapeHtml(row.id)}</td>
+                    <td>${escapeHtml(row.bar)}</td>
+                </tr>`;
+            }
+            tableHtml += `</tbody></table></div>`;
+            scrollHtml += tableHtml;
+        } else {
+            scrollHtml += `<div class="table-container"><p style="color:#94a3b8; text-align:center;">Нет данных</p></div>`;
+        }
+
+        // 2. Новая таблица стикеров
+        // Собираем все стикеры из всех товаров (только из WB-строк)
+        let allStickers = [];
+        for (const prod of products) {
+            const t = prod.table || [];
+            for (const row of t) {
+                if (row.stickers && row.stickers.length > 0) {
+                    allStickers = allStickers.concat(row.stickers);
+                }
+            }
+        }
+
+        const foundCount = products.length;
+        let stickerHtml = `<div class="sticker-table">`;
         stickerHtml += `<div class="sticker-count">Найдено товаров: ${foundCount}</div>`;
         if (allStickers.length === 0) {
             stickerHtml += `<div class="no-stickers">Стикеры не найдены</div>`;
@@ -457,6 +516,7 @@
         scrollDiv.innerHTML = scrollHtml;
         scrollDiv.scrollTop = 0;
 
+        // Изображение
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
