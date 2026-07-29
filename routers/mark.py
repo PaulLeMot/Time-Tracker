@@ -20,6 +20,15 @@ MARKING_KEYS = {"sia", "ktv", "reg", "kpd"}
 # M=12, P=15, T=19, W=22, AA=26, AD=29, AH=33, AK=36
 EXCLUDED_COLUMNS = {12, 15, 19, 22, 26, 29, 33, 36}
 
+# Специальные колонки для определения маркировок по площадкам
+# K=10 → sia, R=17 → ktv, Y=24 → reg, AF=31 → kpd
+MARKING_PLATFORM_COLUMNS = {
+    10: "sia",
+    17: "ktv",
+    24: "reg",
+    31: "kpd",
+}
+
 def normalize_barcode(barcode: str) -> str:
     """
     Преобразует локальный EAN13 (формат 2000000NNNNNX) в код товара NNNNN.
@@ -83,6 +92,26 @@ def get_cached_data():
         })
     return _cache["data"], _cache["index"], _cache["col_names"]
 
+def get_markings_from_platform_columns(row, col_names) -> set:
+    """
+    Проверяет специальные колонки (K, R, Y, AF) на наличие площадок.
+    Возвращает множество маркировок вида { "sia_WB", "ktv_OZ", ... }.
+    """
+    markings = set()
+    for col_idx, marking_name in MARKING_PLATFORM_COLUMNS.items():
+        # Убедимся, что индекс не выходит за пределы
+        if col_idx >= len(col_names):
+            continue
+        value = row.get(col_names[col_idx], '').strip()
+        if not value:
+            continue
+        # Разбиваем по пробелам, возможны варианты "WB", "OZ", "WB OZ"
+        parts = value.split()
+        for part in parts:
+            if part in ("WB", "OZ"):
+                markings.add(f"{marking_name}_{part}")
+    return markings
+
 @router.get("/api/mark/{barcode:path}")
 async def mark_barcode(barcode: str):
     barcode = barcode.strip()
@@ -97,32 +126,64 @@ async def mark_barcode(barcode: str):
     if normalized not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    results = []
+    # Группировка товаров по основным полям
+    products = {}  # ключ: (код, вид, фандом, название) -> данные с множеством маркировок
+
     for row_idx, col_idx in index[normalized]:
         row = data[row_idx]
-        # Идём влево до первой колонки-маркировки
-        marking_col = None
-        for c in range(col_idx, -1, -1):
-            if col_names[c] in MARKING_KEYS:
-                marking_col = col_names[c]
-                break
-        marking_value = marking_col if marking_col else ''
-        if not marking_value:
-            continue
+        # Основные поля
+        code = row.get("Код", "")
+        view = row.get("Вид товара", "")
+        fandom = row.get("Фандом", "") or row.get("Фандом 4ek", "")
+        name = row.get("Название", "")
+        key = (code, view, fandom, name)
+
+        if key not in products:
+            products[key] = {
+                "Код": code,
+                "Вид": view,
+                "Фандом": fandom,
+                "Название": name,
+                "Маркировки": set()
+            }
+
+        # Определяем маркировки для данного вхождения
+        markings = set()
+
+        # Если товар найден в колонке A (код), используем специальную логику по площадкам
+        if col_idx == 0:
+            markings.update(get_markings_from_platform_columns(row, col_names))
+        else:
+            # Стандартная логика: идём влево до первой колонки-маркировки
+            marking_col = None
+            for c in range(col_idx, -1, -1):
+                if col_names[c] in MARKING_KEYS:
+                    marking_col = col_names[c]
+                    break
+            if marking_col:
+                markings.add(marking_col)  # просто имя маркировки, без суффикса
+
+        # Добавляем все найденные маркировки в общее множество для товара
+        products[key]["Маркировки"].update(markings)
+
+    # Преобразуем в список результатов
+    results = []
+    for key, data_item in products.items():
         item = {
-            "Код": row.get("Код", ""),
-            "Вид": row.get("Вид товара", ""),
-            "Фандом": row.get("Фандом", "") or row.get("Фандом 4ek", ""),
-            "Название": row.get("Название", ""),
-            "Маркировка": marking_value
+            "Код": data_item["Код"],
+            "Вид": data_item["Вид"],
+            "Фандом": data_item["Фандом"],
+            "Название": data_item["Название"],
         }
+        if data_item["Маркировки"]:
+            item["Маркировка"] = ", ".join(sorted(data_item["Маркировки"]))
         results.append(item)
-    
+
     if not results:
-        raise HTTPException(status_code=404, detail="Товар не найден (нет маркировки)")
+        raise HTTPException(status_code=404, detail="Товар не найден")
     
     return results
 
 @router.get("/mark")
 async def mark_page():
-    return FileResponse("static/mark.html") 
+    return FileResponse("static/mark.html")
