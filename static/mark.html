@@ -52,6 +52,7 @@
             align-items: center;
             gap: 12px;
             flex-shrink: 0;
+            margin-top: 12px; /* добавлен отступ сверху */
         }
         .logo-btn {
             flex-shrink: 0;
@@ -258,10 +259,6 @@
             width: 100%;
         }
 
-        .flex-grow {
-            flex: 1;
-        }
-
         @media (max-width: 700px) {
             .container { padding: 16px; }
             .main-grid {
@@ -289,6 +286,9 @@
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
             .table-container td, .table-container th { padding: 4px 8px; }
+            .search-row {
+                margin-top: 8px;
+            }
         }
     </style>
 </head>
@@ -373,7 +373,6 @@
 
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
-        // Собираем HTML: карточка, болванка, таблица
         let html = `
             <div class="product-info">
                 <div class="name-line">
@@ -387,7 +386,6 @@
             </div>
         `;
 
-        // Болванка 3x3 (всегда показывается)
         html += `
             <div class="placeholder-grid">
                 <div class="cell">1</div>
@@ -402,7 +400,6 @@
             </div>
         `;
 
-        // Таблица маркировок
         let tableHtml = '';
         if (tableData.length) {
             tableHtml = `<div class="table-container"><table>
@@ -516,4 +513,4 @@
     });
 </script>
 </body>
-</html>
+</html> 
