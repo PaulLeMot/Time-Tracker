@@ -20,7 +20,6 @@
             min-height: 100vh;
         }
 
-        /* панель поиска */
         .search-panel {
             display: flex;
             flex-direction: column;
@@ -33,7 +32,6 @@
             padding: 5px 0 0 0;
         }
 
-        /* общие поля */
         .field {
             position: relative;
             min-width: 0;
@@ -44,12 +42,11 @@
             align-items: center;
         }
 
-        /* ===== Стили для инпутов (как в mark.html) ===== */
         input {
             width: 100%;
             padding: 12px 40px 12px 15px;
             font-size: 0.95rem;
-            border: 2px solid #e2e8f0;         /* толщина как в mark */
+            border: 2px solid #e2e8f0;
             border-radius: 40px;
             outline: none;
             background: white;
@@ -57,7 +54,7 @@
         }
         input:focus {
             border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); /* как в mark */
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
         }
 
         .clear-btn {
@@ -101,29 +98,27 @@
         }
         .dropdown-item:hover { background: #f0f7ff; }
 
-        /* первая строка */
         .search-row-top {
             display: flex;
             align-items: center;
             width: 100%;
         }
 
-        /* ===== Логотип (как в mark.html) ===== */
+        /* ===== ТОЧНО ТАКИЕ ЖЕ СТИЛИ, КАК В mark.html ===== */
         .logo-btn {
-            flex: 0 0 5%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 0;
-            margin-right: 8px;
+            flex-shrink: 0;
             width: 48px;
             height: 48px;
             border-radius: 50%;
             overflow: hidden;
             border: 2px solid #e2e8f0;
             transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             background: white;
             text-decoration: none;
+            margin-right: 8px; /* добавил отступ, как в mark */
         }
         .logo-btn img {
             width: 100%;
@@ -145,7 +140,6 @@
             min-width: 0;
         }
 
-        /* вторая строка */
         .search-row-bottom {
             display: flex;
             align-items: center;
@@ -165,7 +159,6 @@
             margin-right: 20px;
         }
 
-        /* сетка товаров */
         .products-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -229,7 +222,6 @@
 <body>
 <div class="container">
     <div class="search-panel">
-        <!-- Первая строка: логотип, код, вид товара -->
         <div class="search-row-top">
             <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
                 <img src="/static/ttr.png" alt="ЛК">
@@ -249,7 +241,6 @@
             </div>
         </div>
 
-        <!-- Вторая строка: фандом, количество -->
         <div class="search-row-bottom">
             <div class="field field-fandom" id="fandomField">
                 <div class="input-wrapper">
@@ -267,8 +258,7 @@
 </div>
 
 <script>
-    // (ваш существующий JavaScript без изменений)
-    // Состояние
+    // (Ваш существующий JS без изменений)
     const limit = 30;
     let allTypes = [];
     let allFandoms = [];
@@ -279,7 +269,6 @@
     let isLoading = false;
     let hasMore = true;
 
-    // Элементы
     const codeInput = document.getElementById('codeInput');
     const typeInput = document.getElementById('typeInput');
     const fandomInput = document.getElementById('fandomInput');
@@ -292,37 +281,30 @@
     const fandomDropdown = document.getElementById('fandomDropdown');
     const loader = document.getElementById('loader');
 
-    // Функция обновления видимости крестика
     function updateClearButton(input, btn) {
         btn.classList.toggle('visible', input.value.length > 0);
     }
 
-    // Загрузка фильтров (всех или отфильтрованных)
     async function loadFilterOptions(productType = '', fandom = '') {
         let url = '/api/products/filter-options';
         const params = new URLSearchParams();
         if (productType) params.append('product_type', productType);
         if (fandom) params.append('fandom', fandom);
         if (params.toString()) url += '?' + params.toString();
-
         const resp = await fetch(url);
-        const data = await resp.json();
-        return data;
+        return await resp.json();
     }
 
-    // Обновление глобальных списков типов/фандомов (без открытия)
     async function updateDropdowns() {
         const data = await loadFilterOptions(selectedType, selectedFandom);
         allTypes = data.product_types;
         allFandoms = data.fandoms;
     }
 
-    // Инициализация фильтров при загрузке
     async function initFilters() {
         await updateDropdowns();
     }
 
-    // Отображение выпадающего списка для конкретного поля
     function showDropdown(input, dropdown, items, onSelect) {
         const query = input.value.trim().toLowerCase();
         const filtered = items.filter(item => item.toLowerCase().includes(query));
@@ -356,8 +338,6 @@
         fandomDropdown.classList.remove('open');
     }
 
-    // Обработчики полей
-    // Тип товара
     typeInput.addEventListener('input', () => {
         updateClearButton(typeInput, clearTypeBtn);
         showDropdown(typeInput, typeDropdown, allTypes, (value) => {
@@ -378,7 +358,6 @@
         });
     });
 
-    // Фандом
     fandomInput.addEventListener('input', () => {
         updateClearButton(fandomInput, clearFandomBtn);
         showDropdown(fandomInput, fandomDropdown, allFandoms, (value) => {
@@ -399,13 +378,11 @@
         });
     });
 
-    // Скрытие выпадашек при клике вне поля
     document.addEventListener('click', (e) => {
         if (!e.target.closest('#typeField')) typeDropdown.classList.remove('open');
         if (!e.target.closest('#fandomField')) fandomDropdown.classList.remove('open');
     });
 
-    // Очистка полей
     function clearField(input, clearBtn, resetCallback) {
         input.value = '';
         clearBtn.classList.remove('visible');
@@ -434,14 +411,12 @@
         updateClearButton(codeInput, clearCode);
     });
 
-    // Поиск с задержкой для кода
     let searchTimer;
     codeInput.addEventListener('input', () => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => resetAndLoad(), 400);
     });
 
-    // Сброс и загрузка с начала
     function resetAndLoad() {
         currentOffset = 0;
         hasMore = true;
@@ -449,7 +424,6 @@
         loadProducts();
     }
 
-    // Загрузка товаров (бесконечный скролл)
     async function loadProducts() {
         if (isLoading || !hasMore) return;
         isLoading = true;
@@ -487,7 +461,6 @@
         isLoading = false;
     }
 
-    // Intersection Observer для бесконечного скролла
     const sentinel = document.createElement('div');
     sentinel.id = 'scrollSentinel';
     grid.after(sentinel);
@@ -504,7 +477,6 @@
         return text.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
     }
 
-    // Инициализация
     initFilters().then(() => {
         loadProducts();
     });
