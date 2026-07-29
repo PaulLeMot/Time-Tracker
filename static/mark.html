@@ -38,6 +38,7 @@
             flex-direction: column;
             gap: 12px;
             min-width: 0;
+            padding-top: 12px; /* отступ сверху, чтобы не слетал */
         }
 
         .right-col {
@@ -52,7 +53,7 @@
             align-items: center;
             gap: 12px;
             flex-shrink: 0;
-            margin-top: 12px; /* добавлен отступ сверху */
+            /* margin-top убран, отступ теперь у .left-col */
         }
         .logo-btn {
             flex-shrink: 0;
@@ -286,8 +287,8 @@
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
             .table-container td, .table-container th { padding: 4px 8px; }
-            .search-row {
-                margin-top: 8px;
+            .left-col {
+                padding-top: 8px;
             }
         }
     </style>
@@ -513,4 +514,4 @@
     });
 </script>
 </body>
-</html> 
+</html>
