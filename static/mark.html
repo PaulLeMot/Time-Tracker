@@ -19,38 +19,56 @@
             padding: 16px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             width: 100%;
-            height: 100%;
-            max-height: calc(100vh - 32px);
             background: white;
             border-radius: 32px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.05);
             padding: 24px 32px;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            /* убираем ограничения по высоте, чтобы страница скроллилась */
         }
 
-        /* Основная сетка: две колонки */
         .main-grid {
             display: grid;
-            grid-template-columns: 1fr 280px;
+            grid-template-columns: 1fr 1fr; /* левая колонка – картинка, правая – данные */
             gap: 24px;
-            flex: 1;
-            min-height: 0;
+            margin-top: 16px;
         }
 
-        /* Левая колонка */
+        /* Левая колонка – картинка */
         .left-col {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+            min-height: 400px;
+        }
+        .left-col img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .left-col .no-image {
+            color: #94a3b8;
+            font-size: 1rem;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Правая колонка */
+        .right-col {
             display: flex;
             flex-direction: column;
             gap: 12px;
-            min-height: 0;
-            overflow: hidden;
         }
 
-        /* Поисковая строка – первая в левой колонке */
+        /* Поисковая строка */
         .search-row {
             display: flex;
             align-items: center;
@@ -89,7 +107,7 @@
             min-width: 0;
         }
         #scanInput {
-            flex: 0 0 60%;
+            flex: 1;
             padding: 12px 18px;
             font-size: 1rem;
             border: 2px solid #3b82f6;
@@ -116,19 +134,7 @@
             text-overflow: ellipsis;
         }
 
-        /* Правая колонка */
-        .right-col {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        /* Болванка 3×3 – верхняя часть правой колонки.
-           Высота задаётся динамически через JS (syncPlaceholderHeight),
-           поэтому max-height/aspect-ratio здесь - только запасной вариант
-           на случай, если JS ещё не отработал. */
+        /* Болванка – теперь в правой колонке, над карточкой */
         .placeholder-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -140,7 +146,8 @@
             border-radius: 12px;
             padding: 6px;
             flex-shrink: 0;
-            max-height: 150px;
+            max-width: 200px;
+            max-height: 200px;
         }
         .placeholder-grid .cell {
             background: white;
@@ -153,32 +160,7 @@
             color: #94a3b8;
         }
 
-        /* Картинка – нижняя часть правой колонки */
-        .image-wrapper {
-            flex: 1;
-            min-height: 0;
-            background: #f8fafc;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .image-wrapper img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            display: block;
-        }
-        .image-wrapper .no-image {
-            color: #94a3b8;
-            font-size: 1rem;
-            text-align: center;
-            padding: 20px;
-        }
-
-        /* Карточка товара – идёт после поиска в левой колонке */
+        /* Карточка товара */
         .product-info {
             display: flex;
             flex-direction: column;
@@ -209,14 +191,13 @@
             color: #475569;
         }
 
-        /* Таблица маркировок – нижняя часть левой колонки */
+        /* Таблица маркировок */
         .table-container {
-            flex: 1;
-            overflow-y: auto;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             padding: 8px;
             background: #fafafa;
+            overflow-x: auto;
         }
         .table-container table {
             width: 100%;
@@ -230,9 +211,6 @@
             font-weight: 600;
             color: #0f172a;
             border-bottom: 2px solid #e2e8f0;
-            position: sticky;
-            top: 0;
-            z-index: 10;
         }
         .table-container td {
             padding: 6px 12px;
@@ -242,7 +220,6 @@
             border-bottom: none;
         }
 
-        /* Бейджи для маркировок */
         .badge {
             display: inline-block;
             padding: 2px 12px;
@@ -285,52 +262,49 @@
                 grid-template-columns: 1fr;
                 gap: 16px;
             }
+            .left-col {
+                min-height: 200px;
+                max-height: 300px;
+            }
             .right-col {
-                flex-direction: row;
-                flex-wrap: wrap;
-            }
-            .placeholder-grid {
-                max-width: 120px;
-                max-height: 120px;
-                flex: 0 0 auto;
-            }
-            .image-wrapper {
-                flex: 1;
-                min-height: 150px;
+                gap: 8px;
             }
             .logo-btn { width: 40px; height: 40px; }
-            #scanInput { font-size: 0.95rem; padding: 10px 14px; flex: 1 1 100%; }
+            #scanInput { font-size: 0.95rem; padding: 10px 14px; }
             .input-marking-wrapper { flex-wrap: wrap; }
             #markingDisplay { font-size: 1rem; }
             .product-info .name-line { font-size: 1.2rem; }
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
             .table-container td, .table-container th { padding: 4px 8px; }
+            .placeholder-grid {
+                max-width: 120px;
+                max-height: 120px;
+            }
         }
     </style>
 </head>
 <body>
 <div class="container">
+    <!-- Поисковая строка -->
+    <div class="search-row">
+        <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
+            <img src="/static/ttr.png" alt="ЛК">
+        </a>
+        <div class="input-marking-wrapper">
+            <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
+            <span id="markingDisplay"></span>
+        </div>
+    </div>
+
     <div class="main-grid">
-        <!-- Левая колонка -->
-        <div class="left-col">
-            <!-- Поиск -->
-            <div class="search-row">
-                <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
-                    <img src="/static/ttr.png" alt="ЛК">
-                </a>
-                <div class="input-marking-wrapper">
-                    <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
-                    <span id="markingDisplay"></span>
-                </div>
-            </div>
-            <!-- Результат: карточка + таблица -->
-            <div id="scanResult">
-                <p class="placeholder-text">Ожидание сканирования...</p>
-            </div>
+        <!-- Левая колонка – картинка -->
+        <div class="left-col" id="imageContainer">
+            <div class="no-image" id="noImageLabel">Нет изображения</div>
+            <img id="productImage" src="" alt="Товар" style="display:none;">
         </div>
 
-        <!-- Правая колонка -->
+        <!-- Правая колонка – болванка, карточка, таблица -->
         <div class="right-col">
             <!-- Болванка -->
             <div class="placeholder-grid" id="placeholderGrid">
@@ -344,10 +318,10 @@
                 <div class="cell">8</div>
                 <div class="cell">9</div>
             </div>
-            <!-- Картинка -->
-            <div class="image-wrapper" id="imageContainer">
-                <div class="no-image" id="noImageLabel">Нет изображения</div>
-                <img id="productImage" src="" alt="Товар" style="display:none;">
+
+            <!-- Результат: карточка + таблица -->
+            <div id="scanResult">
+                <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
         </div>
     </div>
@@ -367,26 +341,17 @@
         document.getElementById('scanResult').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('markingDisplay').textContent = '';
         resetImage();
-        resetPlaceholderHeight();
     }
     function showLoading() {
         document.getElementById('scanResult').innerHTML = '<div class="loading">⏳ Поиск...</div>';
         document.getElementById('markingDisplay').textContent = '⏳';
         resetImage();
-        resetPlaceholderHeight();
     }
     function resetImage() {
         const img = document.getElementById('productImage');
         const noImg = document.getElementById('noImageLabel');
         img.style.display = 'none';
         noImg.style.display = 'flex';
-    }
-    function resetPlaceholderHeight() {
-        const grid = document.getElementById('placeholderGrid');
-        if (grid) {
-            grid.style.height = '';
-            grid.style.maxHeight = '150px';
-        }
     }
 
     function renderResults(products) {
@@ -399,7 +364,6 @@
             resultDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             markingSpan.textContent = '';
             resetImage();
-            resetPlaceholderHeight();
             return;
         }
 
@@ -452,12 +416,6 @@
 
         resultDiv.innerHTML = infoHtml + tableHtml;
 
-        // Синхронизация высоты болванки: она должна равняться высоте
-        // (поисковая строка + карточка товара), чтобы:
-        //  - низ болванки совпал с верхом таблицы маркировок (с отступом),
-        //  - верх картинки совпал по уровню с верхом таблицы маркировок.
-        syncPlaceholderHeight();
-
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
@@ -470,22 +428,6 @@
         } else {
             resetImage();
         }
-    }
-
-    function syncPlaceholderHeight() {
-        const searchRow = document.querySelector('.search-row');
-        const info = document.querySelector('.product-info');
-        const grid = document.getElementById('placeholderGrid');
-        if (!searchRow || !info || !grid) return;
-
-        // Высота болванки = высота поисковой строки + высота карточки товара.
-        // Именно это расстояние отделяет верх left-col от верха table-container,
-        // поскольку между search-row и scanResult есть один gap (12px) у .left-col,
-        // а такой же gap (12px) есть у .right-col между болванкой и картинкой —
-        // они компенсируют друг друга.
-        const targetHeight = searchRow.offsetHeight + info.offsetHeight;
-        grid.style.maxHeight = 'none';
-        grid.style.height = targetHeight + 'px';
     }
 
     async function checkAuth() {
@@ -554,14 +496,6 @@
                 document.getElementById('markingDisplay').textContent = '';
                 document.getElementById('scanResult').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
                 resetImage();
-                resetPlaceholderHeight();
-            }
-        });
-        // Пересчитывать высоту болванки при изменении размеров окна
-        // (например, если карточка товара перестроилась в несколько строк).
-        window.addEventListener('resize', function() {
-            if (document.querySelector('.product-info')) {
-                syncPlaceholderHeight();
             }
         });
     });
