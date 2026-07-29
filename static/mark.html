@@ -9,7 +9,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             height: 100%;
-            overflow: hidden; /* страница целиком не скроллится */
+            overflow: hidden;
             font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             background: #f1f5f9;
         }
@@ -47,7 +47,7 @@
             gap: 12px;
             min-width: 0;
             min-height: 0;
-            padding-top: 12px; /* отступ сверху, чтобы не слетал */
+            padding-top: 12px;
             overflow: hidden;
         }
 
@@ -79,6 +79,7 @@
             justify-content: center;
             background: white;
             text-decoration: none;
+            margin-left: 4px;
         }
         .logo-btn img {
             width: 100%;
@@ -125,7 +126,6 @@
             text-overflow: ellipsis;
         }
 
-        /* Карточка товара (название, вид, фандом) - зафиксирована, не скроллится */
         #productInfoContainer {
             flex-shrink: 0;
         }
@@ -144,14 +144,14 @@
         }
         .product-info .name-line .code-part {
             display: inline-block;
-            background: #e2e8f0;   /* серый фон (можно взять #f1f5f9 или #cbd5e1) */
-            padding: 2px 12px;      /* отступы как у бейджа */
-            border-radius: 20px;    /* скругление как у бейджа */
+            background: #e2e8f0;
+            padding: 2px 12px;
+            border-radius: 20px;
             font-size: 1.5rem;
             font-weight: 700;
             color: #0f172a;
-            margin-right: 8px;      /* отступ от названия */
-            white-space: nowrap;    /* чтобы не переносилось */
+            margin-right: 8px;
+            white-space: nowrap;
         }
         .product-info .details-line {
             font-size: 1.1rem;
@@ -165,7 +165,6 @@
             color: #475569;
         }
 
-        /* Единственный скроллируемый блок: болванка + таблица маркировок */
         .tables-scroll {
             flex: 1;
             min-height: 0;
@@ -173,7 +172,7 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
-            padding-right: 4px; /* место под скроллбар, чтобы не наезжал на контент */
+            padding-right: 4px;
         }
 
         .placeholder-grid {
@@ -200,7 +199,6 @@
             color: #94a3b8;
         }
 
-        /* Таблица маркировок больше не скроллится сама - скроллит родитель .tables-scroll */
         .table-container {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -213,23 +211,28 @@
             border-collapse: collapse;
             font-size: 0.9rem;
         }
-        .table-container th {
-            background: #f1f5f9;
-            padding: 8px 12px;
-            text-align: left;
-            font-weight: 600;
-            color: #0f172a;
-            border-bottom: 2px solid #e2e8f0;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
         .table-container td {
             padding: 6px 12px;
             border-bottom: 1px solid #e2e8f0;
         }
         .table-container tr:last-child td {
             border-bottom: none;
+        }
+        .table-container .sticker-count {
+            padding: 8px 12px;
+            font-weight: 600;
+            border-bottom: 2px solid #e2e8f0;
+            background: #f1f5f9;
+            border-radius: 8px 8px 0 0;
+        }
+        .table-container .sticker-last {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .table-container .no-stickers {
+            padding: 12px;
+            text-align: center;
+            color: #94a3b8;
         }
 
         .badge {
@@ -242,17 +245,10 @@
             text-align: center;
             white-space: nowrap;
         }
-        .badge-wb {
-            background: #6b21a5;
-        }
-        .badge-oz {
-            background: #1e40af;
-        }
-        .badge-fsk {
-            background: #64748b;
-        }
+        .badge-wb { background: #6b21a5; }
+        .badge-oz { background: #1e40af; }
+        .badge-fsk { background: #64748b; }
 
-        /* Картинка - занимает всю высоту правой колонки, остаётся на месте */
         .image-wrapper {
             flex: 1;
             min-height: 0;
@@ -300,9 +296,7 @@
                 grid-template-columns: 1fr;
                 gap: 16px;
             }
-            .right-col {
-                flex: 0 0 140px;
-            }
+            .right-col { flex: 0 0 140px; }
             .logo-btn { width: 40px; height: 40px; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; }
             #markingDisplay { font-size: 1rem; }
@@ -310,16 +304,14 @@
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
             .table-container td, .table-container th { padding: 4px 8px; }
-            .left-col {
-                padding-top: 8px;
-            }
+            .left-col { padding-top: 8px; }
+            .table-container .sticker-last { font-size: 1.2rem; }
         }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="main-grid">
-        <!-- Левая колонка -->
         <div class="left-col">
             <div class="search-row">
                 <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
@@ -330,15 +322,11 @@
                     <span id="markingDisplay"></span>
                 </div>
             </div>
-            <!-- Название/вид товара - фиксировано, не скроллится -->
             <div id="productInfoContainer">
                 <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
-            <!-- Единственный скроллируемый блок: сначала болванка, потом таблица -->
             <div class="tables-scroll" id="tablesScroll"></div>
         </div>
-
-        <!-- Правая колонка -->
         <div class="right-col">
             <div class="image-wrapper" id="imageContainer">
                 <div class="no-image" id="noImageLabel">Нет изображения</div>
@@ -358,18 +346,21 @@
             return m;
         });
     }
+
     function showError(message) {
         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('tablesScroll').innerHTML = '';
         document.getElementById('markingDisplay').textContent = '';
         resetImage();
     }
+
     function showLoading() {
-        document.getElementById('productInfoContainer').innerHTML = '<div class="loading">⏳ Поиск...</div>';
+        document.getElementById('productInfoContainer').innerHTML = '<div class="loading"></div>';
         document.getElementById('tablesScroll').innerHTML = '';
         document.getElementById('markingDisplay').textContent = '⏳';
         resetImage();
     }
+
     function resetImage() {
         const img = document.getElementById('productImage');
         const noImg = document.getElementById('noImageLabel');
@@ -404,7 +395,7 @@
 
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
-        // Карточка товара - остаётся на месте, не скроллится
+        // Карточка товара
         infoDiv.innerHTML = `
             <div class="product-info">
                 <div class="name-line">
@@ -418,7 +409,17 @@
             </div>
         `;
 
-        // Болванка + таблица маркировок - идут друг под другом внутри одного скролл-блока
+        // Сбор стикеров из всех WB-строк
+        let allStickers = [];
+        for (const row of tableData) {
+            if (row.stickers && row.stickers.length > 0) {
+                allStickers = allStickers.concat(row.stickers.map(s => s));
+            }
+        }
+
+        const foundCount = products.length;
+
+        // Формируем скролл-блок: болванка + таблица стикеров
         let scrollHtml = `
             <div class="placeholder-grid">
                 <div class="cell">1</div>
@@ -433,32 +434,28 @@
             </div>
         `;
 
-        if (tableData.length) {
-            let tableHtml = `<div class="table-container"><table>
-                <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
-            for (const row of tableData) {
-                let badgeClass = '';
-                if (row.platform === 'WB') {
-                    badgeClass = 'badge-wb';
-                } else if (row.platform === 'OZ') {
-                    badgeClass = 'badge-oz';
-                } else {
-                    badgeClass = 'badge-fsk';
-                }
-                tableHtml += `<tr>
-                    <td><span class="badge ${badgeClass}">${escapeHtml(row.marking)}</span></td>
-                    <td>${escapeHtml(row.id)}</td>
-                    <td>${escapeHtml(row.bar)}</td>
+        // Таблица стикеров
+        let stickerHtml = `<div class="table-container">`;
+        stickerHtml += `<div class="sticker-count">Найдено товаров: ${foundCount}</div>`;
+        if (allStickers.length === 0) {
+            stickerHtml += `<div class="no-stickers">Стикеры не найдены</div>`;
+        } else {
+            stickerHtml += `<table><tbody>`;
+            for (const sticker of allStickers) {
+                const firstPart = sticker.length > 4 ? sticker.slice(0, -4) : '';
+                const lastPart = sticker.length > 4 ? sticker.slice(-4) : sticker;
+                stickerHtml += `<tr>
+                    <td>${escapeHtml(firstPart)}</td>
+                    <td class="sticker-last">${escapeHtml(lastPart)}</td>
                 </tr>`;
             }
-            tableHtml += `</tbody></table></div>`;
-            scrollHtml += tableHtml;
-        } else {
-            scrollHtml += `<div class="table-container"><p style="color:#94a3b8; text-align:center;">Нет данных</p></div>`;
+            stickerHtml += `</tbody></table>`;
         }
+        stickerHtml += `</div>`;
+        scrollHtml += stickerHtml;
 
         scrollDiv.innerHTML = scrollHtml;
-        scrollDiv.scrollTop = 0; // при новом сканировании показываем скролл-блок с самого верха
+        scrollDiv.scrollTop = 0;
 
         if (imageUrl) {
             img.src = imageUrl;

@@ -1,4 +1,5 @@
 import os
+import re
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -6,13 +7,18 @@ from datetime import datetime, timedelta
 
 router = APIRouter(tags=["mark"])
 
+# Кэш для основной таблицы
 _cache = {
     "file_path": None,
     "file_mtime": None,
     "data": None,
     "index": None,
     "col_names": None,
+    "date_str": None,  # дата в формате YYMMDD
 }
+
+# Кэш для файлов стикеров
+_sticker_caches = {}  # ключ: (marking, date_str) -> {"mtime": float, "index": dict}
 
 MARKING_KEYS = ["sia", "ktv", "reg", "kpd"]  # порядок важен
 EXCLUDED_COLUMNS = {12, 15, 19, 22, 26, 29, 33, 36}
@@ -28,7 +34,6 @@ def generate_ean13(code5: str) -> str:
     if not code5 or len(code5) != 5 or not code5.isdigit():
         return "0"
     base = "2400000" + code5
-    # Вычисление контрольной цифры EAN13
     total = 0
     for i, ch in enumerate(base):
         digit = int(ch)
@@ -77,14 +82,46 @@ def get_cached_data():
         _cache["file_mtime"] != mtime or 
         _cache["data"] is None):
         data, index, col_names = load_excel_data(file_path)
+        # Извлекаем дату из имени файла (YYMMDD)
+        match = re.search(r'(\d{6})_mp_rep\.xlsx', file_path)
+        date_str = match.group(1) if match else None
         _cache.update({
             "file_path": file_path,
             "file_mtime": mtime,
             "data": data,
             "index": index,
-            "col_names": col_names
+            "col_names": col_names,
+            "date_str": date_str
         })
-    return _cache["data"], _cache["index"], _cache["col_names"]
+    return _cache["data"], _cache["index"], _cache["col_names"], _cache["date_str"]
+
+def get_sticker_index(marking: str, date_str: str):
+    """Загружает файл стикеров для маркировки и возвращает словарь id -> список стикеров."""
+    cache_key = (marking, date_str)
+    if cache_key in _sticker_caches:
+        # можно проверить mtime, но для простоты пока пропустим
+        return _sticker_caches[cache_key]["index"]
+
+    base_path = "/work/!МП_(FSk)/!FBS"
+    file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_WB.xlsx")
+    index = {}
+    if os.path.exists(file_path):
+        # Читаем колонки C (стикер) и L (ID) без заголовков
+        try:
+            df = pd.read_excel(file_path, header=None, usecols=[2, 11], dtype=str).fillna('')
+            for _, row in df.iterrows():
+                sticker = str(row[2]).strip()
+                id_val = str(row[11]).strip()
+                if id_val and id_val != 'nan' and sticker and sticker != 'nan':
+                    if id_val not in index:
+                        index[id_val] = []
+                    index[id_val].append(sticker)
+        except Exception as e:
+            # Если файл повреждён или не читается, просто возвращаем пустой индекс
+            print(f"Ошибка загрузки стикеров для {marking}: {e}")
+            pass
+    _sticker_caches[cache_key] = {"index": index}
+    return index
 
 def get_marking_for_position(row, col_idx, col_names) -> str:
     if col_idx == 0:
@@ -107,20 +144,23 @@ def get_marking_for_position(row, col_idx, col_names) -> str:
         return None
     return f"{marking_col_name}_{platform}"
 
-def get_row_data(row, col_names, code):
-    """Собирает таблицу данных для товара, сначала WB, потом OZ"""
+def get_row_data(row, col_names, code, sticker_indices):
+    """
+    Собирает таблицу данных для товара.
+    sticker_indices: dict {marking: dict {id: [sticker1, sticker2, ...]}}
+    """
     table = []
     
     # FSK (МП)
     fsk_bar = generate_ean13(code)
     table.append({
-        "marking": "FSK",            # будет отображаться как "FSK"
+        "marking": "FSK",
         "platform": "FSK",
         "id": code,
-        "bar": fsk_bar
+        "bar": fsk_bar,
+        "stickers": []  # для FSK стикеров нет
     })
 
-    # Собираем данные для каждой маркировки
     wb_rows = []
     oz_rows = []
     
@@ -132,42 +172,33 @@ def get_row_data(row, col_names, code):
         # WB
         wb_id = row.get(col_names[mk_idx + 1], '').strip() if mk_idx + 1 < len(col_names) else '0'
         wb_bar = row.get(col_names[mk_idx + 3], '').strip() if mk_idx + 3 < len(col_names) else '0'
-        if wb_id or wb_bar:
-            wb_rows.append({
-                "marking": f"{mk}_WB",
-                "platform": "WB",
-                "id": wb_id if wb_id else '0',
-                "bar": wb_bar if wb_bar else '0'
-            })
-        else:
-            # даже если нет данных, добавляем с нулями?
-            # По заданию нужно выводить все маркировки, даже если кода нет – ставим 0
-            wb_rows.append({
-                "marking": f"{mk}_WB",
-                "platform": "WB",
-                "id": '0',
-                "bar": '0'
-            })
+        wb_id_clean = wb_id if wb_id else '0'
+        wb_bar_clean = wb_bar if wb_bar else '0'
+        # Получаем стикеры для этой маркировки и ID
+        stickers = []
+        if wb_id_clean != '0' and mk in sticker_indices:
+            stickers = sticker_indices[mk].get(wb_id_clean, [])
+        wb_rows.append({
+            "marking": f"{mk}_WB",
+            "platform": "WB",
+            "id": wb_id_clean,
+            "bar": wb_bar_clean,
+            "stickers": stickers
+        })
         
         # OZ
         oz_id = row.get(col_names[mk_idx + 4], '').strip() if mk_idx + 4 < len(col_names) else '0'
         oz_bar = row.get(col_names[mk_idx + 6], '').strip() if mk_idx + 6 < len(col_names) else '0'
-        if oz_id or oz_bar:
-            oz_rows.append({
-                "marking": f"{mk}_OZ",
-                "platform": "OZ",
-                "id": oz_id if oz_id else '0',
-                "bar": oz_bar if oz_bar else '0'
-            })
-        else:
-            oz_rows.append({
-                "marking": f"{mk}_OZ",
-                "platform": "OZ",
-                "id": '0',
-                "bar": '0'
-            })
+        oz_id_clean = oz_id if oz_id else '0'
+        oz_bar_clean = oz_bar if oz_bar else '0'
+        oz_rows.append({
+            "marking": f"{mk}_OZ",
+            "platform": "OZ",
+            "id": oz_id_clean,
+            "bar": oz_bar_clean,
+            "stickers": []  # для OZ стикеров пока нет (путь MP_WB.xlsx только для WB)
+        })
     
-    # Сначала все WB, потом все OZ
     table.extend(wb_rows)
     table.extend(oz_rows)
     
@@ -183,9 +214,18 @@ async def mark_barcode(barcode: str):
     if not normalized or len(normalized) < 5:
         raise HTTPException(status_code=400, detail="Некорректный штрих-код")
     
-    data, index, col_names = get_cached_data()
+    data, index, col_names, date_str = get_cached_data()
     if normalized not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
+
+    # Загружаем стикеры для всех маркировок (только WB, т.к. файлы MP_WB.xlsx)
+    sticker_indices = {}
+    if date_str:
+        for mk in MARKING_KEYS:
+            sticker_indices[mk] = get_sticker_index(mk, date_str)
+    else:
+        # Если дата не определена, стикеры не загружаем
+        sticker_indices = {mk: {} for mk in MARKING_KEYS}
 
     products = {}
 
@@ -204,7 +244,7 @@ async def mark_barcode(barcode: str):
                 "Фандом": fandom,
                 "Название": name,
                 "Маркировки": set(),
-                "table_data": None  # заполним позже
+                "table_data": None
             }
 
         marking = get_marking_for_position(row, col_idx, col_names)
@@ -214,12 +254,15 @@ async def mark_barcode(barcode: str):
     results = []
     for key, data_item in products.items():
         # Собираем таблицу для первого вхождения (берем первую строку с таким кодом)
-        # Найдем любую строку для этого товара
+        row_for_table = None
         for row_idx, col_idx in index[normalized]:
             if data_item["Код"] == data[row_idx].get("Код", ""):
-                row = data[row_idx]
-                table = get_row_data(row, col_names, data_item["Код"])
+                row_for_table = data[row_idx]
                 break
+        if row_for_table is not None:
+            table = get_row_data(row_for_table, col_names, data_item["Код"], sticker_indices)
+        else:
+            table = []
         item = {
             "Код": data_item["Код"],
             "Вид": data_item["Вид"],
