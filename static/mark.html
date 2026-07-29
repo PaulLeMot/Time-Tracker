@@ -32,13 +32,30 @@
             overflow: hidden;
         }
 
-        /* Поисковая строка */
+        /* Основная сетка: две колонки */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: 24px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* Левая колонка */
+        .left-col {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* Поисковая строка – первая в левой колонке */
         .search-row {
             display: flex;
             align-items: center;
             gap: 12px;
-            flex: 0 0 auto;
-            margin-bottom: 16px;
+            flex-shrink: 0;
         }
         .logo-btn {
             flex-shrink: 0;
@@ -72,7 +89,7 @@
             min-width: 0;
         }
         #scanInput {
-            flex: 0 0 55%;
+            flex: 0 0 60%;
             padding: 12px 18px;
             font-size: 1rem;
             border: 2px solid #3b82f6;
@@ -99,34 +116,16 @@
             text-overflow: ellipsis;
         }
 
-        /* Контентная область */
-        .content-row {
-            display: flex;
-            gap: 24px;
-            flex: 1;
-            min-height: 0;
-            align-items: flex-start;
-        }
-        .left-column {
-            flex: 1;
+        /* Правая колонка */
+        .right-col {
             display: flex;
             flex-direction: column;
             gap: 12px;
-            min-width: 0;
-            height: 100%;
+            min-height: 0;
             overflow: hidden;
         }
 
-        .right-column {
-            flex: 0 0 280px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            height: 100%;
-            min-height: 0;
-        }
-
-        /* Болванка 3×3 – её высота будет задана через JS */
+        /* Болванка 3×3 – верхняя часть правой колонки */
         .placeholder-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -138,7 +137,7 @@
             border-radius: 12px;
             padding: 6px;
             flex-shrink: 0;
-            max-height: 150px; /* ограничим, чтобы не растягивалась */
+            max-height: 150px;
         }
         .placeholder-grid .cell {
             background: white;
@@ -151,7 +150,7 @@
             color: #94a3b8;
         }
 
-        /* Картинка – занимает оставшееся место */
+        /* Картинка – нижняя часть правой колонки */
         .image-wrapper {
             flex: 1;
             min-height: 0;
@@ -176,7 +175,7 @@
             padding: 20px;
         }
 
-        /* Карточка товара */
+        /* Карточка товара – идёт после поиска в левой колонке */
         .product-info {
             display: flex;
             flex-direction: column;
@@ -207,6 +206,7 @@
             color: #475569;
         }
 
+        /* Таблица маркировок – нижняя часть левой колонки */
         .table-container {
             flex: 1;
             overflow-y: auto;
@@ -278,27 +278,27 @@
 
         @media (max-width: 700px) {
             .container { padding: 16px; }
-            .content-row {
-                flex-direction: column;
-                gap: 12px;
+            .main-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
             }
-            .right-column {
-                flex: 0 0 auto;
-                width: 100%;
-                max-height: 400px;
-            }
-            .image-wrapper {
-                max-height: 200px;
+            .right-col {
+                flex-direction: row;
+                flex-wrap: wrap;
             }
             .placeholder-grid {
-                max-width: 150px;
-                aspect-ratio: 1 / 1;
+                max-width: 120px;
+                max-height: 120px;
+                flex: 0 0 auto;
+            }
+            .image-wrapper {
+                flex: 1;
+                min-height: 150px;
             }
             .logo-btn { width: 40px; height: 40px; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; flex: 1 1 100%; }
             .input-marking-wrapper { flex-wrap: wrap; }
             #markingDisplay { font-size: 1rem; }
-            .left-column { gap: 8px; }
             .product-info .name-line { font-size: 1.2rem; }
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
@@ -308,27 +308,28 @@
 </head>
 <body>
 <div class="container">
-    <!-- Поисковая строка -->
-    <div class="search-row">
-        <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
-            <img src="/static/ttr.png" alt="ЛК">
-        </a>
-        <div class="input-marking-wrapper">
-            <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
-            <span id="markingDisplay"></span>
-        </div>
-    </div>
-
-    <!-- Основной контент -->
-    <div class="content-row">
-        <div class="left-column">
+    <div class="main-grid">
+        <!-- Левая колонка -->
+        <div class="left-col">
+            <!-- Поиск -->
+            <div class="search-row">
+                <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
+                    <img src="/static/ttr.png" alt="ЛК">
+                </a>
+                <div class="input-marking-wrapper">
+                    <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
+                    <span id="markingDisplay"></span>
+                </div>
+            </div>
+            <!-- Результат: карточка + таблица -->
             <div id="scanResult">
                 <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
         </div>
 
-        <div class="right-column">
-            <!-- Болванка 3×3 -->
+        <!-- Правая колонка -->
+        <div class="right-col">
+            <!-- Болванка -->
             <div class="placeholder-grid" id="placeholderGrid">
                 <div class="cell">1</div>
                 <div class="cell">2</div>
@@ -462,6 +463,7 @@
             const height = info.offsetHeight;
             if (height > 0) {
                 grid.style.height = height + 'px';
+                grid.style.maxHeight = 'none';
             }
         }
     }
