@@ -32,12 +32,20 @@
             overflow: hidden;
         }
 
-        .search-row {
+        /* Верхняя строка: поиск слева, болванка справа */
+        .top-row {
+            display: flex;
+            align-items: stretch;
+            gap: 24px;
+            flex: 0 0 auto;
+            margin-bottom: 16px;
+        }
+        .search-area {
             display: flex;
             align-items: center;
             gap: 12px;
-            flex: 0 0 auto;
-            margin-bottom: 16px;
+            flex: 1;
+            min-width: 0;
         }
         .logo-btn {
             flex-shrink: 0;
@@ -98,7 +106,31 @@
             text-overflow: ellipsis;
         }
 
-        /* Контентная область */
+        /* Болванка 3×3 – справа от поиска */
+        .placeholder-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 120px;
+            height: 120px;
+            gap: 4px;
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 6px;
+            flex-shrink: 0;
+        }
+        .placeholder-grid .cell {
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: #94a3b8;
+        }
+
+        /* Контентная область: карточка + таблица слева, картинка справа */
         .content-row {
             display: flex;
             gap: 24px;
@@ -123,30 +155,6 @@
             gap: 12px;
             height: 100%;
             min-height: 0;
-        }
-
-        /* Болванка 3×3 – всегда видна */
-        .placeholder-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
-            width: 100%;
-            aspect-ratio: 1 / 1;
-            gap: 4px;
-            background: #f1f5f9;
-            border-radius: 12px;
-            padding: 8px;
-            flex-shrink: 0;
-        }
-        .placeholder-grid .cell {
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.8rem;
-            color: #94a3b8;
         }
 
         /* Картинка – отдельный блок */
@@ -276,6 +284,14 @@
 
         @media (max-width: 700px) {
             .container { padding: 16px; }
+            .top-row {
+                flex-wrap: wrap;
+                gap: 12px;
+            }
+            .placeholder-grid {
+                width: 90px;
+                height: 90px;
+            }
             .content-row {
                 flex-direction: column;
                 gap: 12px;
@@ -283,13 +299,10 @@
             .right-column {
                 flex: 0 0 auto;
                 width: 100%;
-                max-height: 400px;
+                max-height: 300px;
             }
             .image-wrapper {
                 max-height: 200px;
-            }
-            .placeholder-grid {
-                max-width: 200px;
             }
             .logo-btn { width: 40px; height: 40px; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; flex: 1 1 100%; }
@@ -305,41 +318,39 @@
 </head>
 <body>
 <div class="container">
-    <!-- Поисковая строка -->
-    <div class="search-row">
-        <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
-            <img src="/static/ttr.png" alt="ЛК">
-        </a>
-        <div class="input-marking-wrapper">
-            <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
-            <span id="markingDisplay"></span>
+    <!-- Верхняя строка: поиск + болванка -->
+    <div class="top-row">
+        <div class="search-area">
+            <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
+                <img src="/static/ttr.png" alt="ЛК">
+            </a>
+            <div class="input-marking-wrapper">
+                <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
+                <span id="markingDisplay"></span>
+            </div>
+        </div>
+        <!-- Болванка 3×3 -->
+        <div class="placeholder-grid">
+            <div class="cell">1</div>
+            <div class="cell">2</div>
+            <div class="cell">3</div>
+            <div class="cell">4</div>
+            <div class="cell">5</div>
+            <div class="cell">6</div>
+            <div class="cell">7</div>
+            <div class="cell">8</div>
+            <div class="cell">9</div>
         </div>
     </div>
 
     <!-- Основной контент -->
     <div class="content-row">
-        <!-- Левая колонка: карточка товара + таблица -->
         <div class="left-column">
             <div id="scanResult">
                 <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
         </div>
-
-        <!-- Правая колонка: болванка (всегда видна) + картинка (отдельно) -->
         <div class="right-column">
-            <!-- Болванка 3×3 -->
-            <div class="placeholder-grid">
-                <div class="cell">1</div>
-                <div class="cell">2</div>
-                <div class="cell">3</div>
-                <div class="cell">4</div>
-                <div class="cell">5</div>
-                <div class="cell">6</div>
-                <div class="cell">7</div>
-                <div class="cell">8</div>
-                <div class="cell">9</div>
-            </div>
-            <!-- Блок для картинки -->
             <div class="image-wrapper" id="imageContainer">
                 <div class="no-image" id="noImageLabel">Нет изображения</div>
                 <img id="productImage" src="" alt="Товар" style="display:none;">
@@ -413,7 +424,6 @@
             </div>
         `;
 
-        // Таблица
         let tableHtml = '';
         if (tableData.length) {
             tableHtml = `<div class="table-container"><table>
@@ -438,7 +448,6 @@
 
         resultDiv.innerHTML = infoHtml + tableHtml;
 
-        // Картинка
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
