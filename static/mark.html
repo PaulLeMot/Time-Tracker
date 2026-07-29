@@ -32,25 +32,32 @@
             overflow: hidden;
         }
 
-        /* Основная сетка: две колонки */
         .main-grid {
             display: grid;
             grid-template-columns: 1fr 280px;
-            gap: 24px;
+            gap: 0;
             flex: 1;
             min-height: 0;
         }
 
-        /* Левая колонка */
         .left-col {
             display: flex;
             flex-direction: column;
             gap: 12px;
+            padding-right: 12px;
             min-height: 0;
             overflow: hidden;
         }
 
-        /* Поисковая строка – первая в левой колонке */
+        .right-col {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding-left: 12px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
         .search-row {
             display: flex;
             align-items: center;
@@ -116,21 +123,12 @@
             text-overflow: ellipsis;
         }
 
-        /* Правая колонка */
-        .right-col {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        /* Болванка 3×3 – верхняя часть правой колонки */
         .placeholder-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             grid-template-rows: repeat(3, 1fr);
-            width: 100%;
+            width: calc(100% + 24px);
+            margin-left: -24px;
             aspect-ratio: 1 / 1;
             gap: 4px;
             background: #f1f5f9;
@@ -150,7 +148,6 @@
             color: #94a3b8;
         }
 
-        /* Картинка – нижняя часть правой колонки */
         .image-wrapper {
             flex: 1;
             min-height: 0;
@@ -175,7 +172,6 @@
             padding: 20px;
         }
 
-        /* Карточка товара – идёт после поиска в левой колонке */
         .product-info {
             display: flex;
             flex-direction: column;
@@ -206,7 +202,6 @@
             color: #475569;
         }
 
-        /* Таблица маркировок – нижняя часть левой колонки */
         .table-container {
             flex: 1;
             overflow-y: auto;
@@ -239,7 +234,6 @@
             border-bottom: none;
         }
 
-        /* Бейджи для маркировок */
         .badge {
             display: inline-block;
             padding: 2px 12px;
@@ -280,14 +274,19 @@
             .container { padding: 16px; }
             .main-grid {
                 grid-template-columns: 1fr;
-                gap: 16px;
+                gap: 0;
+            }
+            .left-col {
+                padding-right: 0;
             }
             .right-col {
+                padding-left: 0;
                 flex-direction: row;
                 flex-wrap: wrap;
             }
             .placeholder-grid {
-                max-width: 120px;
+                width: 120px;
+                margin-left: 0;
                 max-height: 120px;
                 flex: 0 0 auto;
             }
@@ -309,9 +308,7 @@
 <body>
 <div class="container">
     <div class="main-grid">
-        <!-- Левая колонка -->
         <div class="left-col">
-            <!-- Поиск -->
             <div class="search-row">
                 <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
                     <img src="/static/ttr.png" alt="ЛК">
@@ -321,15 +318,11 @@
                     <span id="markingDisplay"></span>
                 </div>
             </div>
-            <!-- Результат: карточка + таблица -->
             <div id="scanResult">
                 <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
         </div>
-
-        <!-- Правая колонка -->
         <div class="right-col">
-            <!-- Болванка -->
             <div class="placeholder-grid" id="placeholderGrid">
                 <div class="cell">1</div>
                 <div class="cell">2</div>
@@ -341,7 +334,6 @@
                 <div class="cell">8</div>
                 <div class="cell">9</div>
             </div>
-            <!-- Картинка -->
             <div class="image-wrapper" id="imageContainer">
                 <div class="no-image" id="noImageLabel">Нет изображения</div>
                 <img id="productImage" src="" alt="Товар" style="display:none;">
@@ -439,7 +431,6 @@
 
         resultDiv.innerHTML = infoHtml + tableHtml;
 
-        // Синхронизация высоты болванки с высотой product-info
         syncPlaceholderHeight();
 
         if (imageUrl) {
@@ -457,12 +448,12 @@
     }
 
     function syncPlaceholderHeight() {
-        const info = document.querySelector('.product-info');
+        const table = document.querySelector('.table-container');
         const grid = document.getElementById('placeholderGrid');
-        if (info && grid) {
-            const infoHeight = info.offsetHeight;
+        if (table && grid) {
+            const height = table.offsetHeight;
             const gap = 12;
-            grid.style.height = (infoHeight + gap) + 'px';
+            grid.style.height = (height + gap) + 'px';
             grid.style.maxHeight = 'none';
         }
     }
