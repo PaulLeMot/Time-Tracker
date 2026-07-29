@@ -6,32 +6,39 @@
     <title>Маркировка</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
     <style>
-        * { box-sizing: border-box; }
-        body {
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%;
             font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
             background: #f1f5f9;
-            margin: 0;
-            padding: 20px;
-            min-height: 90vh;
+        }
+        body {
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
+            padding: 16px;
         }
         .container {
             max-width: 1000px;
             width: 100%;
+            height: 100%; /* занимает всю доступную высоту */
+            max-height: calc(100vh - 32px); /* не вылезает за экран */
             background: white;
             border-radius: 32px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.05);
-            padding: 32px;
+            padding: 24px 32px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* ничего не вылезает */
         }
 
         /* Верхняя строка: логотип, поле ввода, маркировка, картинка */
         .top-row {
             display: flex;
-            align-items: stretch; /* чтобы колонки были одной высоты */
-            gap: 20px;
+            gap: 24px;
+            flex: 0 0 auto; /* не растягивается */
+            align-items: stretch;
+            min-height: 0;
         }
         .left-column {
             flex: 1;
@@ -48,8 +55,8 @@
         }
         .logo-btn {
             flex-shrink: 0;
-            width: 48px;
-            height: 48px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             overflow: hidden;
             border: 2px solid #e2e8f0;
@@ -74,13 +81,13 @@
             display: flex;
             align-items: center;
             flex: 1;
-            gap: 16px;
+            gap: 12px;
             min-width: 0;
         }
         #scanInput {
             flex: 0 0 60%;
-            padding: 14px 20px;
-            font-size: 1.1rem;
+            padding: 12px 18px;
+            font-size: 1rem;
             border: 2px solid #3b82f6;
             border-radius: 60px;
             outline: none;
@@ -98,7 +105,7 @@
         }
         #markingDisplay {
             font-weight: bold;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             color: #0f172a;
             white-space: nowrap;
             overflow: hidden;
@@ -106,11 +113,14 @@
         }
 
         #scanResult {
-            /* Здесь будет текстовая карточка */
+            flex: 1; /* занимает всё оставшееся место */
+            display: flex;
+            align-items: center; /* вертикальное центрирование */
+            overflow: hidden;
         }
 
         .right-column {
-            flex: 0 0 300px; /* фиксированная ширина картинки */
+            flex: 0 0 280px; /* фиксированная ширина картинки */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -118,13 +128,15 @@
             border-radius: 12px;
             border: 1px solid #e2e8f0;
             overflow: hidden;
-            min-height: 200px; /* чтобы было видно до загрузки */
+            min-height: 0;
+            max-height: 100%;
         }
         .right-column img {
             width: 100%;
             height: 100%;
             object-fit: contain;
             display: block;
+            max-height: 100%;
         }
         .right-column .no-image {
             color: #94a3b8;
@@ -139,11 +151,13 @@
             flex-direction: column;
             gap: 6px;
             padding: 8px 0;
+            width: 100%;
         }
         .product-info .name-line {
-            font-size: 1.3rem;
+            font-size: 1.4rem;
             font-weight: 600;
             color: #0f172a;
+            line-height: 1.3;
         }
         .product-info .name-line .code-part {
             font-weight: 700;
@@ -161,8 +175,8 @@
             color: #475569;
         }
 
-        .no-result { color: #ef4444; text-align: center; padding: 40px 0; font-size: 1.1rem; }
-        .loading { text-align: center; color: #64748b; padding: 40px 0; }
+        .no-result { color: #ef4444; text-align: center; padding: 20px 0; font-size: 1.1rem; }
+        .loading { text-align: center; color: #64748b; padding: 20px 0; }
         .error {
             color: #ef4444;
             text-align: center;
@@ -170,34 +184,42 @@
             background: #fee2e2;
             border-radius: 12px;
         }
+        .placeholder-text {
+            color: #64748b;
+            text-align: center;
+            padding: 20px 0;
+            width: 100%;
+        }
 
         @media (max-width: 700px) {
-            .container { padding: 20px; }
+            .container { padding: 16px; }
             .top-row {
                 flex-direction: column;
-                align-items: stretch;
+                gap: 12px;
             }
             .right-column {
                 flex: 0 0 auto;
                 width: 100%;
-                min-height: 200px;
-                max-height: 300px;
+                max-height: 200px;
+                min-height: 120px;
             }
             .right-column img {
-                max-height: 300px;
+                max-height: 200px;
             }
-            .logo-btn { width: 42px; height: 42px; }
-            #scanInput { font-size: 1rem; padding: 12px 16px; flex: 1 1 100%; }
+            .logo-btn { width: 40px; height: 40px; }
+            #scanInput { font-size: 0.95rem; padding: 10px 14px; flex: 1 1 100%; }
             .input-marking-wrapper { flex-wrap: wrap; }
             #markingDisplay { font-size: 1rem; }
             .left-column { gap: 8px; }
+            #scanResult { align-items: flex-start; }
+            .product-info .name-line { font-size: 1.2rem; }
+            .product-info .details-line { font-size: 1rem; }
         }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="top-row">
-        <!-- Левая колонка -->
         <div class="left-column">
             <div class="search-row">
                 <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
@@ -209,10 +231,9 @@
                 </div>
             </div>
             <div id="scanResult">
-                <p style="color: #64748b; text-align: center; padding: 20px 0;">Ожидание сканирования...</p>
+                <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
         </div>
-        <!-- Правая колонка – картинка -->
         <div class="right-column" id="imageContainer">
             <div class="no-image">Нет изображения</div>
         </div>
@@ -263,7 +284,6 @@
 
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
-        // Текстовая информация
         let infoHtml = `
             <div class="product-info">
                 <div class="name-line">
@@ -278,7 +298,6 @@
         `;
         resultDiv.innerHTML = infoHtml;
 
-        // Картинка
         if (imageUrl) {
             imageContainer.innerHTML = `<img src="${imageUrl}" alt="${escapeHtml(name)}" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'no-image\\'>Нет изображения</div>';">`;
         } else {
@@ -350,7 +369,7 @@
         input.addEventListener('input', function() {
             if (!this.value.trim()) {
                 document.getElementById('markingDisplay').textContent = '';
-                document.getElementById('scanResult').innerHTML = '<p style="color: #64748b; text-align: center;">Ожидание сканирования...</p>';
+                document.getElementById('scanResult').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
                 document.getElementById('imageContainer').innerHTML = '<div class="no-image">Нет изображения</div>';
             }
         });
