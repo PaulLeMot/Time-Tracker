@@ -31,11 +31,11 @@ MARKING_PLATFORM_COLUMNS = {
 
 def normalize_barcode(barcode: str) -> str:
     """
-    Преобразует локальный EAN13 (формат 2000000NNNNNX) в код товара NNNNN.
+    Преобразует локальный EAN13 (формат 2400000NNNNNX) в код товара NNNNN.
     Если штрих-код не соответствует формату, возвращает его без изменений.
     """
     barcode = barcode.strip()
-    if barcode.startswith("2000000") and len(barcode) == 13:
+    if barcode.startswith("2400000") and len(barcode) == 13:
         return barcode[7:12]  # берём 5 цифр
     return barcode
 
