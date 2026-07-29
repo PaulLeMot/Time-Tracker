@@ -252,22 +252,32 @@ async def mark_barcode(barcode: str):
 
     results = []
     for key, data_item in products.items():
-        # Собираем таблицу для первого вхождения (берем первую строку с таким кодом)
+        # Собираем таблицу для первого вхождения
         row_for_table = None
         for row_idx, col_idx in index[normalized]:
             if data_item["Код"] == data[row_idx].get("Код", ""):
                 row_for_table = data[row_idx]
                 break
         if row_for_table is not None:
-            table = get_row_data(row_for_table, col_names, data_item["Код"], sticker_indices)
+            table = get_row_data(
+                row_for_table,
+                col_names,
+                data_item["Код"],
+                sticker_indices,
+                skip_stickers=data_item.get("skip_stickers", False)
+            )
         else:
             table = []
+        
+        found_markings = list(data_item["Маркировки"]) if data_item["Маркировки"] else []
+        
         item = {
             "Код": data_item["Код"],
             "Вид": data_item["Вид"],
             "Фандом": data_item["Фандом"],
             "Название": data_item["Название"],
             "Маркировка": ", ".join(sorted(data_item["Маркировки"])) if data_item["Маркировки"] else None,
+            "found_markings": found_markings,   # <-- новое поле
             "table": table
         }
         results.append(item)

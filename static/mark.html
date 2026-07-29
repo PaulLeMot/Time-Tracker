@@ -6,6 +6,7 @@
     <title>Маркировка</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
     <style>
+        /* (стили без изменений, как в последней версии) */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             height: 100%;
@@ -32,7 +33,6 @@
             flex-direction: column;
             overflow: hidden;
         }
-
         .main-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -40,7 +40,6 @@
             flex: 1;
             min-height: 0;
         }
-
         .left-col {
             display: flex;
             flex-direction: column;
@@ -50,7 +49,6 @@
             padding-top: 12px;
             overflow: hidden;
         }
-
         .right-col {
             display: flex;
             flex-direction: column;
@@ -59,7 +57,6 @@
             min-height: 0;
             overflow: hidden;
         }
-
         .search-row {
             display: flex;
             align-items: center;
@@ -90,7 +87,6 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
         }
-
         .input-marking-wrapper {
             display: flex;
             align-items: center;
@@ -125,7 +121,6 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-
         #productInfoContainer {
             flex-shrink: 0;
         }
@@ -164,7 +159,6 @@
             font-weight: 500;
             color: #475569;
         }
-
         .tables-scroll {
             flex: 1;
             min-height: 0;
@@ -174,8 +168,6 @@
             gap: 12px;
             padding-right: 4px;
         }
-
-        /* Таблица стикеров – идёт первой (вместо болванки) */
         .sticker-table {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -206,8 +198,6 @@
             font-weight: 700;
             font-size: 1.5rem;
         }
-
-        /* Старая таблица маркировок – идёт второй */
         .table-container {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -235,7 +225,6 @@
         .table-container tr:last-child td {
             border-bottom: none;
         }
-
         .badge {
             display: inline-block;
             padding: 2px 12px;
@@ -249,7 +238,6 @@
         .badge-wb { background: #6b21a5; }
         .badge-oz { background: #1e40af; }
         .badge-fsk { background: #64748b; }
-
         .image-wrapper {
             flex: 1;
             min-height: 0;
@@ -274,7 +262,6 @@
             text-align: center;
             padding: 20px;
         }
-
         .no-result { color: #ef4444; text-align: center; padding: 20px 0; font-size: 1.1rem; }
         .loading { text-align: center; color: #64748b; padding: 20px 0; }
         .error {
@@ -290,7 +277,6 @@
             padding: 20px 0;
             width: 100%;
         }
-
         @media (max-width: 700px) {
             .container { padding: 16px; }
             .main-grid {
@@ -412,17 +398,20 @@
             </div>
         `;
 
-        // --- Строим скролл-блок (без болванки!) ---
+        // --- Строим скролл-блок ---
         let scrollHtml = '';
 
-        // 1. Таблица стикеров (на месте болванки)
-        // Собираем все стикеры из всех товаров (только WB)
+        // 1. Таблица стикеров с фильтрацией по маркировкам
         let allStickers = [];
         for (const prod of products) {
             const t = prod.table || [];
+            const foundMarkings = prod.found_markings || [];
             for (const row of t) {
                 if (row.stickers && row.stickers.length > 0) {
-                    allStickers = allStickers.concat(row.stickers);
+                    // Добавляем только если маркировка строки входит в список найденных
+                    if (foundMarkings.includes(row.marking)) {
+                        allStickers = allStickers.concat(row.stickers);
+                    }
                 }
             }
         }
@@ -431,7 +420,6 @@
         let stickerHtml = `<div class="sticker-table">`;
         stickerHtml += `<div class="sticker-count">Найдено товаров: ${foundCount}</div>`;
         if (allStickers.length === 0) {
-            // Если стикеров нет – выводим нули (как просили)
             stickerHtml += `<table><tbody>
                 <tr><td>0</td><td class="sticker-last">0000</td></tr>
             </tbody></table>`;
@@ -450,7 +438,7 @@
         stickerHtml += `</div>`;
         scrollHtml += stickerHtml;
 
-        // 2. Старая таблица маркировок (ID, штрих-код)
+        // 2. Таблица маркировок (ID, штрих-код)
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
