@@ -144,10 +144,11 @@ def get_marking_for_position(row, col_idx, col_names) -> str:
         return None
     return f"{marking_col_name}_{platform}"
 
-def get_row_data(row, col_names, code, sticker_indices):
+def get_row_data(row, col_names, code, sticker_indices, skip_stickers=False):
     """
     Собирает таблицу данных для товара.
     sticker_indices: dict {marking: dict {id: [sticker1, sticker2, ...]}}
+    skip_stickers: если True, то для всех WB-строк стикеры не ищутся
     """
     table = []
     
@@ -174,9 +175,9 @@ def get_row_data(row, col_names, code, sticker_indices):
         wb_bar = row.get(col_names[mk_idx + 3], '').strip() if mk_idx + 3 < len(col_names) else '0'
         wb_id_clean = wb_id if wb_id else '0'
         wb_bar_clean = wb_bar if wb_bar else '0'
-        # Получаем стикеры для этой маркировки и ID
+        # Получаем стикеры только если не skip_stickers
         stickers = []
-        if wb_id_clean != '0' and mk in sticker_indices:
+        if not skip_stickers and wb_id_clean != '0' and mk in sticker_indices:
             stickers = sticker_indices[mk].get(wb_id_clean, [])
         wb_rows.append({
             "marking": f"{mk}_WB",
@@ -243,8 +244,12 @@ async def mark_barcode(barcode: str):
                 "Фандом": fandom,
                 "Название": name,
                 "Маркировки": set(),
-                "table_data": None
+                "skip_stickers": False   # по умолчанию не пропускаем стикеры
             }
+
+        # Если текущее вхождение найдено по столбцу A (col_idx == 0)
+        if col_idx == 0:
+            products[key]["skip_stickers"] = True
 
         marking = get_marking_for_position(row, col_idx, col_names)
         if marking:
@@ -252,7 +257,7 @@ async def mark_barcode(barcode: str):
 
     results = []
     for key, data_item in products.items():
-        # Собираем таблицу для первого вхождения
+        # Собираем таблицу для первого вхождения (берем первую строку с таким кодом)
         row_for_table = None
         for row_idx, col_idx in index[normalized]:
             if data_item["Код"] == data[row_idx].get("Код", ""):
@@ -277,7 +282,7 @@ async def mark_barcode(barcode: str):
             "Фандом": data_item["Фандом"],
             "Название": data_item["Название"],
             "Маркировка": ", ".join(sorted(data_item["Маркировки"])) if data_item["Маркировки"] else None,
-            "found_markings": found_markings,   # <-- новое поле
+            "found_markings": found_markings,
             "table": table
         }
         results.append(item)
