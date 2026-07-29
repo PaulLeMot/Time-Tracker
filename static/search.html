@@ -16,7 +16,7 @@
             width: 100%;
             max-width: 100%;
             background: white;
-            padding: 0 10px;           /* убрали верхний padding, оставили боковые */
+            padding: 0 10px;
             min-height: 100vh;
         }
 
@@ -30,7 +30,7 @@
             top: 0;
             background: white;
             z-index: 100;
-            padding: 5px 0 0 0;       /* верхний отступ теперь внутри панели (белый) */
+            padding: 5px 0 0 0;
         }
 
         /* общие поля */
@@ -43,11 +43,13 @@
             display: flex;
             align-items: center;
         }
+
+        /* ===== Стили для инпутов (как в mark.html) ===== */
         input {
             width: 100%;
             padding: 12px 40px 12px 15px;
             font-size: 0.95rem;
-            border: 1px solid #e2e8f0;
+            border: 2px solid #e2e8f0;         /* толщина как в mark */
             border-radius: 40px;
             outline: none;
             background: white;
@@ -55,8 +57,9 @@
         }
         input:focus {
             border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); /* как в mark */
         }
+
         .clear-btn {
             position: absolute;
             right: 12px;
@@ -69,6 +72,7 @@
             display: none;
             line-height: 1;
             z-index: 2;
+            transition: color 0.2s;
         }
         .clear-btn.visible { display: block; }
         .clear-btn:hover { color: #ef4444; }
@@ -103,6 +107,8 @@
             align-items: center;
             width: 100%;
         }
+
+        /* ===== Логотип (как в mark.html) ===== */
         .logo-btn {
             flex: 0 0 5%;
             display: flex;
@@ -110,13 +116,25 @@
             justify-content: center;
             min-width: 0;
             margin-right: 8px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 2px solid #e2e8f0;
+            transition: 0.2s;
+            background: white;
+            text-decoration: none;
         }
         .logo-btn img {
             width: 100%;
-            height: auto;
-            max-width: 36px;
-            min-width: 24px;
+            height: 100%;
+            object-fit: cover;
         }
+        .logo-btn:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        }
+
         .field-code {
             flex: 0 0 30%;
             min-width: 0;
@@ -159,9 +177,8 @@
         }
         @media (max-width: 768px) {
             .products-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-            .container {
-                padding: 0 5px;        /* уменьшим боковые отступы */
-            }
+            .container { padding: 0 5px; }
+            .logo-btn { width: 42px; height: 42px; }
         }
 
         .product-card {
@@ -250,6 +267,7 @@
 </div>
 
 <script>
+    // (ваш существующий JavaScript без изменений)
     // Состояние
     const limit = 30;
     let allTypes = [];
