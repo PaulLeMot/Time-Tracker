@@ -32,20 +32,13 @@
             overflow: hidden;
         }
 
-        /* Верхняя строка: поиск слева, болванка справа */
-        .top-row {
-            display: flex;
-            align-items: stretch;
-            gap: 24px;
-            flex: 0 0 auto;
-            margin-bottom: 16px;
-        }
-        .search-area {
+        /* Поисковая строка */
+        .search-row {
             display: flex;
             align-items: center;
             gap: 12px;
-            flex: 1;
-            min-width: 0;
+            flex: 0 0 auto;
+            margin-bottom: 16px;
         }
         .logo-btn {
             flex-shrink: 0;
@@ -106,31 +99,7 @@
             text-overflow: ellipsis;
         }
 
-        /* Болванка 3×3 – справа от поиска */
-        .placeholder-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
-            width: 120px;
-            height: 120px;
-            gap: 4px;
-            background: #f1f5f9;
-            border-radius: 12px;
-            padding: 6px;
-            flex-shrink: 0;
-        }
-        .placeholder-grid .cell {
-            background: white;
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            color: #94a3b8;
-        }
-
-        /* Контентная область: карточка + таблица слева, картинка справа */
+        /* Контентная область */
         .content-row {
             display: flex;
             gap: 24px;
@@ -157,7 +126,32 @@
             min-height: 0;
         }
 
-        /* Картинка – отдельный блок */
+        /* Болванка 3×3 – её высота будет задана через JS */
+        .placeholder-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            gap: 4px;
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 6px;
+            flex-shrink: 0;
+            max-height: 150px; /* ограничим, чтобы не растягивалась */
+        }
+        .placeholder-grid .cell {
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: #94a3b8;
+        }
+
+        /* Картинка – занимает оставшееся место */
         .image-wrapper {
             flex: 1;
             min-height: 0;
@@ -284,14 +278,6 @@
 
         @media (max-width: 700px) {
             .container { padding: 16px; }
-            .top-row {
-                flex-wrap: wrap;
-                gap: 12px;
-            }
-            .placeholder-grid {
-                width: 90px;
-                height: 90px;
-            }
             .content-row {
                 flex-direction: column;
                 gap: 12px;
@@ -299,10 +285,14 @@
             .right-column {
                 flex: 0 0 auto;
                 width: 100%;
-                max-height: 300px;
+                max-height: 400px;
             }
             .image-wrapper {
                 max-height: 200px;
+            }
+            .placeholder-grid {
+                max-width: 150px;
+                aspect-ratio: 1 / 1;
             }
             .logo-btn { width: 40px; height: 40px; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; flex: 1 1 100%; }
@@ -318,28 +308,14 @@
 </head>
 <body>
 <div class="container">
-    <!-- Верхняя строка: поиск + болванка -->
-    <div class="top-row">
-        <div class="search-area">
-            <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
-                <img src="/static/ttr.png" alt="ЛК">
-            </a>
-            <div class="input-marking-wrapper">
-                <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
-                <span id="markingDisplay"></span>
-            </div>
-        </div>
-        <!-- Болванка 3×3 -->
-        <div class="placeholder-grid">
-            <div class="cell">1</div>
-            <div class="cell">2</div>
-            <div class="cell">3</div>
-            <div class="cell">4</div>
-            <div class="cell">5</div>
-            <div class="cell">6</div>
-            <div class="cell">7</div>
-            <div class="cell">8</div>
-            <div class="cell">9</div>
+    <!-- Поисковая строка -->
+    <div class="search-row">
+        <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
+            <img src="/static/ttr.png" alt="ЛК">
+        </a>
+        <div class="input-marking-wrapper">
+            <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
+            <span id="markingDisplay"></span>
         </div>
     </div>
 
@@ -350,7 +326,21 @@
                 <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
         </div>
+
         <div class="right-column">
+            <!-- Болванка 3×3 -->
+            <div class="placeholder-grid" id="placeholderGrid">
+                <div class="cell">1</div>
+                <div class="cell">2</div>
+                <div class="cell">3</div>
+                <div class="cell">4</div>
+                <div class="cell">5</div>
+                <div class="cell">6</div>
+                <div class="cell">7</div>
+                <div class="cell">8</div>
+                <div class="cell">9</div>
+            </div>
+            <!-- Картинка -->
             <div class="image-wrapper" id="imageContainer">
                 <div class="no-image" id="noImageLabel">Нет изображения</div>
                 <img id="productImage" src="" alt="Товар" style="display:none;">
@@ -448,6 +438,9 @@
 
         resultDiv.innerHTML = infoHtml + tableHtml;
 
+        // Синхронизация высоты болванки с высотой product-info
+        syncPlaceholderHeight();
+
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
@@ -459,6 +452,17 @@
             };
         } else {
             resetImage();
+        }
+    }
+
+    function syncPlaceholderHeight() {
+        const info = document.querySelector('.product-info');
+        const grid = document.getElementById('placeholderGrid');
+        if (info && grid) {
+            const height = info.offsetHeight;
+            if (height > 0) {
+                grid.style.height = height + 'px';
+            }
         }
     }
 
