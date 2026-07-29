@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from datetime import datetime
+from datetime import datetime, timedelta
 
 router = APIRouter(tags=["mark"])
 
@@ -31,9 +31,20 @@ def normalize_barcode(barcode: str) -> str:
     return barcode
 
 def get_excel_file_path() -> str:
-    today = datetime.now().strftime("%y%m%d")
+    """
+    Возвращает путь к самому свежему файлу с отчётом.
+    Ищет файл за сегодня, если нет – за вчера и т.д., вплоть до 30 дней назад.
+    """
     base_path = "/work/!МП_(FSk)/!Rep"
-    return os.path.join(base_path, f"{today}_mp_rep.xlsx")
+    today = datetime.now()
+    for days_back in range(0, 31):
+        date = today - timedelta(days=days_back)
+        date_str = date.strftime("%y%m%d")
+        file_name = f"{date_str}_mp_rep.xlsx"
+        file_path = os.path.join(base_path, file_name)
+        if os.path.exists(file_path):
+            return file_path
+    raise FileNotFoundError(f"Не найдено ни одного файла {base_path}/*_mp_rep.xlsx за последние 30 дней")
 
 def load_excel_data(file_path: str):
     # Загружаем колонки от A до AL
