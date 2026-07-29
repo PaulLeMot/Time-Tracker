@@ -208,34 +208,12 @@
         }
         .platform-wb {
             background-color: #f3e8ff; /* фиолетовый */
-            color: #6b21a5;
         }
         .platform-oz {
             background-color: #dbeafe; /* синий */
-            color: #1e40af;
         }
         .platform-fsk {
             background-color: #f1f5f9;
-            color: #334155;
-        }
-        .badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 0.75rem;
-        }
-        .badge-wb {
-            background: #6b21a5;
-            color: white;
-        }
-        .badge-oz {
-            background: #1e40af;
-            color: white;
-        }
-        .badge-fsk {
-            background: #64748b;
-            color: white;
         }
 
         .no-result { color: #ef4444; text-align: center; padding: 20px 0; font-size: 1.1rem; }
@@ -362,28 +340,22 @@
             </div>
         `;
 
-        // Таблица
+        // Таблица – одна колонка "Маркировка", ID, Штрих-код
         let tableHtml = '';
         if (tableData.length) {
             tableHtml = `<div class="table-container"><table>
-                <thead><tr><th>Маркировка</th><th>Площадка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
+                <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
             for (const row of tableData) {
                 let platformClass = '';
-                let badgeClass = '';
-                let platformDisplay = row.platform;
                 if (row.platform === 'WB') {
                     platformClass = 'platform-wb';
-                    badgeClass = 'badge-wb';
                 } else if (row.platform === 'OZ') {
                     platformClass = 'platform-oz';
-                    badgeClass = 'badge-oz';
                 } else {
                     platformClass = 'platform-fsk';
-                    badgeClass = 'badge-fsk';
                 }
                 tableHtml += `<tr class="${platformClass}">
                     <td><strong>${escapeHtml(row.marking)}</strong></td>
-                    <td><span class="badge ${badgeClass}">${escapeHtml(platformDisplay)}</span></td>
                     <td>${escapeHtml(row.id)}</td>
                     <td>${escapeHtml(row.bar)}</td>
                 </tr>`;

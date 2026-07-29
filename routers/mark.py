@@ -108,18 +108,22 @@ def get_marking_for_position(row, col_idx, col_names) -> str:
     return f"{marking_col_name}_{platform}"
 
 def get_row_data(row, col_names, code):
-    """Собирает таблицу данных для товара"""
+    """Собирает таблицу данных для товара, сначала WB, потом OZ"""
     table = []
+    
     # FSK (МП)
     fsk_bar = generate_ean13(code)
     table.append({
-        "marking": "FSK",
-        "platform": "МП",
+        "marking": "FSK",            # будет отображаться как "FSK"
+        "platform": "FSK",
         "id": code,
         "bar": fsk_bar
     })
 
-    # Для каждой маркировки
+    # Собираем данные для каждой маркировки
+    wb_rows = []
+    oz_rows = []
+    
     for mk in MARKING_KEYS:
         try:
             mk_idx = col_names.index(mk)
@@ -128,21 +132,45 @@ def get_row_data(row, col_names, code):
         # WB
         wb_id = row.get(col_names[mk_idx + 1], '').strip() if mk_idx + 1 < len(col_names) else '0'
         wb_bar = row.get(col_names[mk_idx + 3], '').strip() if mk_idx + 3 < len(col_names) else '0'
-        table.append({
-            "marking": mk,
-            "platform": "WB",
-            "id": wb_id if wb_id else '0',
-            "bar": wb_bar if wb_bar else '0'
-        })
+        if wb_id or wb_bar:
+            wb_rows.append({
+                "marking": f"{mk}_WB",
+                "platform": "WB",
+                "id": wb_id if wb_id else '0',
+                "bar": wb_bar if wb_bar else '0'
+            })
+        else:
+            # даже если нет данных, добавляем с нулями?
+            # По заданию нужно выводить все маркировки, даже если кода нет – ставим 0
+            wb_rows.append({
+                "marking": f"{mk}_WB",
+                "platform": "WB",
+                "id": '0',
+                "bar": '0'
+            })
+        
         # OZ
         oz_id = row.get(col_names[mk_idx + 4], '').strip() if mk_idx + 4 < len(col_names) else '0'
         oz_bar = row.get(col_names[mk_idx + 6], '').strip() if mk_idx + 6 < len(col_names) else '0'
-        table.append({
-            "marking": mk,
-            "platform": "OZ",
-            "id": oz_id if oz_id else '0',
-            "bar": oz_bar if oz_bar else '0'
-        })
+        if oz_id or oz_bar:
+            oz_rows.append({
+                "marking": f"{mk}_OZ",
+                "platform": "OZ",
+                "id": oz_id if oz_id else '0',
+                "bar": oz_bar if oz_bar else '0'
+            })
+        else:
+            oz_rows.append({
+                "marking": f"{mk}_OZ",
+                "platform": "OZ",
+                "id": '0',
+                "bar": '0'
+            })
+    
+    # Сначала все WB, потом все OZ
+    table.extend(wb_rows)
+    table.extend(oz_rows)
+    
     return table
 
 @router.get("/api/mark/{barcode:path}")
