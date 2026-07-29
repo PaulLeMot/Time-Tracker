@@ -20,15 +20,6 @@ MARKING_KEYS = {"sia", "ktv", "reg", "kpd"}
 # M=12, P=15, T=19, W=22, AA=26, AD=29, AH=33, AK=36
 EXCLUDED_COLUMNS = {12, 15, 19, 22, 26, 29, 33, 36}
 
-# Специальные колонки для определения маркировок по площадкам
-# K=10 → sia, R=17 → ktv, Y=24 → reg, AF=31 → kpd
-MARKING_PLATFORM_COLUMNS = {
-    10: "sia",
-    17: "ktv",
-    24: "reg",
-    31: "kpd",
-}
-
 def normalize_barcode(barcode: str) -> str:
     """
     Преобразует локальный EAN13 (формат 2400000NNNNNX) в код товара NNNNN.
@@ -56,14 +47,12 @@ def get_excel_file_path() -> str:
     raise FileNotFoundError(f"Не найдено ни одного файла {base_path}/*_mp_rep.xlsx за последние 30 дней")
 
 def load_excel_data(file_path: str):
-    # Загружаем колонки от A до AL
     df = pd.read_excel(file_path, sheet_name="ids", usecols="A:AL", dtype=str).fillna('')
     col_names = list(df.columns)
     data = df.to_dict(orient='records')
     index = {}
     for row_idx, row in enumerate(data):
         for col_idx, col_name in enumerate(col_names):
-            # Пропускаем исключённые колонки
             if col_idx in EXCLUDED_COLUMNS:
                 continue
             value = row.get(col_name, '')
@@ -92,25 +81,42 @@ def get_cached_data():
         })
     return _cache["data"], _cache["index"], _cache["col_names"]
 
-def get_markings_from_platform_columns(row, col_names) -> set:
+def get_marking_for_position(row, col_idx, col_names) -> str:
     """
-    Проверяет специальные колонки (K, R, Y, AF) на наличие площадок.
-    Возвращает множество маркировок вида { "sia_WB", "ktv_OZ", ... }.
+    Определяет маркировку для найденного кода по индексу колонки.
+    Если код найден в колонке A (индекс 0) – возвращает "FSK".
+    Иначе ищет маркировку (sia/ktv/reg/kpd) слева, затем определяет площадку (WB/OZ)
+    по смещению относительно колонки маркировки.
+    Возвращает строку вида "маркировка_площадка" или "маркировка" если площадка не определена.
     """
-    markings = set()
-    for col_idx, marking_name in MARKING_PLATFORM_COLUMNS.items():
-        # Убедимся, что индекс не выходит за пределы
-        if col_idx >= len(col_names):
-            continue
-        value = row.get(col_names[col_idx], '').strip()
-        if not value:
-            continue
-        # Разбиваем по пробелам, возможны варианты "WB", "OZ", "WB OZ"
-        parts = value.split()
-        for part in parts:
-            if part in ("WB", "OZ"):
-                markings.add(f"{marking_name}_{part}")
-    return markings
+    # Если колонка A – особый случай
+    if col_idx == 0:
+        return "FSK"
+    
+    # Ищем маркировку слева
+    marking_col_name = None
+    marking_col_idx = None
+    for c in range(col_idx, -1, -1):
+        if col_names[c] in MARKING_KEYS:
+            marking_col_name = col_names[c]
+            marking_col_idx = c
+            break
+    
+    if not marking_col_name:
+        return None  # маркировка не найдена
+    
+    # Определяем площадку по смещению
+    offset = col_idx - marking_col_idx
+    # Ожидаемые смещения: 1=WB_id, 2=WB_art, 3=WB_bar, 4=OZ_id, 5=OZ_sku, 6=OZ_bar
+    if offset in (1, 3):
+        platform = "WB"
+    elif offset in (4, 6):
+        platform = "OZ"
+    else:
+        # Неизвестное смещение – возможно, это сама колонка маркировки (но там не может быть штрих-кода)
+        return None
+    
+    return f"{marking_col_name}_{platform}"
 
 @router.get("/api/mark/{barcode:path}")
 async def mark_barcode(barcode: str):
@@ -131,7 +137,6 @@ async def mark_barcode(barcode: str):
 
     for row_idx, col_idx in index[normalized]:
         row = data[row_idx]
-        # Основные поля
         code = row.get("Код", "")
         view = row.get("Вид товара", "")
         fandom = row.get("Фандом", "") or row.get("Фандом 4ek", "")
@@ -147,24 +152,10 @@ async def mark_barcode(barcode: str):
                 "Маркировки": set()
             }
 
-        # Определяем маркировки для данного вхождения
-        markings = set()
-
-        # Если товар найден в колонке A (код), используем специальную логику по площадкам
-        if col_idx == 0:
-            markings.update(get_markings_from_platform_columns(row, col_names))
-        else:
-            # Стандартная логика: идём влево до первой колонки-маркировки
-            marking_col = None
-            for c in range(col_idx, -1, -1):
-                if col_names[c] in MARKING_KEYS:
-                    marking_col = col_names[c]
-                    break
-            if marking_col:
-                markings.add(marking_col)  # просто имя маркировки, без суффикса
-
-        # Добавляем все найденные маркировки в общее множество для товара
-        products[key]["Маркировки"].update(markings)
+        # Определяем маркировку для данного вхождения
+        marking = get_marking_for_position(row, col_idx, col_names)
+        if marking:
+            products[key]["Маркировки"].add(marking)
 
     # Преобразуем в список результатов
     results = []
