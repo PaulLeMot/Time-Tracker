@@ -207,14 +207,25 @@
             border-bottom: none;
         }
 
-        .row-wb {
-            background-color: #f3e8ff; /* фиолетовый */
+        /* Бейджи для маркировок */
+        .badge {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: white;
+            text-align: center;
+            white-space: nowrap;
         }
-        .row-oz {
-            background-color: #dbeafe; /* синий */
+        .badge-wb {
+            background: #6b21a5; /* фиолетовый */
         }
-        .row-fsk {
-            background-color: #f1f5f9; /* серый */
+        .badge-oz {
+            background: #1e40af; /* синий */
+        }
+        .badge-fsk {
+            background: #64748b; /* серый */
         }
 
         .no-result { color: #ef4444; text-align: center; padding: 20px 0; font-size: 1.1rem; }
@@ -341,22 +352,22 @@
             </div>
         `;
 
-        // Таблица – три столбца: Маркировка, ID, Штрих-код
+        // Таблица с бейджами
         let tableHtml = '';
         if (tableData.length) {
             tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
             for (const row of tableData) {
-                let rowClass = '';
+                let badgeClass = '';
                 if (row.platform === 'WB') {
-                    rowClass = 'row-wb';
+                    badgeClass = 'badge-wb';
                 } else if (row.platform === 'OZ') {
-                    rowClass = 'row-oz';
+                    badgeClass = 'badge-oz';
                 } else {
-                    rowClass = 'row-fsk';
+                    badgeClass = 'badge-fsk';
                 }
-                tableHtml += `<tr class="${rowClass}">
-                    <td><strong>${escapeHtml(row.marking)}</strong></td>
+                tableHtml += `<tr>
+                    <td><span class="badge ${badgeClass}">${escapeHtml(row.marking)}</span></td>
                     <td>${escapeHtml(row.id)}</td>
                     <td>${escapeHtml(row.bar)}</td>
                 </tr>`;
