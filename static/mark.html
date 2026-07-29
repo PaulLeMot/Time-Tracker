@@ -26,7 +26,21 @@
             box-shadow: 0 8px 20px rgba(0,0,0,0.05);
             padding: 32px;
         }
-        .scan-row {
+
+        /* Верхняя строка: логотип, поле ввода, маркировка, картинка */
+        .top-row {
+            display: flex;
+            align-items: stretch; /* чтобы колонки были одной высоты */
+            gap: 20px;
+        }
+        .left-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 0;
+        }
+        .search-row {
             display: flex;
             align-items: center;
             gap: 12px;
@@ -59,12 +73,12 @@
         .input-marking-wrapper {
             display: flex;
             align-items: center;
-            width: 100%;
+            flex: 1;
             gap: 16px;
+            min-width: 0;
         }
         #scanInput {
-            width: 45%;
-            flex-shrink: 0;
+            flex: 0 0 60%;
             padding: 14px 20px;
             font-size: 1.1rem;
             border: 2px solid #3b82f6;
@@ -72,6 +86,7 @@
             outline: none;
             background: #f8fafc;
             transition: 0.2s;
+            min-width: 0;
         }
         #scanInput:focus {
             border-color: #2563eb;
@@ -91,27 +106,39 @@
         }
 
         #scanResult {
-            margin-top: 24px;
+            /* Здесь будет текстовая карточка */
         }
 
-        .product-card {
+        .right-column {
+            flex: 0 0 300px; /* фиксированная ширина картинки */
             display: flex;
-            gap: 30px;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+            border-radius: 12px;
             border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            padding: 24px;
-            margin-bottom: 20px;
-            background: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            align-items: stretch; /* картинка будет растягиваться по высоте */
+            overflow: hidden;
+            min-height: 200px; /* чтобы было видно до загрузки */
         }
+        .right-column img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .right-column .no-image {
+            color: #94a3b8;
+            font-size: 1rem;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* текстовая карточка (без картинки) */
         .product-info {
-            flex: 1;
-            min-width: 0;
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            justify-content: center;
+            gap: 6px;
+            padding: 8px 0;
         }
         .product-info .name-line {
             font-size: 1.3rem;
@@ -134,30 +161,6 @@
             color: #475569;
         }
 
-        .product-image {
-            flex: 0 0 300px; /* фиксированная ширина */
-            min-height: 100%; /* занимает всю высоту родителя */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #f8fafc;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid #e2e8f0;
-        }
-        .product-image img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain; /* сохраняет пропорции, вписываясь в контейнер */
-            max-height: 400px;
-        }
-        .product-image .no-image {
-            color: #94a3b8;
-            font-size: 1rem;
-            text-align: center;
-            padding: 20px;
-        }
-
         .no-result { color: #ef4444; text-align: center; padding: 40px 0; font-size: 1.1rem; }
         .loading { text-align: center; color: #64748b; padding: 40px 0; }
         .error {
@@ -170,38 +173,50 @@
 
         @media (max-width: 700px) {
             .container { padding: 20px; }
-            .product-card {
+            .top-row {
                 flex-direction: column;
-                align-items: center;
+                align-items: stretch;
             }
-            .product-image {
+            .right-column {
                 flex: 0 0 auto;
                 width: 100%;
                 min-height: 200px;
                 max-height: 300px;
             }
-            .product-image img {
+            .right-column img {
                 max-height: 300px;
             }
             .logo-btn { width: 42px; height: 42px; }
-            #scanInput { font-size: 1rem; padding: 12px 16px; width: 100%; flex-shrink: 1; }
+            #scanInput { font-size: 1rem; padding: 12px 16px; flex: 1 1 100%; }
             .input-marking-wrapper { flex-wrap: wrap; }
             #markingDisplay { font-size: 1rem; }
+            .left-column { gap: 8px; }
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="scan-row">
-        <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
-            <img src="/static/ttr.png" alt="ЛК">
-        </a>
-        <div class="input-marking-wrapper">
-            <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
-            <span id="markingDisplay"></span>
+    <div class="top-row">
+        <!-- Левая колонка -->
+        <div class="left-column">
+            <div class="search-row">
+                <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
+                    <img src="/static/ttr.png" alt="ЛК">
+                </a>
+                <div class="input-marking-wrapper">
+                    <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
+                    <span id="markingDisplay"></span>
+                </div>
+            </div>
+            <div id="scanResult">
+                <p style="color: #64748b; text-align: center; padding: 20px 0;">Ожидание сканирования...</p>
+            </div>
+        </div>
+        <!-- Правая колонка – картинка -->
+        <div class="right-column" id="imageContainer">
+            <div class="no-image">Нет изображения</div>
         </div>
     </div>
-    <div id="scanResult"></div>
 </div>
 <script>
     function escapeHtml(str) {
@@ -217,23 +232,26 @@
     function showError(message) {
         document.getElementById('scanResult').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('markingDisplay').textContent = '';
+        document.getElementById('imageContainer').innerHTML = '<div class="no-image">Нет изображения</div>';
     }
     function showLoading() {
         document.getElementById('scanResult').innerHTML = '<div class="loading">⏳ Поиск...</div>';
         document.getElementById('markingDisplay').textContent = '⏳';
+        document.getElementById('imageContainer').innerHTML = '<div class="no-image">Загрузка...</div>';
     }
 
     function renderResults(products) {
         const resultDiv = document.getElementById('scanResult');
         const markingSpan = document.getElementById('markingDisplay');
+        const imageContainer = document.getElementById('imageContainer');
 
         if (!products || products.length === 0) {
             resultDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             markingSpan.textContent = '';
+            imageContainer.innerHTML = '<div class="no-image">Нет изображения</div>';
             return;
         }
 
-        // Берём первый товар (если их несколько, показываем первый)
         const product = products[0];
         const code = product['Код'] || '';
         const type = product['Вид'] || '—';
@@ -241,29 +259,31 @@
         const name = product['Название'] || '—';
         const marking = product['Маркировка'] || '';
 
-        // Обновляем маркировку справа от поля ввода – убираем слово "Маркировка:"
-        markingSpan.textContent = marking ? marking : '';
+        markingSpan.textContent = marking || '';
 
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
-        let html = `
-            <div class="product-card">
-                <div class="product-info">
-                    <div class="name-line">
-                        <span class="code-part">${escapeHtml(code)}</span>
-                        <span>${escapeHtml(name)}</span>
-                    </div>
-                    <div class="details-line">
-                        <span class="type-part">${escapeHtml(type)}</span>
-                        ${fandom ? `, <span class="fandom-part">${escapeHtml(fandom)}</span>` : ''}
-                    </div>
+        // Текстовая информация
+        let infoHtml = `
+            <div class="product-info">
+                <div class="name-line">
+                    <span class="code-part">${escapeHtml(code)}</span>
+                    <span>${escapeHtml(name)}</span>
                 </div>
-                <div class="product-image">
-                    ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHtml(name)}" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'no-image\\'>Нет изображения</div>';">` : '<div class="no-image">Нет изображения</div>'}
+                <div class="details-line">
+                    <span class="type-part">${escapeHtml(type)}</span>
+                    ${fandom ? `, <span class="fandom-part">${escapeHtml(fandom)}</span>` : ''}
                 </div>
             </div>
         `;
-        resultDiv.innerHTML = html;
+        resultDiv.innerHTML = infoHtml;
+
+        // Картинка
+        if (imageUrl) {
+            imageContainer.innerHTML = `<img src="${imageUrl}" alt="${escapeHtml(name)}" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'no-image\\'>Нет изображения</div>';">`;
+        } else {
+            imageContainer.innerHTML = '<div class="no-image">Нет изображения</div>';
+        }
     }
 
     async function checkAuth() {
@@ -327,11 +347,11 @@
                 }
             }
         });
-        // Сброс маркировки при очистке поля
         input.addEventListener('input', function() {
             if (!this.value.trim()) {
                 document.getElementById('markingDisplay').textContent = '';
                 document.getElementById('scanResult').innerHTML = '<p style="color: #64748b; text-align: center;">Ожидание сканирования...</p>';
+                document.getElementById('imageContainer').innerHTML = '<div class="no-image">Нет изображения</div>';
             }
         });
     });
