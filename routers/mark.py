@@ -14,7 +14,7 @@ _cache = {
     "data": None,
     "index": None,
     "col_names": None,
-    "date_str": None,  # дата в формате YYMMDD
+    "date_str": None,  # дата в формате YYMMDD (из отчёта)
 }
 
 # Кэш для файлов стикеров
@@ -82,7 +82,7 @@ def get_cached_data():
         _cache["file_mtime"] != mtime or 
         _cache["data"] is None):
         data, index, col_names = load_excel_data(file_path)
-        # Извлекаем дату из имени файла (YYMMDD)
+        # Извлекаем дату из имени файла (YYMMDD) – используется только для информации
         match = re.search(r'(\d{6})_mp_rep\.xlsx', file_path)
         date_str = match.group(1) if match else None
         _cache.update({
@@ -214,18 +214,17 @@ async def mark_barcode(barcode: str):
     if not normalized or len(normalized) < 5:
         raise HTTPException(status_code=400, detail="Некорректный штрих-код")
     
-    data, index, col_names, date_str = get_cached_data()
+    data, index, col_names, _ = get_cached_data()  # игнорируем date_str из кэша
     if normalized not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Загружаем стикеры для всех маркировок (только WB, т.к. файлы MP_WB.xlsx)
+    # Всегда используем сегодняшнюю дату для стикеров
+    today_str = datetime.now().strftime("%y%m%d")
+
+    # Загружаем стикеры для всех маркировок (только WB) с сегодняшней датой
     sticker_indices = {}
-    if date_str:
-        for mk in MARKING_KEYS:
-            sticker_indices[mk] = get_sticker_index(mk, date_str)
-    else:
-        # Если дата не определена, стикеры не загружаем
-        sticker_indices = {mk: {} for mk in MARKING_KEYS}
+    for mk in MARKING_KEYS:
+        sticker_indices[mk] = get_sticker_index(mk, today_str)
 
     products = {}
 

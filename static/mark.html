@@ -175,31 +175,39 @@
             padding-right: 4px;
         }
 
-        .placeholder-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
-            width: 100%;
-            aspect-ratio: 1 / 1;
-            gap: 4px;
-            background: #f1f5f9;
-            border-radius: 12px;
-            padding: 6px;
-            flex-shrink: 0;
-            max-height: 150px;
-        }
-        .placeholder-grid .cell {
-            background: white;
-            border-radius: 6px;
+        /* Таблица стикеров – теперь идёт первой (вместо болванки) */
+        .sticker-table {
             border: 1px solid #e2e8f0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            color: #94a3b8;
+            border-radius: 12px;
+            padding: 8px;
+            background: #fafafa;
+            flex-shrink: 0;
+        }
+        .sticker-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        .sticker-table td {
+            padding: 6px 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .sticker-table tr:last-child td {
+            border-bottom: none;
+        }
+        .sticker-count {
+            padding: 8px 12px;
+            font-weight: 600;
+            border-bottom: 2px solid #e2e8f0;
+            background: #f1f5f9;
+            border-radius: 8px 8px 0 0;
+        }
+        .sticker-last {
+            font-weight: 700;
+            font-size: 1.5rem;
         }
 
-        /* Таблица маркировок (старая) */
+        /* Старая таблица маркировок – идёт второй */
         .table-container {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -241,43 +249,6 @@
         .badge-wb { background: #6b21a5; }
         .badge-oz { background: #1e40af; }
         .badge-fsk { background: #64748b; }
-
-        /* Новая таблица стикеров */
-        .sticker-table {
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 8px;
-            background: #fafafa;
-            flex-shrink: 0;
-        }
-        .sticker-table table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-        .sticker-table td {
-            padding: 6px 12px;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        .sticker-table tr:last-child td {
-            border-bottom: none;
-        }
-        .sticker-count {
-            padding: 8px 12px;
-            font-weight: 600;
-            border-bottom: 2px solid #e2e8f0;
-            background: #f1f5f9;
-            border-radius: 8px 8px 0 0;
-        }
-        .sticker-last {
-            font-weight: 700;
-            font-size: 1.5rem;
-        }
-        .no-stickers {
-            padding: 12px;
-            text-align: center;
-            color: #94a3b8;
-        }
 
         .image-wrapper {
             flex: 1;
@@ -332,10 +303,10 @@
             #markingDisplay { font-size: 1rem; }
             .product-info .name-line { font-size: 1.2rem; }
             .product-info .details-line { font-size: 1rem; }
-            .table-container { font-size: 0.8rem; }
-            .table-container td, .table-container th { padding: 4px 8px; }
             .sticker-table { font-size: 0.8rem; }
             .sticker-table td { padding: 4px 8px; }
+            .table-container { font-size: 0.8rem; }
+            .table-container td, .table-container th { padding: 4px 8px; }
             .left-col { padding-top: 8px; }
             .sticker-last { font-size: 1.2rem; }
         }
@@ -441,22 +412,46 @@
             </div>
         `;
 
-        // --- Строим содержимое скролл-блока ---
-        let scrollHtml = `
-            <div class="placeholder-grid">
-                <div class="cell">1</div>
-                <div class="cell">2</div>
-                <div class="cell">3</div>
-                <div class="cell">4</div>
-                <div class="cell">5</div>
-                <div class="cell">6</div>
-                <div class="cell">7</div>
-                <div class="cell">8</div>
-                <div class="cell">9</div>
-            </div>
-        `;
+        // --- Строим скролл-блок ---
+        // Болванку больше не выводим – вместо неё таблица стикеров
+        let scrollHtml = '';
 
-        // 1. Старая таблица маркировок (ID, штрих-код)
+        // 1. Таблица стикеров (на месте болванки)
+        // Собираем все стикеры из всех товаров (только WB)
+        let allStickers = [];
+        for (const prod of products) {
+            const t = prod.table || [];
+            for (const row of t) {
+                if (row.stickers && row.stickers.length > 0) {
+                    allStickers = allStickers.concat(row.stickers);
+                }
+            }
+        }
+
+        const foundCount = products.length;
+        let stickerHtml = `<div class="sticker-table">`;
+        stickerHtml += `<div class="sticker-count">Найдено товаров: ${foundCount}</div>`;
+        if (allStickers.length === 0) {
+            // Если стикеров нет – выводим нули (как просили)
+            stickerHtml += `<table><tbody>
+                <tr><td>0</td><td class="sticker-last">0000</td></tr>
+            </tbody></table>`;
+        } else {
+            stickerHtml += `<table><tbody>`;
+            for (const sticker of allStickers) {
+                const firstPart = sticker.length > 4 ? sticker.slice(0, -4) : '';
+                const lastPart = sticker.length > 4 ? sticker.slice(-4) : sticker;
+                stickerHtml += `<tr>
+                    <td>${escapeHtml(firstPart)}</td>
+                    <td class="sticker-last">${escapeHtml(lastPart)}</td>
+                </tr>`;
+            }
+            stickerHtml += `</tbody></table>`;
+        }
+        stickerHtml += `</div>`;
+        scrollHtml += stickerHtml;
+
+        // 2. Старая таблица маркировок (ID, штрих-код)
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
@@ -480,38 +475,6 @@
         } else {
             scrollHtml += `<div class="table-container"><p style="color:#94a3b8; text-align:center;">Нет данных</p></div>`;
         }
-
-        // 2. Новая таблица стикеров
-        // Собираем все стикеры из всех товаров (только из WB-строк)
-        let allStickers = [];
-        for (const prod of products) {
-            const t = prod.table || [];
-            for (const row of t) {
-                if (row.stickers && row.stickers.length > 0) {
-                    allStickers = allStickers.concat(row.stickers);
-                }
-            }
-        }
-
-        const foundCount = products.length;
-        let stickerHtml = `<div class="sticker-table">`;
-        stickerHtml += `<div class="sticker-count">Найдено товаров: ${foundCount}</div>`;
-        if (allStickers.length === 0) {
-            stickerHtml += `<div class="no-stickers">Стикеры не найдены</div>`;
-        } else {
-            stickerHtml += `<table><tbody>`;
-            for (const sticker of allStickers) {
-                const firstPart = sticker.length > 4 ? sticker.slice(0, -4) : '';
-                const lastPart = sticker.length > 4 ? sticker.slice(-4) : sticker;
-                stickerHtml += `<tr>
-                    <td>${escapeHtml(firstPart)}</td>
-                    <td class="sticker-last">${escapeHtml(lastPart)}</td>
-                </tr>`;
-            }
-            stickerHtml += `</tbody></table>`;
-        }
-        stickerHtml += `</div>`;
-        scrollHtml += stickerHtml;
 
         scrollDiv.innerHTML = scrollHtml;
         scrollDiv.scrollTop = 0;
