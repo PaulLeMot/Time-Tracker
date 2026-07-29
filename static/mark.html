@@ -19,56 +19,34 @@
             padding: 16px;
         }
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             width: 100%;
             background: white;
             border-radius: 32px;
             box-shadow: 0 8px 20px rgba(0,0,0,0.05);
             padding: 24px 32px;
-            display: flex;
-            flex-direction: column;
-            /* убираем ограничения по высоте, чтобы страница скроллилась */
         }
 
         .main-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr; /* левая колонка – картинка, правая – данные */
+            grid-template-columns: 1fr 1fr;
             gap: 24px;
-            margin-top: 16px;
         }
 
-        /* Левая колонка – картинка */
         .left-col {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #f8fafc;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-            overflow: hidden;
-            min-height: 400px;
-        }
-        .left-col img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            display: block;
-        }
-        .left-col .no-image {
-            color: #94a3b8;
-            font-size: 1rem;
-            text-align: center;
-            padding: 20px;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 0;
         }
 
-        /* Правая колонка */
         .right-col {
             display: flex;
             flex-direction: column;
             gap: 12px;
+            min-width: 0;
         }
 
-        /* Поисковая строка */
         .search-row {
             display: flex;
             align-items: center;
@@ -134,7 +112,6 @@
             text-overflow: ellipsis;
         }
 
-        /* Болванка – теперь в правой колонке, над карточкой */
         .placeholder-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -146,8 +123,7 @@
             border-radius: 12px;
             padding: 6px;
             flex-shrink: 0;
-            max-width: 200px;
-            max-height: 200px;
+            max-height: 150px;
         }
         .placeholder-grid .cell {
             background: white;
@@ -160,7 +136,30 @@
             color: #94a3b8;
         }
 
-        /* Карточка товара */
+        .image-wrapper {
+            width: 100%;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            aspect-ratio: 1 / 1;
+        }
+        .image-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .image-wrapper .no-image {
+            color: #94a3b8;
+            font-size: 1rem;
+            text-align: center;
+            padding: 20px;
+        }
+
         .product-info {
             display: flex;
             flex-direction: column;
@@ -191,13 +190,13 @@
             color: #475569;
         }
 
-        /* Таблица маркировок */
         .table-container {
+            overflow-y: auto;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             padding: 8px;
             background: #fafafa;
-            overflow-x: auto;
+            flex: 1;
         }
         .table-container table {
             width: 100%;
@@ -211,6 +210,9 @@
             font-weight: 600;
             color: #0f172a;
             border-bottom: 2px solid #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         .table-container td {
             padding: 6px 12px;
@@ -256,72 +258,64 @@
             width: 100%;
         }
 
+        .flex-grow {
+            flex: 1;
+        }
+
         @media (max-width: 700px) {
             .container { padding: 16px; }
             .main-grid {
                 grid-template-columns: 1fr;
                 gap: 16px;
             }
-            .left-col {
-                min-height: 200px;
-                max-height: 300px;
-            }
             .right-col {
-                gap: 8px;
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+            .placeholder-grid {
+                max-width: 120px;
+                max-height: 120px;
+                flex: 0 0 auto;
+            }
+            .image-wrapper {
+                flex: 1;
+                min-height: 150px;
+                aspect-ratio: auto;
             }
             .logo-btn { width: 40px; height: 40px; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; }
-            .input-marking-wrapper { flex-wrap: wrap; }
             #markingDisplay { font-size: 1rem; }
             .product-info .name-line { font-size: 1.2rem; }
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
             .table-container td, .table-container th { padding: 4px 8px; }
-            .placeholder-grid {
-                max-width: 120px;
-                max-height: 120px;
-            }
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <!-- Поисковая строка -->
-    <div class="search-row">
-        <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
-            <img src="/static/ttr.png" alt="ЛК">
-        </a>
-        <div class="input-marking-wrapper">
-            <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
-            <span id="markingDisplay"></span>
-        </div>
-    </div>
-
     <div class="main-grid">
-        <!-- Левая колонка – картинка -->
-        <div class="left-col" id="imageContainer">
-            <div class="no-image" id="noImageLabel">Нет изображения</div>
-            <img id="productImage" src="" alt="Товар" style="display:none;">
-        </div>
-
-        <!-- Правая колонка – болванка, карточка, таблица -->
-        <div class="right-col">
-            <!-- Болванка -->
-            <div class="placeholder-grid" id="placeholderGrid">
-                <div class="cell">1</div>
-                <div class="cell">2</div>
-                <div class="cell">3</div>
-                <div class="cell">4</div>
-                <div class="cell">5</div>
-                <div class="cell">6</div>
-                <div class="cell">7</div>
-                <div class="cell">8</div>
-                <div class="cell">9</div>
+        <!-- Левая колонка -->
+        <div class="left-col">
+            <div class="search-row">
+                <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
+                    <img src="/static/ttr.png" alt="ЛК">
+                </a>
+                <div class="input-marking-wrapper">
+                    <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
+                    <span id="markingDisplay"></span>
+                </div>
             </div>
-
-            <!-- Результат: карточка + таблица -->
             <div id="scanResult">
                 <p class="placeholder-text">Ожидание сканирования...</p>
+            </div>
+        </div>
+
+        <!-- Правая колонка -->
+        <div class="right-col">
+            <div class="image-wrapper" id="imageContainer">
+                <div class="no-image" id="noImageLabel">Нет изображения</div>
+                <img id="productImage" src="" alt="Товар" style="display:none;">
             </div>
         </div>
     </div>
@@ -379,7 +373,8 @@
 
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
-        let infoHtml = `
+        // Собираем HTML: карточка, болванка, таблица
+        let html = `
             <div class="product-info">
                 <div class="name-line">
                     <span class="code-part">${escapeHtml(code)}</span>
@@ -392,6 +387,22 @@
             </div>
         `;
 
+        // Болванка 3x3 (всегда показывается)
+        html += `
+            <div class="placeholder-grid">
+                <div class="cell">1</div>
+                <div class="cell">2</div>
+                <div class="cell">3</div>
+                <div class="cell">4</div>
+                <div class="cell">5</div>
+                <div class="cell">6</div>
+                <div class="cell">7</div>
+                <div class="cell">8</div>
+                <div class="cell">9</div>
+            </div>
+        `;
+
+        // Таблица маркировок
         let tableHtml = '';
         if (tableData.length) {
             tableHtml = `<div class="table-container"><table>
@@ -412,9 +423,13 @@
                 </tr>`;
             }
             tableHtml += `</tbody></table></div>`;
+        } else {
+            tableHtml = `<div class="table-container"><p style="color:#94a3b8; text-align:center;">Нет данных</p></div>`;
         }
 
-        resultDiv.innerHTML = infoHtml + tableHtml;
+        html += tableHtml;
+
+        resultDiv.innerHTML = html;
 
         if (imageUrl) {
             img.src = imageUrl;
