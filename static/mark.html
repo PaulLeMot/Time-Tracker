@@ -98,7 +98,7 @@
             text-overflow: ellipsis;
         }
 
-        /* Контентная область: карточка + картинка */
+        /* Контентная область */
         .content-row {
             display: flex;
             gap: 24px;
@@ -115,31 +115,28 @@
             height: 100%;
             overflow: hidden;
         }
+
         .right-column {
             flex: 0 0 280px;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            background: #f8fafc;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-            overflow: hidden;
-            min-height: 0;
+            gap: 12px;
             height: 100%;
-            position: relative;
+            min-height: 0;
         }
 
-        /* Таблица-болванка (3×3) */
+        /* Болванка 3×3 – всегда видна */
         .placeholder-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             grid-template-rows: repeat(3, 1fr);
             width: 100%;
-            height: 100%;
+            aspect-ratio: 1 / 1;
             gap: 4px;
-            padding: 8px;
             background: #f1f5f9;
+            border-radius: 12px;
+            padding: 8px;
+            flex-shrink: 0;
         }
         .placeholder-grid .cell {
             background: white;
@@ -152,25 +149,29 @@
             color: #94a3b8;
         }
 
-        /* Картинка (поверх болванки, показывается когда загружена) */
-        .right-column img {
+        /* Картинка – отдельный блок */
+        .image-wrapper {
+            flex: 1;
+            min-height: 0;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .image-wrapper img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            display: none; /* скрыта по умолчанию, показывается через JS */
-        }
-        .right-column img.loaded {
             display: block;
         }
-        .right-column .no-image {
+        .image-wrapper .no-image {
             color: #94a3b8;
             font-size: 1rem;
             text-align: center;
             padding: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
         }
 
         /* Карточка товара */
@@ -282,11 +283,13 @@
             .right-column {
                 flex: 0 0 auto;
                 width: 100%;
-                max-height: 200px;
-                min-height: 120px;
+                max-height: 400px;
             }
-            .right-column img {
+            .image-wrapper {
                 max-height: 200px;
+            }
+            .placeholder-grid {
+                max-width: 200px;
             }
             .logo-btn { width: 40px; height: 40px; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; flex: 1 1 100%; }
@@ -297,7 +300,6 @@
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
             .table-container td, .table-container th { padding: 4px 8px; }
-            .placeholder-grid { display: none; }
         }
     </style>
 </head>
@@ -314,16 +316,19 @@
         </div>
     </div>
 
-    <!-- Основной контент: карточка + картинка -->
+    <!-- Основной контент -->
     <div class="content-row">
+        <!-- Левая колонка: карточка товара + таблица -->
         <div class="left-column">
             <div id="scanResult">
                 <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
         </div>
-        <div class="right-column" id="imageContainer">
-            <!-- Таблица-болванка 3×3 -->
-            <div class="placeholder-grid" id="placeholderGrid">
+
+        <!-- Правая колонка: болванка (всегда видна) + картинка (отдельно) -->
+        <div class="right-column">
+            <!-- Болванка 3×3 -->
+            <div class="placeholder-grid">
                 <div class="cell">1</div>
                 <div class="cell">2</div>
                 <div class="cell">3</div>
@@ -334,9 +339,11 @@
                 <div class="cell">8</div>
                 <div class="cell">9</div>
             </div>
-            <!-- Картинка (скрыта по умолчанию) -->
-            <img id="productImage" src="" alt="Товар" style="display:none;">
-            <div class="no-image" id="noImageLabel">Нет изображения</div>
+            <!-- Блок для картинки -->
+            <div class="image-wrapper" id="imageContainer">
+                <div class="no-image" id="noImageLabel">Нет изображения</div>
+                <img id="productImage" src="" alt="Товар" style="display:none;">
+            </div>
         </div>
     </div>
 </div>
@@ -354,21 +361,18 @@
     function showError(message) {
         document.getElementById('scanResult').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('markingDisplay').textContent = '';
-        resetImageContainer();
+        resetImage();
     }
     function showLoading() {
         document.getElementById('scanResult').innerHTML = '<div class="loading">⏳ Поиск...</div>';
         document.getElementById('markingDisplay').textContent = '⏳';
-        resetImageContainer();
+        resetImage();
     }
-    function resetImageContainer() {
+    function resetImage() {
         const img = document.getElementById('productImage');
         const noImg = document.getElementById('noImageLabel');
-        const grid = document.getElementById('placeholderGrid');
         img.style.display = 'none';
-        img.classList.remove('loaded');
         noImg.style.display = 'flex';
-        grid.style.display = 'grid';
     }
 
     function renderResults(products) {
@@ -376,12 +380,11 @@
         const markingSpan = document.getElementById('markingDisplay');
         const img = document.getElementById('productImage');
         const noImg = document.getElementById('noImageLabel');
-        const grid = document.getElementById('placeholderGrid');
 
         if (!products || products.length === 0) {
             resultDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             markingSpan.textContent = '';
-            resetImageContainer();
+            resetImage();
             return;
         }
 
@@ -435,23 +438,18 @@
 
         resultDiv.innerHTML = infoHtml + tableHtml;
 
-        // Обработка картинки
+        // Картинка
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
             img.style.display = 'block';
-            img.classList.add('loaded');
-            grid.style.display = 'none';
             noImg.style.display = 'none';
-            // Обработка ошибки загрузки
             img.onerror = function() {
                 img.style.display = 'none';
-                img.classList.remove('loaded');
-                grid.style.display = 'none';
                 noImg.style.display = 'flex';
             };
         } else {
-            resetImageContainer();
+            resetImage();
         }
     }
 
@@ -520,7 +518,7 @@
             if (!this.value.trim()) {
                 document.getElementById('markingDisplay').textContent = '';
                 document.getElementById('scanResult').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
-                resetImageContainer();
+                resetImage();
             }
         });
     });
