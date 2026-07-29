@@ -7,20 +7,18 @@ from datetime import datetime, timedelta
 
 router = APIRouter(tags=["mark"])
 
-# Кэш для основной таблицы
 _cache = {
     "file_path": None,
     "file_mtime": None,
     "data": None,
     "index": None,
     "col_names": None,
-    "date_str": None,  # дата в формате YYMMDD (из отчёта)
+    "date_str": None,
 }
 
-# Кэш для файлов стикеров
-_sticker_caches = {}  # ключ: (marking, date_str) -> {"mtime": float, "index": dict}
+_sticker_caches = {}
 
-MARKING_KEYS = ["sia", "ktv", "reg", "kpd"]  # порядок важен
+MARKING_KEYS = ["sia", "ktv", "reg", "kpd"]
 EXCLUDED_COLUMNS = {12, 15, 19, 22, 26, 29, 33, 36}
 
 def normalize_barcode(barcode: str) -> str:
@@ -30,7 +28,6 @@ def normalize_barcode(barcode: str) -> str:
     return barcode
 
 def generate_ean13(code5: str) -> str:
-    """Генерирует EAN13 вида 2400000XXXXX + контрольная цифра"""
     if not code5 or len(code5) != 5 or not code5.isdigit():
         return "0"
     base = "2400000" + code5
@@ -82,7 +79,6 @@ def get_cached_data():
         _cache["file_mtime"] != mtime or 
         _cache["data"] is None):
         data, index, col_names = load_excel_data(file_path)
-        # Извлекаем дату из имени файла (YYMMDD) – используется только для информации
         match = re.search(r'(\d{6})_mp_rep\.xlsx', file_path)
         date_str = match.group(1) if match else None
         _cache.update({
@@ -96,17 +92,14 @@ def get_cached_data():
     return _cache["data"], _cache["index"], _cache["col_names"], _cache["date_str"]
 
 def get_sticker_index(marking: str, date_str: str):
-    """Загружает файл стикеров для маркировки и возвращает словарь id -> список стикеров."""
     cache_key = (marking, date_str)
     if cache_key in _sticker_caches:
-        # можно проверить mtime, но для простоты пока пропустим
         return _sticker_caches[cache_key]["index"]
 
     base_path = "/work/!МП_(FSk)/!FBS"
     file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_WB.xlsx")
     index = {}
     if os.path.exists(file_path):
-        # Читаем колонки C (стикер) и L (ID) без заголовков
         try:
             df = pd.read_excel(file_path, header=None, usecols=[2, 11], dtype=str).fillna('')
             for _, row in df.iterrows():
@@ -117,49 +110,44 @@ def get_sticker_index(marking: str, date_str: str):
                         index[id_val] = []
                     index[id_val].append(sticker)
         except Exception as e:
-            # Если файл повреждён или не читается, просто возвращаем пустой индекс
             print(f"Ошибка загрузки стикеров для {marking}: {e}")
             pass
     _sticker_caches[cache_key] = {"index": index}
     return index
 
-def get_marking_for_position(row, col_idx, col_names) -> str:
+def get_marking_for_position(col_idx, col_names):
+    """Возвращает (marking, is_id) где is_id=True для ID-колонок (offset 1 или 4)"""
     if col_idx == 0:
-        return "FSK"
-    marking_col_idx = None
+        return "FSK", None  # None означает, что это не ID и не штрих-код, а колонка A
     marking_col_name = None
     for c in range(col_idx, -1, -1):
         if col_names[c] in MARKING_KEYS:
-            marking_col_idx = c
             marking_col_name = col_names[c]
             break
     if marking_col_name is None:
-        return None
-    offset = col_idx - marking_col_idx
-    if offset in (1, 3):
-        platform = "WB"
-    elif offset in (4, 6):
-        platform = "OZ"
+        return None, None
+    offset = col_idx - col_names.index(marking_col_name)
+    if offset == 1:
+        return f"{marking_col_name}_WB", True
+    elif offset == 4:
+        return f"{marking_col_name}_OZ", True
+    elif offset == 3:
+        return f"{marking_col_name}_WB", False  # штрих-код
+    elif offset == 6:
+        return f"{marking_col_name}_OZ", False
     else:
-        return None
-    return f"{marking_col_name}_{platform}"
+        return None, None
 
 def get_row_data(row, col_names, code, sticker_indices, skip_stickers=False):
-    """
-    Собирает таблицу данных для товара.
-    sticker_indices: dict {marking: dict {id: [sticker1, sticker2, ...]}}
-    skip_stickers: если True, то для всех WB-строк стикеры не ищутся
-    """
     table = []
     
-    # FSK (МП)
     fsk_bar = generate_ean13(code)
     table.append({
         "marking": "FSK",
         "platform": "FSK",
         "id": code,
         "bar": fsk_bar,
-        "stickers": []  # для FSK стикеров нет
+        "stickers": []
     })
 
     wb_rows = []
@@ -175,7 +163,6 @@ def get_row_data(row, col_names, code, sticker_indices, skip_stickers=False):
         wb_bar = row.get(col_names[mk_idx + 3], '').strip() if mk_idx + 3 < len(col_names) else '0'
         wb_id_clean = wb_id if wb_id else '0'
         wb_bar_clean = wb_bar if wb_bar else '0'
-        # Получаем стикеры только если не skip_stickers
         stickers = []
         if not skip_stickers and wb_id_clean != '0' and mk in sticker_indices:
             stickers = sticker_indices[mk].get(wb_id_clean, [])
@@ -197,12 +184,11 @@ def get_row_data(row, col_names, code, sticker_indices, skip_stickers=False):
             "platform": "OZ",
             "id": oz_id_clean,
             "bar": oz_bar_clean,
-            "stickers": []  # для OZ стикеров пока нет (путь MP_WB.xlsx только для WB)
+            "stickers": []
         })
     
     table.extend(wb_rows)
     table.extend(oz_rows)
-    
     return table
 
 @router.get("/api/mark/{barcode:path}")
@@ -215,20 +201,19 @@ async def mark_barcode(barcode: str):
     if not normalized or len(normalized) < 5:
         raise HTTPException(status_code=400, detail="Некорректный штрих-код")
     
-    data, index, col_names, _ = get_cached_data()  # игнорируем date_str из кэша
+    data, index, col_names, _ = get_cached_data()
     if normalized not in index:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Всегда используем сегодняшнюю дату для стикеров
     today_str = datetime.now().strftime("%y%m%d")
-
-    # Загружаем стикеры для всех маркировок (только WB) с сегодняшней датой
     sticker_indices = {}
     for mk in MARKING_KEYS:
         sticker_indices[mk] = get_sticker_index(mk, today_str)
 
+    # Словарь для группировки товаров по ключу (код, вид, фандом, название)
     products = {}
 
+    # Первый проход: собираем все вхождения и их типы
     for row_idx, col_idx in index[normalized]:
         row = data[row_idx]
         code = row.get("Код", "")
@@ -243,21 +228,40 @@ async def mark_barcode(barcode: str):
                 "Вид": view,
                 "Фандом": fandom,
                 "Название": name,
-                "Маркировки": set(),
-                "skip_stickers": False   # по умолчанию не пропускаем стикеры
+                "Маркировки": set(),          # все маркировки (для отображения в строке)
+                "entries": [],                # список (marking, is_id) для каждого вхождения
+                "skip_stickers": False,       # true, если есть вхождение в A
             }
 
-        # Если текущее вхождение найдено по столбцу A (col_idx == 0)
-        if col_idx == 0:
-            products[key]["skip_stickers"] = True
-
-        marking = get_marking_for_position(row, col_idx, col_names)
+        marking, is_id = get_marking_for_position(col_idx, col_names)
         if marking:
             products[key]["Маркировки"].add(marking)
+            products[key]["entries"].append((marking, is_id))
+            if marking == "FSK":
+                products[key]["skip_stickers"] = True  # если есть FSK, стикеры не показываем
 
+    # Второй проход: определяем маркировки для стикеров (found_markings)
+    for key, data_item in products.items():
+        if data_item["skip_stickers"]:
+            data_item["sticker_markings"] = set()
+            continue
+
+        # Собираем все маркировки, где код является ID (is_id == True)
+        id_markings = {marking for marking, is_id in data_item["entries"] if is_id is True}
+        # Собираем маркировки, где код является штрих-кодом (is_id == False)
+        barcode_markings = {marking for marking, is_id in data_item["entries"] if is_id is False}
+
+        if id_markings:
+            # Если есть ID – используем только их
+            data_item["sticker_markings"] = id_markings
+        else:
+            # Если ID нет – используем штрих-коды (если есть)
+            data_item["sticker_markings"] = barcode_markings
+
+    # Формируем результат
     results = []
     for key, data_item in products.items():
-        # Собираем таблицу для первого вхождения (берем первую строку с таким кодом)
+        # Находим строку для таблицы (первое вхождение)
         row_for_table = None
         for row_idx, col_idx in index[normalized]:
             if data_item["Код"] == data[row_idx].get("Код", ""):
@@ -269,13 +273,13 @@ async def mark_barcode(barcode: str):
                 col_names,
                 data_item["Код"],
                 sticker_indices,
-                skip_stickers=data_item.get("skip_stickers", False)
+                skip_stickers=data_item["skip_stickers"]
             )
         else:
             table = []
-        
-        found_markings = list(data_item["Маркировки"]) if data_item["Маркировки"] else []
-        
+
+        found_markings = list(data_item["sticker_markings"])
+
         item = {
             "Код": data_item["Код"],
             "Вид": data_item["Вид"],
