@@ -103,7 +103,7 @@
             margin-bottom: 20px;
             background: white;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            align-items: flex-start;
+            align-items: stretch; /* картинка будет растягиваться по высоте */
         }
         .product-info {
             flex: 1;
@@ -111,6 +111,7 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            justify-content: center;
         }
         .product-info .name-line {
             font-size: 1.3rem;
@@ -134,10 +135,8 @@
         }
 
         .product-image {
-            flex-shrink: 0;
-            width: 100%;
-            max-width: 350px;
-            min-height: 300px;
+            flex: 0 0 300px; /* фиксированная ширина */
+            min-height: 100%; /* занимает всю высоту родителя */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -148,9 +147,9 @@
         }
         .product-image img {
             width: 100%;
-            height: auto;
+            height: 100%;
+            object-fit: contain; /* сохраняет пропорции, вписываясь в контейнер */
             max-height: 400px;
-            object-fit: contain;
         }
         .product-image .no-image {
             color: #94a3b8;
@@ -176,9 +175,13 @@
                 align-items: center;
             }
             .product-image {
-                max-width: 100%;
+                flex: 0 0 auto;
                 width: 100%;
                 min-height: 200px;
+                max-height: 300px;
+            }
+            .product-image img {
+                max-height: 300px;
             }
             .logo-btn { width: 42px; height: 42px; }
             #scanInput { font-size: 1rem; padding: 12px 16px; width: 100%; flex-shrink: 1; }
@@ -238,8 +241,8 @@
         const name = product['Название'] || '—';
         const marking = product['Маркировка'] || '';
 
-        // Обновляем маркировку справа от поля ввода
-        markingSpan.textContent = marking ? `Маркировка: ${marking}` : '';
+        // Обновляем маркировку справа от поля ввода – убираем слово "Маркировка:"
+        markingSpan.textContent = marking ? marking : '';
 
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
@@ -324,7 +327,7 @@
                 }
             }
         });
-        // Сброс маркировки при очистке поля (опционально)
+        // Сброс маркировки при очистке поля
         input.addEventListener('input', function() {
             if (!this.value.trim()) {
                 document.getElementById('markingDisplay').textContent = '';
