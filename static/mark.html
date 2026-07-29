@@ -460,11 +460,10 @@
         const info = document.querySelector('.product-info');
         const grid = document.getElementById('placeholderGrid');
         if (info && grid) {
-            const height = info.offsetHeight;
-            if (height > 0) {
-                grid.style.height = height + 'px';
-                grid.style.maxHeight = 'none';
-            }
+            const infoHeight = info.offsetHeight;
+            const gap = 12;
+            grid.style.height = (infoHeight + gap) + 'px';
+            grid.style.maxHeight = 'none';
         }
     }
 
