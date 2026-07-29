@@ -32,18 +32,20 @@
             overflow: hidden;
         }
 
+        /* Верхняя строка: поиск + болванка таблицы */
         .top-row {
             display: flex;
             gap: 24px;
             flex: 0 0 auto;
             align-items: stretch;
             min-height: 0;
+            margin-bottom: 12px;
         }
-        .left-column {
+        .left-search {
             flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 8px;
             min-width: 0;
         }
         .search-row {
@@ -111,46 +113,59 @@
             text-overflow: ellipsis;
         }
 
-        #scanResult {
-            flex: 1;
+        /* Болванка таблицы (3x3) справа от поиска */
+        .dummy-table {
+            flex: 0 0 200px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 8px;
+            background: #fafafa;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            gap: 4px;
+            justify-content: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            text-align: center;
         }
-
-        .right-column {
-            flex: 0 0 280px;
+        .dummy-table .row {
+            display: flex;
+            gap: 4px;
+        }
+        .dummy-table .cell {
+            flex: 1;
+            border: 1px dashed #cbd5e1;
+            border-radius: 4px;
+            padding: 6px 4px;
+            background: white;
+            min-height: 28px;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #f8fafc;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-            overflow: hidden;
-            min-height: 0;
-            max-height: 100%;
-        }
-        .right-column img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            display: block;
-            max-height: 100%;
-        }
-        .right-column .no-image {
             color: #94a3b8;
-            font-size: 1rem;
-            text-align: center;
-            padding: 20px;
+            font-size: 0.7rem;
         }
 
+        /* Карточка товара */
+        .product-card {
+            flex: 1;
+            display: flex;
+            gap: 24px;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 20px;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            overflow: hidden;
+            min-height: 0;
+        }
         .product-info {
+            flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            padding: 8px 0;
-            width: 100%;
-            flex-shrink: 0;
+            gap: 8px;
+            min-width: 0;
+            overflow: hidden;
         }
         .product-info .name-line {
             font-size: 1.4rem;
@@ -177,7 +192,7 @@
         .table-container {
             flex: 1;
             overflow-y: auto;
-            margin-top: 12px;
+            margin-top: 8px;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             padding: 8px;
@@ -207,30 +222,6 @@
             border-bottom: none;
         }
 
-        /* Цветные строки и цветной текст */
-        .row-wb {
-            background-color: #f3e8ff;
-            color: #6b21a5;
-        }
-        .row-wb td {
-            color: #6b21a5;
-        }
-        .row-oz {
-            background-color: #dbeafe;
-            color: #1e40af;
-        }
-        .row-oz td {
-            color: #1e40af;
-        }
-        .row-fsk {
-            background-color: #f1f5f9;
-            color: #334155;
-        }
-        .row-fsk td {
-            color: #334155;
-        }
-
-        /* Бейджи (маркировка) – цвет как у строки, но контрастный */
         .badge {
             display: inline-block;
             padding: 2px 12px;
@@ -241,14 +232,33 @@
             text-align: center;
             white-space: nowrap;
         }
-        .badge-wb {
-            background: #6b21a5;
+        .badge-wb { background: #6b21a5; }
+        .badge-oz { background: #1e40af; }
+        .badge-fsk { background: #64748b; }
+
+        .product-image {
+            flex: 0 0 280px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+            min-height: 0;
         }
-        .badge-oz {
-            background: #1e40af;
+        .product-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            max-height: 100%;
         }
-        .badge-fsk {
-            background: #64748b;
+        .product-image .no-image {
+            color: #94a3b8;
+            font-size: 1rem;
+            text-align: center;
+            padding: 20px;
         }
 
         .no-result { color: #ef4444; text-align: center; padding: 20px 0; font-size: 1.1rem; }
@@ -269,24 +279,15 @@
 
         @media (max-width: 700px) {
             .container { padding: 16px; }
-            .top-row {
-                flex-direction: column;
-                gap: 12px;
-            }
-            .right-column {
-                flex: 0 0 auto;
-                width: 100%;
-                max-height: 200px;
-                min-height: 120px;
-            }
-            .right-column img {
-                max-height: 200px;
-            }
+            .top-row { flex-wrap: wrap; }
+            .dummy-table { flex: 1 1 100%; min-height: 80px; }
+            .product-card { flex-direction: column; align-items: center; }
+            .product-image { flex: 0 0 auto; width: 100%; max-height: 200px; min-height: 120px; }
+            .product-image img { max-height: 200px; }
             .logo-btn { width: 40px; height: 40px; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; flex: 1 1 100%; }
             .input-marking-wrapper { flex-wrap: wrap; }
             #markingDisplay { font-size: 1rem; }
-            .left-column { gap: 8px; }
             .product-info .name-line { font-size: 1.2rem; }
             .product-info .details-line { font-size: 1rem; }
             .table-container { font-size: 0.8rem; }
@@ -296,8 +297,9 @@
 </head>
 <body>
 <div class="container">
+    <!-- Верхняя строка: поиск + болванка таблицы -->
     <div class="top-row">
-        <div class="left-column">
+        <div class="left-search">
             <div class="search-row">
                 <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
                     <img src="/static/ttr.png" alt="ЛК">
@@ -307,15 +309,36 @@
                     <span id="markingDisplay"></span>
                 </div>
             </div>
-            <div id="scanResult">
-                <p class="placeholder-text">Ожидание сканирования...</p>
+        </div>
+        <!-- Болванка таблицы (3x3) -->
+        <div class="dummy-table" id="dummyTable">
+            <div class="row">
+                <div class="cell">A1</div>
+                <div class="cell">B1</div>
+                <div class="cell">C1</div>
+            </div>
+            <div class="row">
+                <div class="cell">A2</div>
+                <div class="cell">B2</div>
+                <div class="cell">C2</div>
+            </div>
+            <div class="row">
+                <div class="cell">A3</div>
+                <div class="cell">B3</div>
+                <div class="cell">C3</div>
             </div>
         </div>
-        <div class="right-column" id="imageContainer">
-            <div class="no-image">Нет изображения</div>
-        </div>
+    </div>
+
+    <!-- Карточка товара -->
+    <div id="scanResult" class="product-card" style="display: none; flex: 1;">
+        <!-- содержимое будет вставлено скриптом -->
+    </div>
+    <div id="placeholderMessage" style="flex:1; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 1.1rem;">
+        Ожидание сканирования...
     </div>
 </div>
+
 <script>
     function escapeHtml(str) {
         if (!str) return '';
@@ -327,26 +350,35 @@
             return m;
         });
     }
+
     function showError(message) {
-        document.getElementById('scanResult').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
+        const resultDiv = document.getElementById('scanResult');
+        const placeholder = document.getElementById('placeholderMessage');
+        resultDiv.style.display = 'none';
+        placeholder.style.display = 'flex';
+        placeholder.innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('markingDisplay').textContent = '';
-        document.getElementById('imageContainer').innerHTML = '<div class="no-image">Нет изображения</div>';
     }
+
     function showLoading() {
-        document.getElementById('scanResult').innerHTML = '<div class="loading">⏳ Поиск...</div>';
+        const resultDiv = document.getElementById('scanResult');
+        const placeholder = document.getElementById('placeholderMessage');
+        resultDiv.style.display = 'none';
+        placeholder.style.display = 'flex';
+        placeholder.innerHTML = '<div class="loading">⏳ Поиск...</div>';
         document.getElementById('markingDisplay').textContent = '⏳';
-        document.getElementById('imageContainer').innerHTML = '<div class="no-image">Загрузка...</div>';
     }
 
     function renderResults(products) {
         const resultDiv = document.getElementById('scanResult');
+        const placeholder = document.getElementById('placeholderMessage');
         const markingSpan = document.getElementById('markingDisplay');
-        const imageContainer = document.getElementById('imageContainer');
 
         if (!products || products.length === 0) {
-            resultDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
+            resultDiv.style.display = 'none';
+            placeholder.style.display = 'flex';
+            placeholder.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             markingSpan.textContent = '';
-            imageContainer.innerHTML = '<div class="no-image">Нет изображения</div>';
             return;
         }
 
@@ -359,9 +391,9 @@
         const tableData = product['table'] || [];
 
         markingSpan.textContent = marking || '';
-
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
+        // Строим HTML карточки
         let infoHtml = `
             <div class="product-info">
                 <div class="name-line">
@@ -372,43 +404,38 @@
                     <span class="type-part">${escapeHtml(type)}</span>
                     ${fandom ? `, <span class="fandom-part">${escapeHtml(fandom)}</span>` : ''}
                 </div>
-            </div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead>
+                        <tbody>
         `;
-
-        // Таблица с цветными строками и цветным текстом
-        let tableHtml = '';
-        if (tableData.length) {
-            tableHtml = `<div class="table-container"><table>
-                <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
-            for (const row of tableData) {
-                let rowClass = '';
-                let badgeClass = '';
-                if (row.platform === 'WB') {
-                    rowClass = 'row-wb';
-                    badgeClass = 'badge-wb';
-                } else if (row.platform === 'OZ') {
-                    rowClass = 'row-oz';
-                    badgeClass = 'badge-oz';
-                } else {
-                    rowClass = 'row-fsk';
-                    badgeClass = 'badge-fsk';
-                }
-                tableHtml += `<tr class="${rowClass}">
+        for (const row of tableData) {
+            let badgeClass = '';
+            if (row.platform === 'WB') badgeClass = 'badge-wb';
+            else if (row.platform === 'OZ') badgeClass = 'badge-oz';
+            else badgeClass = 'badge-fsk';
+            infoHtml += `
+                <tr>
                     <td><span class="badge ${badgeClass}">${escapeHtml(row.marking)}</span></td>
                     <td>${escapeHtml(row.id)}</td>
                     <td>${escapeHtml(row.bar)}</td>
-                </tr>`;
-            }
-            tableHtml += `</tbody></table></div>`;
+                </tr>
+            `;
         }
+        infoHtml += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="product-image">
+                ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHtml(name)}" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'no-image\\'>Нет изображения</div>';">` : '<div class="no-image">Нет изображения</div>'}
+            </div>
+        `;
 
-        resultDiv.innerHTML = infoHtml + tableHtml;
-
-        if (imageUrl) {
-            imageContainer.innerHTML = `<img src="${imageUrl}" alt="${escapeHtml(name)}" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'no-image\\'>Нет изображения</div>';">`;
-        } else {
-            imageContainer.innerHTML = '<div class="no-image">Нет изображения</div>';
-        }
+        // Вставляем в карточку
+        resultDiv.innerHTML = infoHtml;
+        resultDiv.style.display = 'flex';
+        placeholder.style.display = 'none';
     }
 
     async function checkAuth() {
@@ -475,10 +502,16 @@
         input.addEventListener('input', function() {
             if (!this.value.trim()) {
                 document.getElementById('markingDisplay').textContent = '';
-                document.getElementById('scanResult').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
-                document.getElementById('imageContainer').innerHTML = '<div class="no-image">Нет изображения</div>';
+                document.getElementById('scanResult').style.display = 'none';
+                const placeholder = document.getElementById('placeholderMessage');
+                placeholder.style.display = 'flex';
+                placeholder.innerHTML = 'Ожидание сканирования...';
             }
         });
+        // Начальное состояние
+        document.getElementById('scanResult').style.display = 'none';
+        document.getElementById('placeholderMessage').style.display = 'flex';
+        document.getElementById('placeholderMessage').innerHTML = 'Ожидание сканирования...';
     });
 </script>
 </body>
