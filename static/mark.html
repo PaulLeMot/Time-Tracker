@@ -206,14 +206,15 @@
         .table-container tr:last-child td {
             border-bottom: none;
         }
-        .platform-wb {
+
+        .row-wb {
             background-color: #f3e8ff; /* фиолетовый */
         }
-        .platform-oz {
+        .row-oz {
             background-color: #dbeafe; /* синий */
         }
-        .platform-fsk {
-            background-color: #f1f5f9;
+        .row-fsk {
+            background-color: #f1f5f9; /* серый */
         }
 
         .no-result { color: #ef4444; text-align: center; padding: 20px 0; font-size: 1.1rem; }
@@ -340,21 +341,21 @@
             </div>
         `;
 
-        // Таблица – одна колонка "Маркировка", ID, Штрих-код
+        // Таблица – три столбца: Маркировка, ID, Штрих-код
         let tableHtml = '';
         if (tableData.length) {
             tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
             for (const row of tableData) {
-                let platformClass = '';
+                let rowClass = '';
                 if (row.platform === 'WB') {
-                    platformClass = 'platform-wb';
+                    rowClass = 'row-wb';
                 } else if (row.platform === 'OZ') {
-                    platformClass = 'platform-oz';
+                    rowClass = 'row-oz';
                 } else {
-                    platformClass = 'platform-fsk';
+                    rowClass = 'row-fsk';
                 }
-                tableHtml += `<tr class="${platformClass}">
+                tableHtml += `<tr class="${rowClass}">
                     <td><strong>${escapeHtml(row.marking)}</strong></td>
                     <td>${escapeHtml(row.id)}</td>
                     <td>${escapeHtml(row.bar)}</td>
