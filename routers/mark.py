@@ -145,7 +145,7 @@ def get_oz_sticker_index(marking: str, date_str: str):
 def get_marking_for_position(col_idx, col_names):
     """Возвращает (marking, is_id) где is_id=True для ID-колонок (offset 1 или 4)"""
     if col_idx == 0:
-        return "FSK", None  # None означает, что это не ID и не штрих-код, а колонка A
+        return "FSK", None
     marking_col_name = None
     for c in range(col_idx, -1, -1):
         if col_names[c] in MARKING_KEYS:
@@ -159,7 +159,7 @@ def get_marking_for_position(col_idx, col_names):
     elif offset == 4:
         return f"{marking_col_name}_OZ", True
     elif offset == 3:
-        return f"{marking_col_name}_WB", False  # штрих-код
+        return f"{marking_col_name}_WB", False
     elif offset == 6:
         return f"{marking_col_name}_OZ", False
     else:
@@ -213,16 +213,29 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         oz_bar = row.get(col_names[mk_idx + 6], '').strip() if mk_idx + 6 < len(col_names) else '0'
         oz_id_clean = oz_id if oz_id else '0'
         oz_bar_clean = oz_bar if oz_bar else '0'
-        oz_stickers = []
+        oz_pairs = []  # список объектов {sticker: ..., articul: ...}
         if not skip_stickers and mk in oz_sticker_indices:
-            # Для OZ используем артикул (код товара) для поиска в 14-й колонке
-            oz_stickers = oz_sticker_indices[mk].get(code, [])
+            # Получаем все стикеры для данного артикула (code)
+            stickers_for_art = oz_sticker_indices[mk].get(code, [])
+            if stickers_for_art:
+                # Строим обратный индекс: стикер -> [артикулы]
+                reverse_index = {}
+                for art, st_list in oz_sticker_indices[mk].items():
+                    for st in st_list:
+                        if st not in reverse_index:
+                            reverse_index[st] = []
+                        reverse_index[st].append(art)
+                # Для каждого стикера из stickers_for_art собираем все артикулы
+                for st in stickers_for_art:
+                    if st in reverse_index:
+                        for art in reverse_index[st]:
+                            oz_pairs.append({"sticker": st, "articul": art})
         oz_rows.append({
             "marking": f"{mk}_OZ",
             "platform": "OZ",
             "id": oz_id_clean,
             "bar": oz_bar_clean,
-            "stickers": oz_stickers
+            "stickers": oz_pairs  # массив объектов {sticker, articul}
         })
     
     table.extend(wb_rows)

@@ -672,21 +672,21 @@
         for (const prod of products) {
             const t = prod.table || [];
             const foundMarkings = prod.found_markings || [];
-            const articul = prod['Код'] || ''; // артикул для OZ
             for (const row of t) {
                 if (row.stickers && row.stickers.length > 0 && foundMarkings.includes(row.marking)) {
                     const platform = row.platform || '';
                     if (platform === 'OZ') {
                         hasOZ = true;
-                        // Для каждого стикера добавляем запись с артикулом
-                        for (const sticker of row.stickers) {
+                        // row.stickers — массив объектов {sticker, articul}
+                        for (const item of row.stickers) {
                             stickerRows.push({
-                                sticker: sticker,
+                                sticker: item.sticker,
                                 platform: 'OZ',
-                                articul: articul
+                                articul: item.articul
                             });
                         }
                     } else if (platform === 'WB') {
+                        // row.stickers — массив строк
                         for (const sticker of row.stickers) {
                             stickerRows.push({
                                 sticker: sticker,
@@ -729,7 +729,6 @@
                     let formattedSticker = '';
                     const dashIndex = sticker.indexOf('-');
                     if (dashIndex !== -1 && dashIndex >= 4) {
-                        // Берём 4 символа перед дефисом
                         const highlightPart = sticker.substring(dashIndex - 4, dashIndex);
                         const restPart = sticker.substring(dashIndex);
                         formattedSticker = `<span class="sticker-highlight">${escapeHtml(highlightPart)}</span><span class="sticker-normal">${escapeHtml(restPart)}</span>`;
