@@ -6,7 +6,6 @@
     <title>Маркировка</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
     <style>
-        /* (стили без изменений, как в последней версии) */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             height: 100%;
@@ -325,6 +324,10 @@
     </div>
 </div>
 <script>
+    // --- История запросов ---
+    let searchHistory = [];
+    let historyIndex = -1; // -1 = текущее поле без истории
+
     function escapeHtml(str) {
         if (!str) return '';
         return String(str).replace(/[&<>"]/g, function(m) {
@@ -384,7 +387,6 @@
 
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
-        // Карточка товара
         infoDiv.innerHTML = `
             <div class="product-info">
                 <div class="name-line">
@@ -398,17 +400,15 @@
             </div>
         `;
 
-        // --- Строим скролл-блок ---
         let scrollHtml = '';
 
-        // 1. Таблица стикеров с фильтрацией по маркировкам
+        // Таблица стикеров
         let allStickers = [];
         for (const prod of products) {
             const t = prod.table || [];
             const foundMarkings = prod.found_markings || [];
             for (const row of t) {
                 if (row.stickers && row.stickers.length > 0) {
-                    // Добавляем только если маркировка строки входит в список найденных
                     if (foundMarkings.includes(row.marking)) {
                         allStickers = allStickers.concat(row.stickers);
                     }
@@ -438,7 +438,7 @@
         stickerHtml += `</div>`;
         scrollHtml += stickerHtml;
 
-        // 2. Таблица маркировок (ID, штрих-код)
+        // Таблица маркировок
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
@@ -466,7 +466,6 @@
         scrollDiv.innerHTML = scrollHtml;
         scrollDiv.scrollTop = 0;
 
-        // Изображение
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
@@ -500,13 +499,28 @@
         return /^[A-Za-zА-Яа-я0-9_-]+$/.test(code);
     }
 
+    // Добавляет запрос в историю, если он не пустой и не дублирует последний
+    function addToHistory(code) {
+        code = code.trim();
+        if (!code) return;
+        if (searchHistory.length === 0 || searchHistory[searchHistory.length - 1] !== code) {
+            searchHistory.push(code);
+        }
+        historyIndex = searchHistory.length - 1;
+    }
+
     async function performScan(code) {
         if (!code || code.trim() === '') return;
         code = code.trim();
+        // Сразу добавляем в историю (до валидации, чтобы сохранить даже ошибочные)
+        addToHistory(code);
+
         if (!isValidBarcode(code)) {
             showError('Некорректный штрих-код. Допустимы только буквы, цифры, дефис и подчёркивание (минимум 5 символов).');
+            // Поле оставляем с этим кодом, чтобы пользователь мог исправить
             return;
         }
+
         showLoading();
         try {
             const resp = await fetch(`/api/mark/${encodeURIComponent(code)}`, { credentials: 'include' });
@@ -521,6 +535,8 @@
             }
             const data = await resp.json();
             renderResults(data);
+            // Успешный запрос – очищаем поле, но история уже сохранена
+            document.getElementById('scanInput').value = '';
         } catch (err) {
             showError('Ошибка соединения с сервером');
             console.error(err);
@@ -531,23 +547,60 @@
         const ok = await checkAuth();
         if (!ok) return;
         const input = document.getElementById('scanInput');
+
         input.addEventListener('focus', function() { this.select(); });
+
         input.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 const code = this.value.trim();
                 if (code) {
                     performScan(code);
+                }
+                return;
+            }
+
+            // Обработка стрелок для истории
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (searchHistory.length === 0) return;
+                if (historyIndex === -1) {
+                    historyIndex = searchHistory.length - 1;
+                } else if (historyIndex > 0) {
+                    historyIndex--;
+                } else {
+                    return; // уже на первом
+                }
+                this.value = searchHistory[historyIndex];
+                this.setSelectionRange(this.value.length, this.value.length);
+                return;
+            }
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (searchHistory.length === 0 || historyIndex === -1) return;
+                if (historyIndex < searchHistory.length - 1) {
+                    historyIndex++;
+                    this.value = searchHistory[historyIndex];
+                    this.setSelectionRange(this.value.length, this.value.length);
+                } else {
+                    // Дошли до конца – очищаем поле, сбрасываем индекс
+                    historyIndex = -1;
                     this.value = '';
                 }
+                return;
             }
         });
+
+        // При ручном вводе можно сбрасывать индекс? Не обязательно.
+        // При очистке поля сбрасываем индекс, чтобы стрелки работали снова от последнего.
         input.addEventListener('input', function() {
             if (!this.value.trim()) {
-                document.getElementById('markingDisplay').textContent = '';
-                document.getElementById('productInfoContainer').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
-                document.getElementById('tablesScroll').innerHTML = '';
-                resetImage();
+                // Если пользователь стёр всё вручную, возвращаем индекс в конец,
+                // чтобы при нажатии вверх брался последний запрос из истории.
+                if (searchHistory.length > 0) {
+                    historyIndex = -1; // теперь при ArrowUp возьмётся последний
+                }
             }
         });
     });
