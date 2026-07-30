@@ -6,7 +6,6 @@
     <title>Маркировка</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
     <style>
-        /* (стили без изменений, как в вашем последнем файле) */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             height: 100%;
@@ -33,6 +32,7 @@
             flex-direction: column;
             overflow: hidden;
         }
+
         .main-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -40,6 +40,7 @@
             flex: 1;
             min-height: 0;
         }
+
         .left-col {
             display: flex;
             flex-direction: column;
@@ -49,6 +50,7 @@
             padding-top: 12px;
             overflow: hidden;
         }
+
         .right-col {
             display: flex;
             flex-direction: column;
@@ -57,6 +59,7 @@
             min-height: 0;
             overflow: hidden;
         }
+
         .search-row {
             display: flex;
             align-items: center;
@@ -87,6 +90,7 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
         }
+
         .refresh-btn {
             flex-shrink: 0;
             width: 44px;
@@ -112,6 +116,7 @@
             cursor: not-allowed;
             transform: none;
         }
+
         .input-marking-wrapper {
             display: flex;
             align-items: center;
@@ -144,6 +149,7 @@
         #scanInput::placeholder {
             color: #94a3b8;
         }
+
         .dropdown-toggle {
             position: absolute;
             right: 10px;
@@ -169,6 +175,7 @@
         .dropdown-toggle.open {
             transform: translateY(-50%) rotate(180deg);
         }
+
         #markingDisplay {
             flex-shrink: 0;
             font-weight: bold;
@@ -179,6 +186,8 @@
             text-overflow: ellipsis;
             max-width: 200px;
         }
+
+        /* Выпадающий список истории */
         .dropdown-content {
             display: none;
             position: absolute;
@@ -220,6 +229,7 @@
             text-align: center;
             font-size: 0.9rem;
         }
+
         #productInfoContainer {
             flex-shrink: 0;
         }
@@ -258,6 +268,7 @@
             font-weight: 500;
             color: #475569;
         }
+
         .tables-scroll {
             flex: 1;
             min-height: 0;
@@ -267,6 +278,7 @@
             gap: 12px;
             padding-right: 4px;
         }
+
         .sticker-section {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -286,6 +298,7 @@
         .sticker-section td {
             padding: 6px 12px;
             border-bottom: 1px solid #e2e8f0;
+            vertical-align: middle;
         }
         .sticker-section tr:last-child td {
             border-bottom: none;
@@ -308,11 +321,30 @@
         .sticker-highlight {
             font-weight: 700;
             font-size: 1.5rem;
+            padding: 0 4px;  /* ← пробелы до и после жирных цифр */
         }
         .sticker-normal {
             font-weight: 400;
             font-size: 1rem;
         }
+
+        .articul-with-image {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .articul-image {
+            width: 30px;
+            height: 30px;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+        .articul-image-error {
+            display: none;
+        }
+
         .table-container {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -340,6 +372,7 @@
         .table-container tr:last-child td {
             border-bottom: none;
         }
+
         .badge {
             display: inline-block;
             padding: 2px 12px;
@@ -353,6 +386,7 @@
         .badge-wb { background: #6b21a5; }
         .badge-oz { background: #1e40af; }
         .badge-fsk { background: #64748b; }
+
         .image-wrapper {
             flex: 1;
             min-height: 0;
@@ -377,6 +411,7 @@
             text-align: center;
             padding: 20px;
         }
+
         .no-result { color: #ef4444; text-align: center; padding: 20px 0; font-size: 1.1rem; }
         .loading { text-align: center; color: #64748b; padding: 20px 0; }
         .error {
@@ -392,6 +427,7 @@
             padding: 20px 0;
             width: 100%;
         }
+
         .toast {
             position: fixed;
             bottom: 20px;
@@ -408,6 +444,7 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         .toast.show { opacity: 1; }
+
         @media (max-width: 700px) {
             .container { padding: 16px; }
             .main-grid {
@@ -427,8 +464,9 @@
             .table-container td, .table-container th { padding: 4px 8px; }
             .left-col { padding-top: 8px; }
             .sticker-last { font-size: 1.2rem; }
-            .sticker-highlight { font-size: 1.2rem; }
+            .sticker-highlight { font-size: 1.2rem; padding: 0 2px; }
             .sticker-articul { font-size: 0.9rem; }
+            .articul-image { width: 24px; height: 24px; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
         }
     </style>
@@ -466,7 +504,7 @@
 </div>
 <div id="toast" class="toast"></div>
 <script>
-    // --- История запросов с localStorage ---
+    // --- История запросов ---
     let searchHistory = [];
     let historyIndex = -1;
     const MAX_HISTORY = 20;
@@ -568,6 +606,8 @@
         }
     });
 
+    // --- Остальные функции ---
+
     function escapeHtml(str) {
         if (!str) return '';
         return String(str).replace(/[&<>"]/g, function(m) {
@@ -608,7 +648,7 @@
         noImg.style.display = 'flex';
     }
 
-    // ** ИСПРАВЛЕННАЯ ФУНКЦИЯ – ВЫВОДИТ ВЕСЬ СТИКЕР **
+    // Форматирование стикера: выделяем 4 цифры до первого дефиса, с отступами через CSS
     function formatSticker(sticker) {
         const dashIndex = sticker.indexOf('-');
         if (dashIndex !== -1 && dashIndex >= 4) {
@@ -619,6 +659,16 @@
         } else {
             return `<span class="sticker-normal">${escapeHtml(sticker)}</span>`;
         }
+    }
+
+    // Генерация маленькой картинки для артикула
+    function articulWithImage(articul) {
+        if (!articul) return '';
+        const imgSrc = `/static/img/${encodeURIComponent(articul)}.jpg`;
+        return `<div class="articul-with-image">
+            <span class="sticker-articul">${escapeHtml(articul)}</span>
+            <img class="articul-image" src="${imgSrc}" alt="${escapeHtml(articul)}" onerror="this.classList.add('articul-image-error')">
+        </div>`;
     }
 
     function renderResults(products) {
@@ -661,6 +711,7 @@
             </div>
         `;
 
+        // --- Сбор данных ---
         let allPairs = [];
         let wbStickers = [];
         let hasOZ = false;
@@ -693,6 +744,7 @@
         if (hasOZ && allPairs.length > 0) {
             const mainArticul = code;
 
+            // Подсчёт уникальных артикулов на стикер
             const stickerArticulCount = {};
             const stickerToArticuls = {};
             for (const pair of allPairs) {
@@ -705,6 +757,7 @@
                 stickerArticulCount[st] = stickerToArticuls[st].size;
             }
 
+            // Определяем основной стикер
             let mainSticker = null;
             let maxCount = 0;
             const candidates = allPairs.filter(p => p.articul === mainArticul);
@@ -715,7 +768,6 @@
                     mainSticker = pair.sticker;
                 }
             }
-
             if (!mainSticker && allPairs.length > 0) {
                 mainSticker = allPairs[0].sticker;
             }
@@ -725,39 +777,39 @@
             const byArticul = allPairs.filter(p => p.articul === mainArticul && p.sticker !== mainSticker);
             const totalCount = allPairs.length;
 
+            // --- Секция "Всего найдено" (основная пара) ---
             let sectionHtml = `<div class="sticker-section">`;
             sectionHtml += `<div class="sticker-count">Всего найдено: ${totalCount}</div>`;
-            const formattedSticker = formatSticker(mainPair.sticker);
             sectionHtml += `<table><tbody><tr>
-                <td>${formattedSticker}</td>
-                <td class="sticker-articul">${escapeHtml(mainPair.articul)}</td>
+                <td>${formatSticker(mainPair.sticker)}</td>
+                <td>${articulWithImage(mainPair.articul)}</td>
             </tr></tbody></table></div>`;
             scrollHtml += sectionHtml;
 
+            // --- Секция "Также найдено по отправке" ---
             if (byShipment.length > 0) {
                 let shipmentHtml = `<div class="sticker-section">`;
                 shipmentHtml += `<div class="sticker-count">Также найдено по отправке: ${byShipment.length}</div>`;
                 shipmentHtml += `<table><tbody>`;
                 for (const pair of byShipment) {
-                    const formatted = formatSticker(pair.sticker);
                     shipmentHtml += `<tr>
-                        <td>${formatted}</td>
-                        <td class="sticker-articul">${escapeHtml(pair.articul)}</td>
+                        <td>${formatSticker(pair.sticker)}</td>
+                        <td>${articulWithImage(pair.articul)}</td>
                     </tr>`;
                 }
                 shipmentHtml += `</tbody></table></div>`;
                 scrollHtml += shipmentHtml;
             }
 
+            // --- Секция "Также найдено по артикулу" ---
             if (byArticul.length > 0) {
                 let articulHtml = `<div class="sticker-section">`;
                 articulHtml += `<div class="sticker-count">Также найдено по артикулу: ${byArticul.length}</div>`;
                 articulHtml += `<table><tbody>`;
                 for (const pair of byArticul) {
-                    const formatted = formatSticker(pair.sticker);
                     articulHtml += `<tr>
-                        <td>${formatted}</td>
-                        <td class="sticker-articul">${escapeHtml(pair.articul)}</td>
+                        <td>${formatSticker(pair.sticker)}</td>
+                        <td>${articulWithImage(pair.articul)}</td>
                     </tr>`;
                 }
                 articulHtml += `</tbody></table></div>`;
@@ -765,6 +817,7 @@
             }
 
         } else if (wbStickers.length > 0) {
+            // WB-стикеры (без артикулов)
             let sectionHtml = `<div class="sticker-section">`;
             sectionHtml += `<div class="sticker-count">Найдено товаров: ${wbStickers.length}</div>`;
             sectionHtml += `<table><tbody>`;
@@ -782,6 +835,7 @@
             scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
+        // --- Таблица маркировок (ID, штрих-код) ---
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
@@ -809,6 +863,7 @@
         scrollDiv.innerHTML = scrollHtml;
         scrollDiv.scrollTop = 0;
 
+        // --- Изображение ---
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
@@ -872,6 +927,7 @@
         }
     }
 
+    // --- Кнопка обновления ---
     async function refreshData() {
         const btn = document.getElementById('refreshDataBtn');
         btn.disabled = true;
@@ -906,6 +962,7 @@
         }
     }
 
+    // --- Инициализация ---
     document.addEventListener('DOMContentLoaded', async function() {
         const ok = await checkAuth();
         if (!ok) return;
