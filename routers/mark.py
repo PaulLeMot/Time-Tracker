@@ -92,7 +92,7 @@ def get_cached_data():
     return _cache["data"], _cache["index"], _cache["col_names"], _cache["date_str"]
 
 def get_sticker_index(marking: str, date_str: str):
-    """Загружает WB-стикеры (колонки C и L)"""
+    """Загружает WB-стикеры (Excel, колонки C и L)"""
     cache_key = (marking, date_str, "wb")
     if cache_key in _sticker_caches:
         return _sticker_caches[cache_key]["index"]
@@ -117,22 +117,30 @@ def get_sticker_index(marking: str, date_str: str):
     return index
 
 def get_oz_sticker_index(marking: str, date_str: str):
-    """Загружает OZ-стикеры (колонки B и P)"""
+    """Загружает OZ-стикеры (CSV, колонки B и P)"""
     cache_key = (marking, date_str, "oz")
     if cache_key in _sticker_caches:
         return _sticker_caches[cache_key]["index"]
 
     base_path = "/work/!МП_(FSk)/!FBS"
-    file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_OZ.xlsx")
+    file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_OZ.csv")  # <-- CSV!
     index = {}
     if os.path.exists(file_path):
         try:
-            # Читаем колонки B и P по именам (без заголовков, поэтому имена 'B' и 'P')
-            df = pd.read_excel(file_path, header=None, usecols="B,P", dtype=str).fillna('')
+            # Пробуем разные разделители: сначала точку с запятой (часто в русских CSV)
+            for sep in [';', ',']:
+                try:
+                    df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=sep, encoding='utf-8').fillna('')
+                    break
+                except Exception:
+                    continue
+            else:
+                # Если не получилось, пробуем с автоопределением
+                df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
             print(f"[OZ] Загружен {marking}, строк: {len(df)}")
             for _, row in df.iterrows():
-                sticker = str(row['B']).strip()
-                art = str(row['P']).strip()
+                sticker = str(row[1]).strip()   # колонка B (индекс 1)
+                art = str(row[15]).strip()      # колонка P (индекс 15)
                 if art and art != 'nan' and sticker and sticker != 'nan':
                     if art not in index:
                         index[art] = []
