@@ -92,7 +92,8 @@ def get_cached_data():
     return _cache["data"], _cache["index"], _cache["col_names"], _cache["date_str"]
 
 def get_sticker_index(marking: str, date_str: str):
-    cache_key = (marking, date_str)
+    """Загружает WB-стикеры (колонки C и L)"""
+    cache_key = (marking, date_str, "wb")
     if cache_key in _sticker_caches:
         return _sticker_caches[cache_key]["index"]
 
@@ -110,7 +111,33 @@ def get_sticker_index(marking: str, date_str: str):
                         index[id_val] = []
                     index[id_val].append(sticker)
         except Exception as e:
-            print(f"Ошибка загрузки стикеров для {marking}: {e}")
+            print(f"Ошибка загрузки WB-стикеров для {marking}: {e}")
+            pass
+    _sticker_caches[cache_key] = {"index": index}
+    return index
+
+def get_oz_sticker_index(marking: str, date_str: str):
+    """Загружает OZ-стикеры (колонки B и P)"""
+    cache_key = (marking, date_str, "oz")
+    if cache_key in _sticker_caches:
+        return _sticker_caches[cache_key]["index"]
+
+    base_path = "/work/!МП_(FSk)/!FBS"
+    file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_OZ.xlsx")
+    index = {}
+    if os.path.exists(file_path):
+        try:
+            # B = 1, P = 15
+            df = pd.read_excel(file_path, header=None, usecols=[1, 15], dtype=str).fillna('')
+            for _, row in df.iterrows():
+                sticker = str(row[1]).strip()
+                art = str(row[15]).strip()
+                if art and art != 'nan' and sticker and sticker != 'nan':
+                    if art not in index:
+                        index[art] = []
+                    index[art].append(sticker)
+        except Exception as e:
+            print(f"Ошибка загрузки OZ-стикеров для {marking}: {e}")
             pass
     _sticker_caches[cache_key] = {"index": index}
     return index
@@ -138,7 +165,13 @@ def get_marking_for_position(col_idx, col_names):
     else:
         return None, None
 
-def get_row_data(row, col_names, code, sticker_indices, skip_stickers=False):
+def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False):
+    """
+    Собирает таблицу данных для товара.
+    sticker_indices: dict {marking: {id: [стикеры]}} – для WB
+    oz_sticker_indices: dict {marking: {артикул: [стикеры]}} – для OZ
+    skip_stickers: если True – стикеры не ищем (только для FSK)
+    """
     table = []
     
     fsk_bar = generate_ean13(code)
@@ -158,33 +191,38 @@ def get_row_data(row, col_names, code, sticker_indices, skip_stickers=False):
             mk_idx = col_names.index(mk)
         except ValueError:
             continue
-        # WB
+
+        # --- WB ---
         wb_id = row.get(col_names[mk_idx + 1], '').strip() if mk_idx + 1 < len(col_names) else '0'
         wb_bar = row.get(col_names[mk_idx + 3], '').strip() if mk_idx + 3 < len(col_names) else '0'
         wb_id_clean = wb_id if wb_id else '0'
         wb_bar_clean = wb_bar if wb_bar else '0'
-        stickers = []
+        wb_stickers = []
         if not skip_stickers and wb_id_clean != '0' and mk in sticker_indices:
-            stickers = sticker_indices[mk].get(wb_id_clean, [])
+            wb_stickers = sticker_indices[mk].get(wb_id_clean, [])
         wb_rows.append({
             "marking": f"{mk}_WB",
             "platform": "WB",
             "id": wb_id_clean,
             "bar": wb_bar_clean,
-            "stickers": stickers
+            "stickers": wb_stickers
         })
         
-        # OZ
+        # --- OZ ---
         oz_id = row.get(col_names[mk_idx + 4], '').strip() if mk_idx + 4 < len(col_names) else '0'
         oz_bar = row.get(col_names[mk_idx + 6], '').strip() if mk_idx + 6 < len(col_names) else '0'
         oz_id_clean = oz_id if oz_id else '0'
         oz_bar_clean = oz_bar if oz_bar else '0'
+        oz_stickers = []
+        if not skip_stickers and mk in oz_sticker_indices:
+            # Для OZ используем артикул (код товара) для поиска в 14-й колонке
+            oz_stickers = oz_sticker_indices[mk].get(code, [])
         oz_rows.append({
             "marking": f"{mk}_OZ",
             "platform": "OZ",
             "id": oz_id_clean,
             "bar": oz_bar_clean,
-            "stickers": []
+            "stickers": oz_stickers
         })
     
     table.extend(wb_rows)
@@ -206,14 +244,20 @@ async def mark_barcode(barcode: str):
         raise HTTPException(status_code=404, detail="Товар не найден")
 
     today_str = datetime.now().strftime("%y%m%d")
+
+    # Загружаем WB-стикеры (для ID-колонок)
     sticker_indices = {}
     for mk in MARKING_KEYS:
         sticker_indices[mk] = get_sticker_index(mk, today_str)
 
-    # Словарь для группировки товаров по ключу (код, вид, фандом, название)
+    # Загружаем OZ-стикеры (для артикулов)
+    oz_sticker_indices = {}
+    for mk in MARKING_KEYS:
+        oz_sticker_indices[mk] = get_oz_sticker_index(mk, today_str)
+
+    # Группируем товары
     products = {}
 
-    # Первый проход: собираем все вхождения и их типы
     for row_idx, col_idx in index[normalized]:
         row = data[row_idx]
         code = row.get("Код", "")
@@ -228,9 +272,9 @@ async def mark_barcode(barcode: str):
                 "Вид": view,
                 "Фандом": fandom,
                 "Название": name,
-                "Маркировки": set(),          # все маркировки (для отображения в строке)
-                "entries": [],                # список (marking, is_id) для каждого вхождения
-                "skip_stickers": False,       # true, если есть вхождение в A
+                "Маркировки": set(),
+                "entries": [],
+                "skip_stickers": False,
             }
 
         marking, is_id = get_marking_for_position(col_idx, col_names)
@@ -238,30 +282,25 @@ async def mark_barcode(barcode: str):
             products[key]["Маркировки"].add(marking)
             products[key]["entries"].append((marking, is_id))
             if marking == "FSK":
-                products[key]["skip_stickers"] = True  # если есть FSK, стикеры не показываем
+                products[key]["skip_stickers"] = True
 
-    # Второй проход: определяем маркировки для стикеров (found_markings)
+    # Определяем маркировки для стикеров (found_markings)
     for key, data_item in products.items():
         if data_item["skip_stickers"]:
             data_item["sticker_markings"] = set()
             continue
 
-        # Собираем все маркировки, где код является ID (is_id == True)
         id_markings = {marking for marking, is_id in data_item["entries"] if is_id is True}
-        # Собираем маркировки, где код является штрих-кодом (is_id == False)
         barcode_markings = {marking for marking, is_id in data_item["entries"] if is_id is False}
 
         if id_markings:
-            # Если есть ID – используем только их
             data_item["sticker_markings"] = id_markings
         else:
-            # Если ID нет – используем штрих-коды (если есть)
             data_item["sticker_markings"] = barcode_markings
 
     # Формируем результат
     results = []
     for key, data_item in products.items():
-        # Находим строку для таблицы (первое вхождение)
         row_for_table = None
         for row_idx, col_idx in index[normalized]:
             if data_item["Код"] == data[row_idx].get("Код", ""):
@@ -273,6 +312,7 @@ async def mark_barcode(barcode: str):
                 col_names,
                 data_item["Код"],
                 sticker_indices,
+                oz_sticker_indices,
                 skip_stickers=data_item["skip_stickers"]
             )
         else:
@@ -297,15 +337,10 @@ async def mark_barcode(barcode: str):
     return results
 
 # -------------------------------------------------------------------
-# НОВЫЙ ЭНДПОИНТ ДЛЯ ОБНОВЛЕНИЯ КЭША (ОЧИСТКА)
+# ЭНДПОИНТ ДЛЯ ОБНОВЛЕНИЯ КЭША
 # -------------------------------------------------------------------
 @router.post("/api/mark/refresh")
 async def refresh_cache():
-    """
-    Очищает кэш основных данных и стикеров.
-    При следующем запросе данные будут перечитаны с диска.
-    """
-    # Очищаем основной кэш (данные из mp_rep.xlsx)
     _cache.update({
         "file_path": None,
         "file_mtime": None,
@@ -314,7 +349,6 @@ async def refresh_cache():
         "col_names": None,
         "date_str": None,
     })
-    # Очищаем кэш стикеров (файлы *_WB.xlsx)
     _sticker_caches.clear()
     return {"message": "Кэш очищен. Данные будут перезагружены при следующем запросе."}
 

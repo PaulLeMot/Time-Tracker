@@ -309,6 +309,18 @@
             font-weight: 700;
             font-size: 1.5rem;
         }
+        .sticker-articul {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        .sticker-highlight {
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+        .sticker-normal {
+            font-weight: 400;
+            font-size: 1rem;
+        }
 
         .table-container {
             border: 1px solid #e2e8f0;
@@ -429,6 +441,8 @@
             .table-container td, .table-container th { padding: 4px 8px; }
             .left-col { padding-top: 8px; }
             .sticker-last { font-size: 1.2rem; }
+            .sticker-highlight { font-size: 1.2rem; }
+            .sticker-articul { font-size: 0.9rem; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
         }
     </style>
@@ -651,45 +665,91 @@
             </div>
         `;
 
-        let scrollHtml = '';
+        // --- Сбор стикеров с учётом platform ---
+        let stickerRows = []; // каждая запись: { sticker, platform, articul? }
+        let hasOZ = false;
 
-        // Таблица стикеров
-        let allStickers = [];
         for (const prod of products) {
             const t = prod.table || [];
             const foundMarkings = prod.found_markings || [];
+            const articul = prod['Код'] || ''; // артикул для OZ
             for (const row of t) {
-                if (row.stickers && row.stickers.length > 0) {
-                    if (foundMarkings.includes(row.marking)) {
-                        allStickers = allStickers.concat(row.stickers);
+                if (row.stickers && row.stickers.length > 0 && foundMarkings.includes(row.marking)) {
+                    const platform = row.platform || '';
+                    if (platform === 'OZ') {
+                        hasOZ = true;
+                        // Для каждого стикера добавляем запись с артикулом
+                        for (const sticker of row.stickers) {
+                            stickerRows.push({
+                                sticker: sticker,
+                                platform: 'OZ',
+                                articul: articul
+                            });
+                        }
+                    } else if (platform === 'WB') {
+                        for (const sticker of row.stickers) {
+                            stickerRows.push({
+                                sticker: sticker,
+                                platform: 'WB',
+                                articul: null
+                            });
+                        }
                     }
                 }
             }
         }
 
         const foundCount = products.length;
+        let scrollHtml = '';
+
+        // --- Таблица стикеров ---
         let stickerHtml = `<div class="sticker-table">`;
-        stickerHtml += `<div class="sticker-count">Найдено товаров: ${foundCount}</div>`;
-        if (allStickers.length === 0) {
+        // Заголовок: если есть OZ, то "Найдено по данной отправке: N", иначе "Найдено товаров: N"
+        const headerText = hasOZ ? `Найдено по данной отправке: ${foundCount}` : `Найдено товаров: ${foundCount}`;
+        stickerHtml += `<div class="sticker-count">${headerText}</div>`;
+
+        if (stickerRows.length === 0) {
             stickerHtml += `<table><tbody>
                 <tr><td>0</td><td class="sticker-last">0000</td></tr>
             </tbody></table>`;
         } else {
             stickerHtml += `<table><tbody>`;
-            for (const sticker of allStickers) {
-                const firstPart = sticker.length > 4 ? sticker.slice(0, -4) : '';
-                const lastPart = sticker.length > 4 ? sticker.slice(-4) : sticker;
-                stickerHtml += `<tr>
-                    <td>${escapeHtml(firstPart)}</td>
-                    <td class="sticker-last">${escapeHtml(lastPart)}</td>
-                </tr>`;
+            for (const row of stickerRows) {
+                const sticker = row.sticker;
+                const platform = row.platform;
+                if (platform === 'WB') {
+                    const firstPart = sticker.length > 4 ? sticker.slice(0, -4) : '';
+                    const lastPart = sticker.length > 4 ? sticker.slice(-4) : sticker;
+                    stickerHtml += `<tr>
+                        <td>${escapeHtml(firstPart)}</td>
+                        <td class="sticker-last">${escapeHtml(lastPart)}</td>
+                    </tr>`;
+                } else if (platform === 'OZ') {
+                    // Форматируем стикер: выделяем 4 цифры до первого дефиса жирным 1.5rem
+                    let formattedSticker = '';
+                    const dashIndex = sticker.indexOf('-');
+                    if (dashIndex !== -1 && dashIndex >= 4) {
+                        // Берём 4 символа перед дефисом
+                        const highlightPart = sticker.substring(dashIndex - 4, dashIndex);
+                        const restPart = sticker.substring(dashIndex);
+                        formattedSticker = `<span class="sticker-highlight">${escapeHtml(highlightPart)}</span><span class="sticker-normal">${escapeHtml(restPart)}</span>`;
+                    } else {
+                        // Если дефиса нет или меньше 4 символов до него, просто выводим весь стикер
+                        formattedSticker = `<span class="sticker-normal">${escapeHtml(sticker)}</span>`;
+                    }
+                    const articul = row.articul || '';
+                    stickerHtml += `<tr>
+                        <td>${formattedSticker}</td>
+                        <td class="sticker-articul">${escapeHtml(articul)}</td>
+                    </tr>`;
+                }
             }
             stickerHtml += `</tbody></table>`;
         }
         stickerHtml += `</div>`;
         scrollHtml += stickerHtml;
 
-        // Таблица маркировок
+        // --- Таблица маркировок (ID, штрих-код) ---
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
@@ -717,6 +777,7 @@
         scrollDiv.innerHTML = scrollHtml;
         scrollDiv.scrollTop = 0;
 
+        // --- Изображение ---
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
