@@ -516,6 +516,111 @@
         #notificationsContainer .report-table td:nth-child(6) {
             text-align: left;
         }
+        #weeklyTrafficTableContainer table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+        #weeklyTrafficTableContainer th,
+        #weeklyTrafficTableContainer td {
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            vertical-align: top;
+            text-align: left;
+        }
+        #weeklyTrafficTableContainer th {
+            background: #f8fafc;
+            font-weight: 600;
+            text-align: center;
+        }
+        #weeklyTrafficTableContainer .traffic-entry {
+            padding: 2px 0;
+            font-size: 0.9rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        #weeklyTrafficTableContainer .traffic-entry:last-child {
+            border-bottom: none;
+        }
+        /* Кнопка добавления в заголовке */
+        .add-entry-btn {
+            display: none;
+            font-size: 0.9rem;
+            cursor: pointer;
+            color: #3b82f6;
+            margin-left: 4px;
+            transition: 0.2s;
+        }
+        th:hover .add-entry-btn {
+            display: inline-block;
+        }
+        .add-entry-btn:hover {
+            transform: scale(1.2);
+        }
+
+        /* Ячейка для добавления записи */
+        .add-entry-cell {
+            background: #f1f5f9 !important;
+            padding: 8px !important;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .add-entry-input {
+            width: 70px;
+            padding: 4px 6px;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            text-align: center;
+            font-family: monospace;
+            outline: none;
+        }
+        .add-entry-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
+        }
+        .add-entry-color {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 2px solid #cbd5e1;
+            cursor: pointer;
+            transition: 0.2s;
+            flex-shrink: 0;
+        }
+        .add-entry-color:hover {
+            transform: scale(1.1);
+        }
+        .add-entry-color.start { background: #22c55e; border-color: #16a34a; }
+        .add-entry-color.break_start { background: #facc15; border-color: #eab308; }
+        .add-entry-color.break_end { background: #f97316; border-color: #ea580c; }
+        .add-entry-color.end { background: #ef4444; border-color: #dc2626; }
+
+        .add-entry-save {
+            background: #3b82f6;
+            border: none;
+            color: white;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: 0.2s;
+        }
+        .add-entry-save:hover {
+            background: #2563eb;
+            transform: scale(1.1);
+        }
+        .add-entry-save:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -565,8 +670,20 @@
                 <input type="week" id="weekPicker">
                 <button id="loadWeeklyReportBtn">Показать отчёт</button>
                 <span id="weeklyRoundingBtn" style="cursor:pointer; font-size:1.2rem; margin-left: 8px;">⚙️</span>
+                <span id="weeklyTrafficBtn" style="cursor:pointer; font-size:1.2rem; margin-left: 8px;">🚦</span>
             </div>
             <div id="weeklyReportContainer"></div>
+            <div id="weeklyTrafficContainer" style="display: none; margin-top: 16px;">
+                <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+                    <label for="weeklyTrafficEmployeeSelect" style="font-weight: 500;">👤 Сотрудник:</label>
+                    <select id="weeklyTrafficEmployeeSelect" style="width: 300px; padding: 8px; border-radius: 20px; border: 1px solid #cbd5e1;">
+                        <option value="">Выберите сотрудника</option>
+                    </select>
+                </div>
+                <div id="weeklyTrafficTableContainer">
+                    <p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>
+                </div>
+            </div>
         </div>
         <div class="tab-content" id="recent-tab" style="display: none;">
             <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
@@ -790,6 +907,14 @@
     let recentStartDate = '';
     let recentEndDate = '';
     let recentEmployeeId = '';
+    let currentEditColor = 'start'; // текущий цвет для добавляемой строки
+    const colorCycle = ['start', 'break_start', 'break_end', 'end'];
+    const colorLabels = {
+        'start': 'Начало дня',
+        'break_start': 'Начало перерыва',
+        'break_end': 'Конец перерыва',
+        'end': 'Конец дня'
+    };
     function getLocalDate() {
         const now = new Date();
         const year = now.getFullYear();
@@ -2998,6 +3123,328 @@ document.getElementById('importProductsBtn')?.addEventListener('click', async ()
         showToast('Ошибка сети', true);
     }
 });
+// --- Переменные для режима "Трафик" ---
+let trafficModeActive = false;
+let currentTrafficEmployeeId = null;
+
+// --- Функция загрузки списка сотрудников для выпадающего списка ---
+async function loadTrafficEmployees() {
+    try {
+        const resp = await fetch('/api/employees?active_only=true', { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки сотрудников');
+        let employees = await resp.json();
+        employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+        const select = document.getElementById('weeklyTrafficEmployeeSelect');
+        select.innerHTML = '<option value="">Выберите сотрудника</option>';
+        employees.forEach(emp => {
+            const opt = document.createElement('option');
+            opt.value = emp.id;
+            opt.textContent = emp.full_name;
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        showToast('Ошибка загрузки списка сотрудников', true);
+        console.error(err);
+    }
+}
+
+async function loadWeeklyTraffic(employeeId) {
+    const container = document.getElementById('weeklyTrafficTableContainer');
+    if (!employeeId) {
+        container.innerHTML = '<p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>';
+        return;
+    }
+    container.innerHTML = '<p>Загрузка...</p>';
+
+    const weekPicker = document.getElementById('weekPicker');
+    const weekValue = weekPicker.value;
+    if (!weekValue) {
+        container.innerHTML = '<p style="color: #ef4444;">Не выбрана неделя</p>';
+        return;
+    }
+    const [year, week] = weekValue.split('-W');
+    const monday = getMondayOfWeek(parseInt(year), parseInt(week));
+    const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        dates.push(d);
+    }
+
+    const entriesByDay = {};
+    let maxEntries = 0;
+    for (let i = 0; i < dates.length; i++) {
+        const dateObj = dates[i];
+        const dateStr = dateObj.toISOString().slice(0, 10);
+        try {
+            const resp = await fetch(`/api/reports/employee/${employeeId}?date=${dateStr}`, { credentials: 'include' });
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            const data = await resp.json();
+            const entries = data.entries || [];
+            entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            entriesByDay[i] = entries;
+            if (entries.length > maxEntries) maxEntries = entries.length;
+        } catch (err) {
+            console.warn(`Не удалось загрузить данные за ${dateStr}`, err);
+            entriesByDay[i] = [];
+        }
+    }
+
+    if (maxEntries === 0) {
+        container.innerHTML = '<p style="color: #94a3b8;">Нет отметок за выбранную неделю</p>';
+        return;
+    }
+
+    // Классы цветов (совпадают с используемыми в таблице "Последние отметки")
+    const colorClassMap = {
+        'start': 'recent-start',
+        'break_start': 'recent-break-start',
+        'break_end': 'recent-break-end',
+        'end': 'recent-end'
+    };
+
+    let html = `<table style="width:100%; border-collapse: separate; border-spacing: 12px; table-layout: fixed;">`;
+    // Заголовки дней
+    html += `<thead><tr>`;
+    for (let i = 0; i < 7; i++) {
+        const d = dates[i];
+        const dayName = weekdays[i];
+        const dayNum = String(d.getDate()).padStart(2, '0');
+        const monthNum = String(d.getMonth() + 1).padStart(2, '0');
+        const dateStr = d.toISOString().slice(0, 10);
+        html += `<th style="width: calc(100% / 7); text-align: center; padding: 8px; background: #f8fafc; border-radius: 8px; font-weight: 600; position: relative;">
+                    ${dayName}<br><span style="font-size:0.7rem; color:#64748b;">${dayNum}.${monthNum}</span>
+                    <span class="add-entry-btn" data-day="${i}" data-date="${dateStr}" style="display:none; font-size:1rem;">➕</span>
+                </th>`;
+    }
+    html += `</tr></thead>`;
+    // Строки с отметками
+    for (let row = 0; row < maxEntries; row++) {
+        html += `<tr>`;
+        for (let i = 0; i < 7; i++) {
+            const entries = entriesByDay[i] || [];
+            if (row < entries.length) {
+                const entry = entries[row];
+                const time = entry.timestamp.slice(11, 16); // только время
+                const colorClass = colorClassMap[entry.action] || '';
+                html += `<td class="${colorClass}" style="padding: 12px 8px; text-align: center; border-radius: 8px; font-weight: 500; font-size: 0.95rem; background-color: ${colorClass ? '' : '#f8fafc'};">
+                            ${time}
+                         </td>`;
+            } else {
+                html += `<td style="background-color: #f8fafc; padding: 12px 8px; text-align: center; border-radius: 8px; color: #cbd5e1;">—</td>`;
+            }
+        }
+        html += `</tr>`;
+    }
+
+    html += `</tbody></table>`;
+    container.innerHTML = html;
+    // Навешиваем обработчики на кнопки "+"
+    container.querySelectorAll('.add-entry-btn').forEach(btn => {
+        btn.style.display = 'none';
+        const th = btn.closest('th');
+        th.addEventListener('mouseenter', () => {
+            btn.style.display = 'inline-block';
+        });
+        th.addEventListener('mouseleave', () => {
+            if (!th.closest('table').querySelector('.add-entry-row')) {
+                btn.style.display = 'none';
+            }
+        });
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const dayIndex = parseInt(this.dataset.day);
+            const dateStr = this.dataset.date;
+            const employeeId = parseInt(document.getElementById('weeklyTrafficEmployeeSelect').value);
+            if (!employeeId) return;
+            
+            // Удаляем старую строку добавления, если есть
+            const oldRow = document.querySelector('.add-entry-row');
+            if (oldRow) oldRow.remove();
+            
+            // Вставляем новую строку ПЕРВОЙ в таблицу (после заголовков)
+            const tbody = this.closest('table').querySelector('tbody');
+            const newRow = createAddRow(dayIndex, employeeId, dateStr);
+            tbody.insertBefore(newRow, tbody.firstChild);  // ← главное изменение
+            
+            const input = newRow.querySelector('.add-entry-input');
+            if (input) setTimeout(() => input.focus(), 100);
+        });
+    });
+    // Добавим имя сотрудника над таблицей
+    const select = document.getElementById('weeklyTrafficEmployeeSelect');
+    const selectedName = select.options[select.selectedIndex]?.text || '';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:500; margin-bottom:12px;';
+    title.textContent = `📊 Отметки сотрудника: ${selectedName}`;
+    container.prepend(title);
+}   
+
+// --- Обработчик кнопки 🚦 (переключение режима) ---
+document.getElementById('weeklyTrafficBtn').addEventListener('click', function(e) {
+    e.stopPropagation();
+    const trafficContainer = document.getElementById('weeklyTrafficContainer');
+    const reportContainer = document.getElementById('weeklyReportContainer');
+    const select = document.getElementById('weeklyTrafficEmployeeSelect');
+
+    trafficModeActive = !trafficModeActive;
+    if (trafficModeActive) {
+        // Включаем режим трафика
+        reportContainer.style.display = 'none';
+        trafficContainer.style.display = 'block';
+        
+        // Загружаем список сотрудников (если ещё не загружен)
+        if (select.options.length <= 1) {
+            loadTrafficEmployees().then(() => {
+                // После загрузки, если есть выбранное значение, загружаем данные
+                if (select.value) {
+                    loadWeeklyTraffic(select.value);
+                } else {
+                    document.getElementById('weeklyTrafficTableContainer').innerHTML = '<p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>';
+                }
+            });
+        } else {
+            // Если список уже загружен, просто показываем
+            if (select.value) {
+                loadWeeklyTraffic(select.value);
+            } else {
+                document.getElementById('weeklyTrafficTableContainer').innerHTML = '<p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>';
+            }
+        }
+    } else {
+        // Выключаем режим трафика
+        reportContainer.style.display = 'block';
+        trafficContainer.style.display = 'none';
+        document.getElementById('weeklyTrafficTableContainer').innerHTML = '';
+    }
+});
+
+// --- Обработчик изменения выбора сотрудника ---
+document.getElementById('weeklyTrafficEmployeeSelect').addEventListener('change', function() {
+    const employeeId = this.value;
+    if (employeeId && trafficModeActive) {
+        loadWeeklyTraffic(employeeId);
+    } else if (!employeeId) {
+        document.getElementById('weeklyTrafficTableContainer').innerHTML = '<p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>';
+    }
+});
+
+// --- Обновление таблицы трафика при смене недели (если активен режим) ---
+const weekPickerTraffic = document.getElementById('weekPicker');
+weekPickerTraffic.addEventListener('change', function() {
+    if (trafficModeActive) {
+        const select = document.getElementById('weeklyTrafficEmployeeSelect');
+        if (select.value) {
+            loadWeeklyTraffic(select.value);
+        }
+    }
+});
+function createAddRow(dayIndex, employeeId, dateStr) {
+    const tr = document.createElement('tr');
+    tr.className = 'add-entry-row';
+    tr.dataset.day = dayIndex;
+    
+    const color = 'start';
+    const colorClass = 'start';
+    
+    for (let i = 0; i < 7; i++) {
+        const td = document.createElement('td');
+        td.style.padding = '8px';
+        td.style.textAlign = 'center';
+        td.style.borderRadius = '8px';
+        td.style.background = '#f8fafc';
+        
+        if (i === dayIndex) {
+            td.className = 'add-entry-cell';
+            td.style.background = '#f1f5f9';
+            td.innerHTML = `
+                <input type="text" class="add-entry-input" id="add-time-${dayIndex}" placeholder="ЧЧ:ММ" maxlength="5" autofocus>
+                <div class="add-entry-color start" id="add-color-${dayIndex}" data-color="start"></div>
+                <button class="add-entry-save" id="add-save-${dayIndex}" data-day="${dayIndex}" data-date="${dateStr}" data-employee="${employeeId}">✅</button>
+            `;
+        }
+        tr.appendChild(td);
+    }
+    
+    const input = tr.querySelector('.add-entry-input');
+    const colorEl = tr.querySelector('.add-entry-color');
+    const saveBtn = tr.querySelector('.add-entry-save');
+    
+    // Исправленный автоформат времени
+    input.addEventListener('input', function(e) {
+        let val = this.value.replace(/\D/g, '');
+        if (val.length > 4) val = val.slice(0, 4);
+        if (val.length === 0) {
+            this.value = '';
+            return;
+        }
+        let formatted = '';
+        if (val.length <= 2) {
+            formatted = val;
+        } else if (val.length === 3) {
+            formatted = val[0] + ':' + val.slice(1);
+        } else if (val.length === 4) {
+            formatted = val.slice(0, 2) + ':' + val.slice(2);
+        }
+        this.value = formatted;
+    });
+    
+    // Переключение цвета по клику
+    let colorIndex = 0;
+    colorEl.addEventListener('click', function() {
+        colorIndex = (colorIndex + 1) % colorCycle.length;
+        const newColor = colorCycle[colorIndex];
+        this.dataset.color = newColor;
+        this.className = `add-entry-color ${newColor}`;
+    });
+    
+    // Сохранение
+    saveBtn.addEventListener('click', async function() {
+        const timeStr = input.value.trim();
+        if (!timeStr || !timeStr.includes(':')) {
+            showToast('Введите корректное время (ЧЧ:ММ)', true);
+            return;
+        }
+        const [hours, minutes] = timeStr.split(':');
+        if (hours.length !== 2 || minutes.length !== 2 || parseInt(hours) > 23 || parseInt(minutes) > 59) {
+            showToast('Некорректное время', true);
+            return;
+        }
+        const action = colorEl.dataset.color;
+        const date = this.dataset.date;
+        const empId = parseInt(this.dataset.employee);
+        const isoDateTime = `${date}T${timeStr}:00`;
+        
+        this.disabled = true;
+        try {
+            const resp = await fetch('/api/admin/timelog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    employee_id: empId,
+                    action: action,
+                    timestamp: isoDateTime
+                })
+            });
+            if (resp.ok) {
+                showToast(`✅ Отметка "${colorLabels[action]}" добавлена в ${timeStr}`);
+                tr.remove();
+                const currentEmpId = document.getElementById('weeklyTrafficEmployeeSelect').value;
+                if (currentEmpId) loadWeeklyTraffic(currentEmpId);
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка сохранения', true);
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+        } finally {
+            this.disabled = false;
+        }
+    });
+    
+    return tr;
+}
 </script>
 </body>
 </html>
