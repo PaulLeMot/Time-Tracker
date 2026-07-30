@@ -629,6 +629,20 @@
         noImg.style.display = 'flex';
     }
 
+    function formatSticker(sticker) {
+        // Возвращает HTML с выделением 4 цифр до первого дефиса жирным шрифтом 1.5rem
+        let formatted = '';
+        const dashIndex = sticker.indexOf('-');
+        if (dashIndex !== -1 && dashIndex >= 4) {
+            const highlightPart = sticker.substring(dashIndex - 4, dashIndex);
+            const restPart = sticker.substring(dashIndex);
+            formatted = `<span class="sticker-highlight">${escapeHtml(highlightPart)}</span><span class="sticker-normal">${escapeHtml(restPart)}</span>`;
+        } else {
+            formatted = `<span class="sticker-normal">${escapeHtml(sticker)}</span>`;
+        }
+        return formatted;
+    }
+
     function renderResults(products) {
         const infoDiv = document.getElementById('productInfoContainer');
         const scrollDiv = document.getElementById('tablesScroll');
@@ -669,11 +683,10 @@
             </div>
         `;
 
-        // --- Сбор стикеров с учётом platform ---
-        let allPairs = []; // все пары {sticker, articul}
+        // --- Сбор всех пар (стикер, артикул) для OZ и WB ---
+        let allPairs = [];        // для OZ: объекты {sticker, articul}
+        let wbStickers = [];     // для WB: просто строки
         let hasOZ = false;
-        let mainSticker = null; // стикер, соответствующий сканированному артикулу (code)
-        let mainArticul = code; // сканированный артикул
 
         for (const prod of products) {
             const t = prod.table || [];
@@ -683,105 +696,129 @@
                     const platform = row.platform || '';
                     if (platform === 'OZ') {
                         hasOZ = true;
-                        // row.stickers — массив объектов {sticker, articul}
                         for (const item of row.stickers) {
                             allPairs.push({
                                 sticker: item.sticker,
                                 articul: item.articul
                             });
-                            // Определяем основной стикер (первый, который соответствует сканированному артикулу)
-                            if (item.articul === code && !mainSticker) {
-                                mainSticker = item.sticker;
-                            }
                         }
                     } else if (platform === 'WB') {
-                        // WB — массив строк
                         for (const sticker of row.stickers) {
-                            allPairs.push({
-                                sticker: sticker,
-                                articul: null // для WB артикул не нужен
-                            });
+                            wbStickers.push(sticker);
                         }
                     }
                 }
             }
-        }
-
-        // Если OZ есть, но mainSticker не определён (например, не нашли соответствие), используем первый попавшийся стикер из allPairs
-        if (hasOZ && !mainSticker && allPairs.length > 0) {
-            mainSticker = allPairs[0].sticker;
-        }
-
-        // --- Формируем три группы для OZ (если есть) ---
-        let ozGroups = [];
-        if (hasOZ) {
-            // Все пары
-            let allPairsForDisplay = allPairs;
-
-            // Пары "по отправке" (стикер == mainSticker, артикул != mainArticul)
-            let byShipment = allPairs.filter(p => p.sticker === mainSticker && p.articul !== mainArticul);
-
-            // Пары "по артикулу" (артикул == mainArticul, стикер != mainSticker)
-            let byArticul = allPairs.filter(p => p.articul === mainArticul && p.sticker !== mainSticker);
-
-            ozGroups = [
-                { title: 'Найдено', pairs: allPairsForDisplay },
-                { title: 'Также найдено по отправке', pairs: byShipment },
-                { title: 'Также найдено по артикулу', pairs: byArticul }
-            ];
         }
 
         let scrollHtml = '';
 
-        // --- Отображение OZ-секций (если есть) ---
-        if (hasOZ) {
-            for (const group of ozGroups) {
-                if (group.pairs.length === 0) continue; // не показываем пустые секции
-                let sectionHtml = `<div class="sticker-section">`;
-                sectionHtml += `<div class="sticker-count">${group.title}: ${group.pairs.length}</div>`;
-                sectionHtml += `<table><tbody>`;
-                for (const pair of group.pairs) {
-                    const sticker = pair.sticker;
-                    const articul = pair.articul || '';
-                    // Форматируем стикер: выделяем 4 цифры до первого дефиса
-                    let formattedSticker = '';
-                    const dashIndex = sticker.indexOf('-');
-                    if (dashIndex !== -1 && dashIndex >= 4) {
-                        const highlightPart = sticker.substring(dashIndex - 4, dashIndex);
-                        const restPart = sticker.substring(dashIndex);
-                        formattedSticker = `<span class="sticker-highlight">${escapeHtml(highlightPart)}</span><span class="sticker-normal">${escapeHtml(restPart)}</span>`;
-                    } else {
-                        formattedSticker = `<span class="sticker-normal">${escapeHtml(sticker)}</span>`;
-                    }
-                    sectionHtml += `<tr>
-                        <td>${formattedSticker}</td>
-                        <td class="sticker-articul">${escapeHtml(articul)}</td>
+        if (hasOZ && allPairs.length > 0) {
+            // --- Логика для OZ ---
+            const mainArticul = code; // сканированный артикул
+
+            // Подсчитываем для каждого стикера количество уникальных артикулов
+            const stickerArticulCount = {};
+            const stickerToArticuls = {};
+            for (const pair of allPairs) {
+                const st = pair.sticker;
+                const art = pair.articul;
+                if (!stickerToArticuls[st]) stickerToArticuls[st] = new Set();
+                stickerToArticuls[st].add(art);
+            }
+            for (const st in stickerToArticuls) {
+                stickerArticulCount[st] = stickerToArticuls[st].size;
+            }
+
+            // Находим основной стикер: среди пар, где артикул == mainArticul, выбираем стикер с максимальным количеством уникальных артикулов
+            let mainSticker = null;
+            let maxCount = 0;
+            const candidates = allPairs.filter(p => p.articul === mainArticul);
+            for (const pair of candidates) {
+                const count = stickerArticulCount[pair.sticker] || 0;
+                if (count > maxCount) {
+                    maxCount = count;
+                    mainSticker = pair.sticker;
+                }
+            }
+
+            // Если не нашли (например, нет пары с mainArticul), берём первый попавшийся стикер
+            if (!mainSticker && allPairs.length > 0) {
+                mainSticker = allPairs[0].sticker;
+            }
+
+            // Основная пара
+            const mainPair = { sticker: mainSticker, articul: mainArticul };
+
+            // Группировка
+            const byShipment = allPairs.filter(p => p.sticker === mainSticker && p.articul !== mainArticul);
+            const byArticul = allPairs.filter(p => p.articul === mainArticul && p.sticker !== mainSticker);
+
+            const totalCount = allPairs.length;
+
+            // 1. Всего найдено
+            let sectionHtml = `<div class="sticker-section">`;
+            sectionHtml += `<div class="sticker-count">Всего найдено: ${totalCount}</div>`;
+
+            // Основная пара (отдельно, без заголовка)
+            const formattedSticker = formatSticker(mainPair.sticker);
+            sectionHtml += `<table><tbody><tr>
+                <td>${formattedSticker}</td>
+                <td class="sticker-articul">${escapeHtml(mainPair.articul)}</td>
+            </tr></tbody></table>`;
+            sectionHtml += `</div>`;
+            scrollHtml += sectionHtml;
+
+            // 2. Также найдено по отправке (если есть)
+            if (byShipment.length > 0) {
+                let shipmentHtml = `<div class="sticker-section">`;
+                shipmentHtml += `<div class="sticker-count">Также найдено по отправке: ${byShipment.length}</div>`;
+                shipmentHtml += `<table><tbody>`;
+                for (const pair of byShipment) {
+                    const formatted = formatSticker(pair.sticker);
+                    shipmentHtml += `<tr>
+                        <td>${formatted}</td>
+                        <td class="sticker-articul">${escapeHtml(pair.articul)}</td>
                     </tr>`;
                 }
-                sectionHtml += `</tbody></table></div>`;
-                scrollHtml += sectionHtml;
+                shipmentHtml += `</tbody></table></div>`;
+                scrollHtml += shipmentHtml;
             }
+
+            // 3. Также найдено по артикулу (если есть)
+            if (byArticul.length > 0) {
+                let articulHtml = `<div class="sticker-section">`;
+                articulHtml += `<div class="sticker-count">Также найдено по артикулу: ${byArticul.length}</div>`;
+                articulHtml += `<table><tbody>`;
+                for (const pair of byArticul) {
+                    const formatted = formatSticker(pair.sticker);
+                    articulHtml += `<tr>
+                        <td>${formatted}</td>
+                        <td class="sticker-articul">${escapeHtml(pair.articul)}</td>
+                    </tr>`;
+                }
+                articulHtml += `</tbody></table></div>`;
+                scrollHtml += articulHtml;
+            }
+
+        } else if (wbStickers.length > 0) {
+            // --- Стандартный вывод для WB (только стикеры без артикулов) ---
+            let sectionHtml = `<div class="sticker-section">`;
+            sectionHtml += `<div class="sticker-count">Найдено товаров: ${wbStickers.length}</div>`;
+            sectionHtml += `<table><tbody>`;
+            for (const sticker of wbStickers) {
+                const firstPart = sticker.length > 4 ? sticker.slice(0, -4) : '';
+                const lastPart = sticker.length > 4 ? sticker.slice(-4) : sticker;
+                sectionHtml += `<tr>
+                    <td>${escapeHtml(firstPart)}</td>
+                    <td class="sticker-last">${escapeHtml(lastPart)}</td>
+                </tr>`;
+            }
+            sectionHtml += `</tbody></table></div>`;
+            scrollHtml += sectionHtml;
         } else {
-            // Если OZ нет, показываем стандартную таблицу WB (только стикеры без артикулов)
-            if (allPairs.length > 0) {
-                let sectionHtml = `<div class="sticker-section">`;
-                sectionHtml += `<div class="sticker-count">Найдено товаров: ${allPairs.length}</div>`;
-                sectionHtml += `<table><tbody>`;
-                for (const pair of allPairs) {
-                    const sticker = pair.sticker;
-                    // Для WB показываем как раньше
-                    const firstPart = sticker.length > 4 ? sticker.slice(0, -4) : '';
-                    const lastPart = sticker.length > 4 ? sticker.slice(-4) : sticker;
-                    sectionHtml += `<tr>
-                        <td>${escapeHtml(firstPart)}</td>
-                        <td class="sticker-last">${escapeHtml(lastPart)}</td>
-                    </tr>`;
-                }
-                sectionHtml += `</tbody></table></div>`;
-                scrollHtml += sectionHtml;
-            } else {
-                scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
-            }
+            // Нет стикеров
+            scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
         // --- Таблица маркировок (ID, штрих-код) ---
