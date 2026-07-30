@@ -3244,30 +3244,45 @@ async function loadWeeklyTraffic(employeeId) {
     container.querySelectorAll('.add-entry-btn').forEach(btn => {
         btn.style.display = 'none';
         const th = btn.closest('th');
+        
         th.addEventListener('mouseenter', () => {
             btn.style.display = 'inline-block';
         });
         th.addEventListener('mouseleave', () => {
+            // Если нет строки добавления, скрываем кнопку
             if (!th.closest('table').querySelector('.add-entry-row')) {
                 btn.style.display = 'none';
             }
         });
+        
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             const dayIndex = parseInt(this.dataset.day);
             const dateStr = this.dataset.date;
             const employeeId = parseInt(document.getElementById('weeklyTrafficEmployeeSelect').value);
             if (!employeeId) return;
-            
-            // Удаляем старую строку добавления, если есть
+
+            // Если кнопка уже в состоянии ➖ → закрываем строку
+            if (this.textContent.trim() === '➖') {
+                const oldRow = document.querySelector('.add-entry-row');
+                if (oldRow) oldRow.remove();
+                this.textContent = '➕';
+                // Скрываем кнопку, если мышь ушла (но оставим, так как мышь может быть ещё над th)
+                return;
+            }
+
+            // Иначе ➕ → создаём строку
+            // Удаляем старую строку, если есть
             const oldRow = document.querySelector('.add-entry-row');
             if (oldRow) oldRow.remove();
-            
-            // Вставляем новую строку ПЕРВОЙ в таблицу (после заголовков)
+
             const tbody = this.closest('table').querySelector('tbody');
             const newRow = createAddRow(dayIndex, employeeId, dateStr);
-            tbody.insertBefore(newRow, tbody.firstChild);  // ← главное изменение
-            
+            tbody.insertBefore(newRow, tbody.firstChild);
+
+            // Меняем кнопку на ➖
+            this.textContent = '➖';
+
             const input = newRow.querySelector('.add-entry-input');
             if (input) setTimeout(() => input.focus(), 100);
         });
