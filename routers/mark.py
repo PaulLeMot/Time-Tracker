@@ -296,6 +296,28 @@ async def mark_barcode(barcode: str):
     
     return results
 
+# -------------------------------------------------------------------
+# НОВЫЙ ЭНДПОИНТ ДЛЯ ОБНОВЛЕНИЯ КЭША (ОЧИСТКА)
+# -------------------------------------------------------------------
+@router.post("/api/mark/refresh")
+async def refresh_cache():
+    """
+    Очищает кэш основных данных и стикеров.
+    При следующем запросе данные будут перечитаны с диска.
+    """
+    # Очищаем основной кэш (данные из mp_rep.xlsx)
+    _cache.update({
+        "file_path": None,
+        "file_mtime": None,
+        "data": None,
+        "index": None,
+        "col_names": None,
+        "date_str": None,
+    })
+    # Очищаем кэш стикеров (файлы *_WB.xlsx)
+    _sticker_caches.clear()
+    return {"message": "Кэш очищен. Данные будут перезагружены при следующем запросе."}
+
 @router.get("/mark")
 async def mark_page():
     return FileResponse("static/mark.html")

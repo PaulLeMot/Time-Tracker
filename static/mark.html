@@ -73,7 +73,7 @@
             border-radius: 50%;
             overflow: hidden;
             border: 2px solid #e2e8f0;
-            transition: 0.2s;
+            transition: 0.4s;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -89,6 +89,32 @@
         .logo-btn:hover {
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        }
+
+        .refresh-btn {
+            flex-shrink: 0;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 2px solid #e2e8f0;
+            background: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #0f172a;
+        }
+        .refresh-btn:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+            transform: rotate(180deg);
+        }
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
         }
 
         .input-marking-wrapper {
@@ -161,7 +187,7 @@
             max-width: 200px;
         }
 
-        /* Выпадающий список */
+        /* Выпадающий список истории */
         .dropdown-content {
             display: none;
             position: absolute;
@@ -367,6 +393,23 @@
             width: 100%;
         }
 
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #0f172a;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 40px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+            font-size: 0.95rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .toast.show { opacity: 1; }
+
         @media (max-width: 700px) {
             .container { padding: 16px; }
             .main-grid {
@@ -375,6 +418,7 @@
             }
             .right-col { flex: 0 0 140px; }
             .logo-btn { width: 40px; height: 40px; }
+            .refresh-btn { width: 40px; height: 40px; font-size: 1rem; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; padding-right: 44px; }
             #markingDisplay { font-size: 1rem; max-width: 120px; }
             .product-info .name-line { font-size: 1.2rem; }
@@ -397,6 +441,7 @@
                 <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
                     <img src="/static/ttr.png" alt="ЛК">
                 </a>
+                <button id="refreshDataBtn" class="refresh-btn" title="Обновить данные из файлов">🔃</button>
                 <div class="input-marking-wrapper">
                     <div class="input-container">
                         <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
@@ -419,6 +464,7 @@
         </div>
     </div>
 </div>
+<div id="toast" class="toast"></div>
 <script>
     // --- История запросов с localStorage ---
     let searchHistory = [];
@@ -523,7 +569,7 @@
         }
     });
 
-    // --- Остальной код (без изменений) ---
+    // --- Остальные функции ---
 
     function escapeHtml(str) {
         if (!str) return '';
@@ -534,6 +580,14 @@
             if (m === '"') return '&quot;';
             return m;
         });
+    }
+
+    function showToast(message, isError = false) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.style.background = isError ? '#dc2626' : '#10b981';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
     }
 
     function showError(message) {
@@ -726,6 +780,44 @@
         }
     }
 
+    // --- Кнопка обновления данных ---
+    async function refreshData() {
+        const btn = document.getElementById('refreshDataBtn');
+        btn.disabled = true;
+        btn.textContent = '⏳';
+        try {
+            const resp = await fetch('/api/mark/refresh', {
+                method: 'POST',
+                credentials: 'include'
+            });
+            if (!resp.ok) {
+                let errMsg = `Ошибка ${resp.status}`;
+                try {
+                    const err = await resp.json();
+                    errMsg = err.detail || errMsg;
+                } catch(e) {}
+                showToast(errMsg, true);
+                return;
+            }
+            const data = await resp.json();
+            showToast(data.message || 'Данные обновлены');
+            // Очищаем экран
+            document.getElementById('productInfoContainer').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
+            document.getElementById('tablesScroll').innerHTML = '';
+            document.getElementById('markingDisplay').textContent = '';
+            resetImage();
+            // Также сбрасываем индекс истории (чтобы стрелки брали последний запрос)
+            historyIndex = -1;
+        } catch (err) {
+            showToast('Ошибка соединения с сервером', true);
+            console.error(err);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔃';
+        }
+    }
+
+    // --- Инициализация ---
     document.addEventListener('DOMContentLoaded', async function() {
         const ok = await checkAuth();
         if (!ok) return;
@@ -735,6 +827,9 @@
 
         const input = document.getElementById('scanInput');
         const toggleBtn = document.getElementById('dropdownToggle');
+        const refreshBtn = document.getElementById('refreshDataBtn');
+
+        refreshBtn.addEventListener('click', refreshData);
 
         toggleBtn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -788,7 +883,6 @@
                 if (searchHistory.length > 0) {
                     historyIndex = -1;
                 }
-                // closeDropdown(); // можно раскомментировать, при желании автоматически скрывать при пустой строке
             }
         });
     });
