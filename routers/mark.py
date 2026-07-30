@@ -127,23 +127,27 @@ def get_oz_sticker_index(marking: str, date_str: str):
     index = {}
     if os.path.exists(file_path):
         try:
-            # B = 1, P = 15
-            df = pd.read_excel(file_path, header=None, usecols=[1, 15], dtype=str).fillna('')
+            # Читаем колонки B и P по именам (без заголовков, поэтому имена 'B' и 'P')
+            df = pd.read_excel(file_path, header=None, usecols="B,P", dtype=str).fillna('')
+            print(f"[OZ] Загружен {marking}, строк: {len(df)}")
             for _, row in df.iterrows():
-                sticker = str(row[1]).strip()
-                art = str(row[15]).strip()
+                sticker = str(row['B']).strip()
+                art = str(row['P']).strip()
                 if art and art != 'nan' and sticker and sticker != 'nan':
                     if art not in index:
                         index[art] = []
                     index[art].append(sticker)
+            print(f"[OZ] Индекс для {marking}: {len(index)} артикулов")
         except Exception as e:
             print(f"Ошибка загрузки OZ-стикеров для {marking}: {e}")
-            pass
+            import traceback
+            traceback.print_exc()
+    else:
+        print(f"[OZ] Файл не найден: {file_path}")
     _sticker_caches[cache_key] = {"index": index}
     return index
 
 def get_marking_for_position(col_idx, col_names):
-    """Возвращает (marking, is_id) где is_id=True для ID-колонок (offset 1 или 4)"""
     if col_idx == 0:
         return "FSK", None
     marking_col_name = None
@@ -166,12 +170,6 @@ def get_marking_for_position(col_idx, col_names):
         return None, None
 
 def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False):
-    """
-    Собирает таблицу данных для товара.
-    sticker_indices: dict {marking: {id: [стикеры]}} – для WB
-    oz_sticker_indices: dict {marking: {артикул: [стикеры]}} – для OZ
-    skip_stickers: если True – стикеры не ищем (только для FSK)
-    """
     table = []
     
     fsk_bar = generate_ean13(code)
@@ -213,7 +211,7 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         oz_bar = row.get(col_names[mk_idx + 6], '').strip() if mk_idx + 6 < len(col_names) else '0'
         oz_id_clean = oz_id if oz_id else '0'
         oz_bar_clean = oz_bar if oz_bar else '0'
-        oz_pairs = []  # список объектов {sticker: ..., articul: ...}
+        oz_pairs = []  # список объектов {sticker, articul}
         if not skip_stickers and mk in oz_sticker_indices:
             # Получаем все стикеры для данного артикула (code)
             stickers_for_art = oz_sticker_indices[mk].get(code, [])
