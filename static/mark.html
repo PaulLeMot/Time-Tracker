@@ -970,13 +970,22 @@
         loadHistoryFromStorage();
         renderDropdown();
 
+        // --- Обработчики поля ввода ---
         const input = document.getElementById('scanInput');
+        const toggleBtn = document.getElementById('dropdownToggle');
+        
+        // Обработчик для кнопки-стрелки
+        toggleBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toggleDropdown();
+        });
 
+        // При фокусе выделяем весь текст (чтобы новый скан его перезаписал)
         input.addEventListener('focus', function() {
             this.select();
         });
 
-        // Обработка ввода и истории
+        // Обработка клавиш
         input.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -989,7 +998,15 @@
                 return;
             }
 
-            // Стрелки вверх/вниз для истории
+            if (e.key === 'Escape') {
+                // Очищаем поле и снимаем фокус
+                this.value = '';
+                this.blur();
+                closeDropdown();
+                return;
+            }
+
+            // Стрелки для истории
             if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (searchHistory.length === 0) return;
@@ -1020,7 +1037,7 @@
             }
         });
 
-        // Обработка ввода (для сброса истории при ручном изменении)
+        // При ручном вводе сбрасываем индекс истории, если поле пустое
         input.addEventListener('input', function() {
             if (!this.value.trim()) {
                 if (searchHistory.length > 0) {
