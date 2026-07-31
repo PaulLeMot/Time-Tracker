@@ -127,15 +127,15 @@ def get_oz_sticker_index(marking: str, date_str: str):
     index = {}
     if os.path.exists(file_path):
         try:
+            df = None
             for sep in [';', ',']:
                 try:
                     df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=sep, encoding='utf-8').fillna('')
                     break
                 except Exception:
                     continue
-            else:
+            if df is None:
                 df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
-            print(f"[OZ] Загружен {marking}, строк: {len(df)}")
             for _, row in df.iterrows():
                 sticker = str(row[0]).strip()
                 art = str(row[1]).strip()
@@ -143,91 +143,44 @@ def get_oz_sticker_index(marking: str, date_str: str):
                     if art not in index:
                         index[art] = []
                     index[art].append(sticker)
-            print(f"[OZ] Индекс для {marking}: {len(index)} артикулов")
         except Exception as e:
             print(f"Ошибка загрузки OZ-стикеров для {marking}: {e}")
-            import traceback
-            traceback.print_exc()
     else:
         print(f"[OZ] Файл не найден: {file_path}")
     _sticker_caches[cache_key] = {"index": index}
     return index
 
 def get_oz_qr_index(marking: str, date_str: str):
-    """Загружает OZ-файл и возвращает qr_index (QR → список артикулов)"""
+    """Загружает OZ-файл и возвращает qr_index (QR → список артикулов) и сами маркировки"""
     cache_key = (marking, date_str, "oz_qr")
     if cache_key in _sticker_caches:
-        print(f"[QR] Использую кэш для {marking}, записей: {len(_sticker_caches[cache_key].get('qr_index', {}))}")
         return _sticker_caches[cache_key].get("qr_index", {})
 
     base_path = "/work/!МП_(FSk)/!FBS"
     file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_OZ.csv")
     qr_index = {}
 
-    print(f"[QR] Попытка загрузить {file_path}")
     if os.path.exists(file_path):
-        print(f"[QR] Файл существует, начинаем чтение")
         try:
             df = None
-            used_sep = None
             for sep in [';', ',']:
                 try:
-                    print(f"[QR] Пробую разделитель '{sep}'")
-                    df = pd.read_csv(file_path, header=None, usecols=[15, 30],
-                                     dtype=str, sep=sep, encoding='utf-8').fillna('')
-                    used_sep = sep
-                    print(f"[QR] Успешно прочитано с разделителем '{sep}', строк: {len(df)}, колонок: {len(df.columns)}")
+                    df = pd.read_csv(file_path, header=None, usecols=[15, 30], dtype=str, sep=sep, encoding='utf-8').fillna('')
                     break
-                except Exception as e:
-                    print(f"[QR] Ошибка с разделителем '{sep}': {e}")
+                except Exception:
                     continue
             if df is None:
-                print("[QR] Пробую автоопределение разделителя")
-                df = pd.read_csv(file_path, header=None, usecols=[15, 30],
-                                 dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
-                used_sep = 'auto'
-                print(f"[QR] Автоопределение: строк: {len(df)}, колонок: {len(df.columns)}")
-
-            if df is None or len(df) == 0:
-                print("[QR] DataFrame пуст или не загружен")
-            else:
-                print(f"[QR] DataFrame shape: {df.shape}")
-                print(f"[QR] Первые 5 строк (сырые):\n{df.head().to_string()}")
-                print(f"[QR] Колонки: {list(df.columns)}")
-
-                # Ожидаем, что колонки будут называться 15 и 30 (так как мы указали usecols)
-                # Проверяем, что они есть
-                if 15 not in df.columns or 30 not in df.columns:
-                    print(f"[QR] Колонки 15 или 30 отсутствуют. Доступные колонки: {list(df.columns)}")
-                    # Если колонки названы иначе, возможно, надо использовать .iloc
-                    # Попробуем использовать первые две колонки
-                    if len(df.columns) >= 2:
-                        print("[QR] Использую первые две колонки (iloc)")
-                        df = df.iloc[:, :2]
-                    else:
-                        raise ValueError("Недостаточно колонок")
-
-                for idx, row in df.iterrows():
-                    try:
-                        # Обращаемся по имени колонки (число 15 и 30)
-                        art = str(row[15]).strip() if 15 in row else str(row.iloc[0]).strip()
-                        qr = str(row[30]).strip() if 30 in row else str(row.iloc[1]).strip()
-                    except Exception as e:
-                        print(f"[QR] Ошибка доступа к строке {idx}: {e}, row: {row}")
-                        continue
-                    if art == 'Артикул' or qr == 'Нижний штрихкод':
-                        print(f"[QR] Пропускаю строку-заголовок: art={art}, qr={qr}")
-                        continue
-                    if art and art != 'nan' and qr and qr != 'nan':
-                        qr_index.setdefault(qr, []).append(art)
-                print(f"[QR] Построен индекс для {marking}, записей: {len(qr_index)}")
-                if len(qr_index) > 0:
-                    sample = list(qr_index.items())[:3]
-                    print(f"[QR] Примеры: {sample}")
+                df = pd.read_csv(file_path, header=None, usecols=[15, 30], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
+            for _, row in df.iterrows():
+                art = str(row[0]).strip()
+                qr = str(row[1]).strip()
+                if art == 'Артикул' or qr == 'Нижний штрихкод':
+                    continue
+                if art and art != 'nan' and qr and qr != 'nan':
+                    # Сохраняем артикул и маркировку
+                    qr_index.setdefault(qr, []).append((marking, art))
         except Exception as e:
-            print(f"[QR] Критическая ошибка при загрузке {file_path}: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Ошибка загрузки QR-индекса для {marking}: {e}")
     else:
         print(f"[QR] Файл не найден: {file_path}")
 
@@ -329,18 +282,15 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
 @router.get("/api/mark/{barcode:path}")
 async def mark_barcode(barcode: str):
     barcode = barcode.strip()
-    print(f"\n=== НОВЫЙ ЗАПРОС: {barcode} ===")
     if not barcode:
         raise HTTPException(status_code=400, detail="Штрих-код не указан")
     
     normalized = normalize_barcode(barcode)
-    print(f"Нормализованный: {normalized}")
     if not normalized or len(normalized) < 5:
         raise HTTPException(status_code=400, detail="Некорректный штрих-код")
     
     data, index, col_names, _ = get_cached_data()
     today_str = datetime.now().strftime("%y%m%d")
-    print(f"Сегодняшняя дата: {today_str}")
 
     # Загружаем WB-стикеры
     sticker_indices = {}
@@ -353,40 +303,38 @@ async def mark_barcode(barcode: str):
         oz_sticker_indices[mk] = get_oz_sticker_index(mk, today_str)
 
     # Поиск в основном индексе по нормализованному коду
-    print(f"Проверяем наличие '{normalized}' в основном индексе...")
+    qr_markings_map = {}  # art -> set(markings)
     if normalized in index:
-        print(f"Найден в основном индексе")
         barcodes_to_search = [normalized]
     else:
-        print(f"Не найден в основном индексе, пробуем как QR-код")
+        # Ищем QR в OZ-файлах (столбец AE)
         qr_index_all = {}
         for mk in MARKING_KEYS:
-            print(f"Загружаем QR-индекс для {mk}")
             qr_idx = get_oz_qr_index(mk, today_str)
-            print(f"Получено {len(qr_idx)} QR-записей для {mk}")
-            for qr, arts in qr_idx.items():
-                qr_index_all.setdefault(qr, []).extend(arts)
+            for qr, pairs in qr_idx.items():
+                # pairs: (marking, art)
+                qr_index_all.setdefault(qr, []).extend(pairs)
+                for marking, art in pairs:
+                    qr_markings_map.setdefault(art, set()).add(marking)
 
-        print(f"Всего уникальных QR в индексе: {len(qr_index_all)}")
         if barcode in qr_index_all:
-            barcodes_to_search = qr_index_all[barcode]
-            print(f"QR найден! Артикулы: {barcodes_to_search}")
+            qr_pairs = qr_index_all[barcode]  # список (marking, art)
+            barcodes_to_search = [art for _, art in qr_pairs]
+            # Дополнительно обновляем qr_markings_map для этих артикулов
+            for marking, art in qr_pairs:
+                qr_markings_map.setdefault(art, set()).add(marking)
         else:
-            print(f"QR не найден. Доступные QR (первые 5): {list(qr_index_all.keys())[:5]}")
             raise HTTPException(status_code=404, detail="Товар не найден")
 
+    # Собираем все позиции для найденных артикулов
     all_positions = []
     for bcode in barcodes_to_search:
-        print(f"Ищем артикул {bcode} в основном индексе")
         if bcode in index:
             all_positions.extend(index[bcode])
-            print(f"Найдено {len(index[bcode])} позиций")
-        else:
-            print(f"Артикул {bcode} не найден в основном индексе")
     if not all_positions:
-        print("Нет позиций для найденных артикулов")
         raise HTTPException(status_code=404, detail="Товар не найден")
 
+    # Группируем товары
     products = {}
     for row_idx, col_idx in all_positions:
         row = data[row_idx]
@@ -405,7 +353,12 @@ async def mark_barcode(barcode: str):
                 "Маркировки": set(),
                 "entries": [],
                 "skip_stickers": False,
+                "qr_markings": set(),  # маркировки, найденные по QR для этого товара
             }
+
+        # Если товар найден по QR, запоминаем маркировки
+        if code in qr_markings_map:
+            products[key]["qr_markings"].update(qr_markings_map[code])
 
         marking, is_id = get_marking_for_position(col_idx, col_names)
         if marking:
@@ -414,19 +367,33 @@ async def mark_barcode(barcode: str):
             if marking == "FSK":
                 products[key]["skip_stickers"] = True
 
+    # Определяем found_markings
     for key, data_item in products.items():
         if data_item["skip_stickers"]:
             data_item["sticker_markings"] = set()
             continue
 
+        # Если есть маркировки из QR, добавляем их в found_markings
+        if data_item["qr_markings"]:
+            qr_markings = {f"{mk}_OZ" for mk in data_item["qr_markings"]}
+        else:
+            qr_markings = set()
+
         id_markings = {marking for marking, is_id in data_item["entries"] if is_id is True}
         barcode_markings = {marking for marking, is_id in data_item["entries"] if is_id is False}
 
+        # Объединяем все маркировки
+        all_markings = set()
         if id_markings:
-            data_item["sticker_markings"] = id_markings
-        else:
-            data_item["sticker_markings"] = barcode_markings
+            all_markings.update(id_markings)
+        if barcode_markings:
+            all_markings.update(barcode_markings)
+        if qr_markings:
+            all_markings.update(qr_markings)
 
+        data_item["sticker_markings"] = all_markings
+
+    # Формируем результат
     results = []
     for key, data_item in products.items():
         row_for_table = None
@@ -460,10 +427,8 @@ async def mark_barcode(barcode: str):
         results.append(item)
 
     if not results:
-        print("Результаты пустые")
         raise HTTPException(status_code=404, detail="Товар не найден")
     
-    print(f"Возвращаем {len(results)} товаров")
     return results
 
 @router.post("/api/mark/refresh")
