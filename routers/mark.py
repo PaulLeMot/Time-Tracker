@@ -123,11 +123,10 @@ def get_oz_sticker_index(marking: str, date_str: str):
         return _sticker_caches[cache_key]["index"]
 
     base_path = "/work/!МП_(FSk)/!FBS"
-    file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_OZ.csv")  # <-- CSV!
+    file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_OZ.csv")
     index = {}
     if os.path.exists(file_path):
         try:
-            # Пробуем разные разделители: сначала точку с запятой (часто в русских CSV)
             for sep in [';', ',']:
                 try:
                     df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=sep, encoding='utf-8').fillna('')
@@ -135,12 +134,11 @@ def get_oz_sticker_index(marking: str, date_str: str):
                 except Exception:
                     continue
             else:
-                # Если не получилось, пробуем с автоопределением
                 df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
             print(f"[OZ] Загружен {marking}, строк: {len(df)}")
             for _, row in df.iterrows():
-                sticker = str(row[1]).strip()   # колонка B (индекс 1)
-                art = str(row[15]).strip()      # колонка P (индекс 15)
+                sticker = str(row[1]).strip()   # колонка B
+                art = str(row[15]).strip()      # колонка P
                 if art and art != 'nan' and sticker and sticker != 'nan':
                     if art not in index:
                         index[art] = []
@@ -154,6 +152,42 @@ def get_oz_sticker_index(marking: str, date_str: str):
         print(f"[OZ] Файл не найден: {file_path}")
     _sticker_caches[cache_key] = {"index": index}
     return index
+
+def get_oz_qr_index(marking: str, date_str: str):
+    """Загружает OZ-файл и возвращает qr_index (QR → список артикулов)"""
+    cache_key = (marking, date_str, "oz_qr")
+    if cache_key in _sticker_caches:
+        return _sticker_caches[cache_key].get("qr_index", {})
+
+    base_path = "/work/!МП_(FSk)/!FBS"
+    file_path = os.path.join(base_path, f"{date_str}_FBS", "input", f"{marking}_OZ.csv")
+    qr_index = {}
+    if os.path.exists(file_path):
+        try:
+            for sep in [';', ',']:
+                try:
+                    df = pd.read_csv(file_path, header=None, usecols=[15, 30], dtype=str, sep=sep, encoding='utf-8').fillna('')
+                    break
+                except Exception:
+                    continue
+            else:
+                df = pd.read_csv(file_path, header=None, usecols=[15, 30], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
+            for _, row in df.iterrows():
+                art = str(row[0]).strip()   # колонка P (индекс 15)
+                qr = str(row[1]).strip()    # колонка AE (индекс 30)
+                if art and art != 'nan' and qr and qr != 'nan':
+                    # Проверяем, не является ли строка заголовком (если вдруг попала)
+                    if art != 'Артикул' and qr != 'Нижний штрихкод':
+                        qr_index.setdefault(qr, []).append(art)
+            print(f"[QR] Загружен индекс для {marking}, записей: {len(qr_index)}")
+        except Exception as e:
+            print(f"Ошибка загрузки QR-индекса для {marking}: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print(f"[QR] Файл не найден: {file_path}")
+    _sticker_caches[cache_key] = {"qr_index": qr_index}
+    return qr_index
 
 def get_marking_for_position(col_idx, col_names):
     if col_idx == 0:
@@ -259,9 +293,6 @@ async def mark_barcode(barcode: str):
         raise HTTPException(status_code=400, detail="Некорректный штрих-код")
     
     data, index, col_names, _ = get_cached_data()
-    if normalized not in index:
-        raise HTTPException(status_code=404, detail="Товар не найден")
-
     today_str = datetime.now().strftime("%y%m%d")
 
     # Загружаем WB-стикеры (для ID-колонок)
@@ -274,10 +305,33 @@ async def mark_barcode(barcode: str):
     for mk in MARKING_KEYS:
         oz_sticker_indices[mk] = get_oz_sticker_index(mk, today_str)
 
-    # Группируем товары
-    products = {}
+    # Поиск в основном индексе по нормализованному коду
+    if normalized in index:
+        barcodes_to_search = [normalized]
+    else:
+        # Ищем QR в OZ-файлах (столбец AE)
+        qr_index_all = {}
+        for mk in MARKING_KEYS:
+            qr_idx = get_oz_qr_index(mk, today_str)
+            for qr, arts in qr_idx.items():
+                qr_index_all.setdefault(qr, []).extend(arts)
 
-    for row_idx, col_idx in index[normalized]:
+        if barcode in qr_index_all:
+            barcodes_to_search = qr_index_all[barcode]  # список артикулов
+        else:
+            raise HTTPException(status_code=404, detail="Товар не найден")
+
+    # Собираем все позиции для найденных артикулов
+    all_positions = []
+    for bcode in barcodes_to_search:
+        if bcode in index:
+            all_positions.extend(index[bcode])
+    if not all_positions:
+        raise HTTPException(status_code=404, detail="Товар не найден")
+
+    # Группируем товары (как обычно)
+    products = {}
+    for row_idx, col_idx in all_positions:
         row = data[row_idx]
         code = row.get("Код", "")
         view = row.get("Вид товара", "")
@@ -303,7 +357,7 @@ async def mark_barcode(barcode: str):
             if marking == "FSK":
                 products[key]["skip_stickers"] = True
 
-    # Определяем маркировки для стикеров (found_markings)
+    # Определяем found_markings (стандартная логика)
     for key, data_item in products.items():
         if data_item["skip_stickers"]:
             data_item["sticker_markings"] = set()
@@ -321,7 +375,7 @@ async def mark_barcode(barcode: str):
     results = []
     for key, data_item in products.items():
         row_for_table = None
-        for row_idx, col_idx in index[normalized]:
+        for row_idx, col_idx in all_positions:
             if data_item["Код"] == data[row_idx].get("Код", ""):
                 row_for_table = data[row_idx]
                 break
@@ -355,9 +409,6 @@ async def mark_barcode(barcode: str):
     
     return results
 
-# -------------------------------------------------------------------
-# ЭНДПОИНТ ДЛЯ ОБНОВЛЕНИЯ КЭША
-# -------------------------------------------------------------------
 @router.post("/api/mark/refresh")
 async def refresh_cache():
     _cache.update({
