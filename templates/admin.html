@@ -987,6 +987,10 @@
     let recentEmployeeId = '';
     let currentEditColor = 'start'; // текущий цвет для добавляемой строки
     let currentlyEditingId = null; // ID записи, которая сейчас редактируется
+    const STORAGE_KEY_TAB = 'admin_active_tab';
+    const STORAGE_KEY_TRAFFIC = 'admin_traffic_mode';
+    const STORAGE_KEY_EMPLOYEE = 'admin_traffic_employee';
+    const STORAGE_KEY_WEEK = 'admin_traffic_week';
     const colorCycle = ['start', 'break_start', 'break_end', 'end'];
     
     const colorLabels = {
@@ -1920,6 +1924,7 @@
                     notificationsTab.style.display = 'block';
                     loadNotifications();
                 }
+                saveTabState(tabId);
             });
         });
     }
@@ -2012,6 +2017,47 @@
         }
         updateDraftBadge();
         loadEmployeesForSelect();
+        // Восстановление состояния
+        const savedTab = restoreTabState();
+        const { mode, employeeId, weekValue } = restoreTrafficState();
+
+        // Если сохранена вкладка weekly и включён режим трафика
+        if (savedTab === 'weekly' && mode) {
+            // Переключаемся на вкладку weekly
+            const weeklyTabBtn = document.querySelector('.tab-btn[data-tab="weekly"]');
+            if (weeklyTabBtn) weeklyTabBtn.click();
+
+            // Восстанавливаем неделю
+            const weekPicker = document.getElementById('weekPicker');
+            if (weekValue && weekPicker) {
+                weekPicker.value = weekValue;
+                const evt = new Event('change');
+                weekPicker.dispatchEvent(evt);
+            }
+
+            // Восстанавливаем сотрудника
+            const select = document.getElementById('weeklyTrafficEmployeeSelect');
+            if (employeeId && select) {
+                // Ждём, пока загрузится список сотрудников (асинхронно)
+                setTimeout(() => {
+                    if (select.querySelector(`option[value="${employeeId}"]`)) {
+                        select.value = employeeId;
+                        // Загружаем данные
+                        loadWeeklyTraffic(employeeId);
+                    }
+                }, 300);
+            }
+
+            // Принудительно включаем режим трафика
+            trafficModeActive = true;
+            const trafficContainer = document.getElementById('weeklyTrafficContainer');
+            const reportContainer = document.getElementById('weeklyReportContainer');
+            if (trafficContainer) trafficContainer.style.display = 'block';
+            if (reportContainer) reportContainer.style.display = 'none';
+            // Меняем текст кнопки (опционально)
+            const trafficBtn = document.getElementById('weeklyTrafficBtn');
+            if (trafficBtn) trafficBtn.textContent = '🚦 (вкл)';
+        }
     });
     async function loadRecentEntries(limit = 100) {
         const container = document.getElementById('recentContainer');
@@ -3216,6 +3262,14 @@ async function loadTrafficEmployees() {
         employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
         const select = document.getElementById('weeklyTrafficEmployeeSelect');
         select.innerHTML = '<option value="">Выберите сотрудника</option>';
+        // Восстанавливаем выбранного сотрудника, если есть сохранённое значение
+        const savedEmp = localStorage.getItem(STORAGE_KEY_EMPLOYEE);
+        if (savedEmp && select.querySelector(`option[value="${savedEmp}"]`)) {
+            select.value = savedEmp;
+            if (trafficModeActive) {
+                loadWeeklyTraffic(savedEmp);
+            }
+        }
         employees.forEach(emp => {
             const opt = document.createElement('option');
             opt.value = emp.id;
@@ -3464,11 +3518,15 @@ document.getElementById('weeklyTrafficBtn').addEventListener('click', function(e
                 document.getElementById('weeklyTrafficTableContainer').innerHTML = '<p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>';
             }
         }
+        const weekValue = document.getElementById('weekPicker').value;
+        const empId = select.value;
+        saveTrafficState(trafficModeActive, empId, weekValue);
     } else {
         // Выключаем режим трафика
         reportContainer.style.display = 'block';
         trafficContainer.style.display = 'none';
         document.getElementById('weeklyTrafficTableContainer').innerHTML = '';
+        saveTrafficState(trafficModeActive, '', '');
     }
 });
 
@@ -3477,8 +3535,11 @@ document.getElementById('weeklyTrafficEmployeeSelect').addEventListener('change'
     const employeeId = this.value;
     if (employeeId && trafficModeActive) {
         loadWeeklyTraffic(employeeId);
+        const weekValue = document.getElementById('weekPicker').value;
+        saveTrafficState(trafficModeActive, employeeId, weekValue);
     } else if (!employeeId) {
         document.getElementById('weeklyTrafficTableContainer').innerHTML = '<p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>';
+        saveTrafficState(trafficModeActive, '', document.getElementById('weekPicker').value);
     }
 });
 
@@ -3489,6 +3550,9 @@ weekPickerTraffic.addEventListener('change', function() {
         const select = document.getElementById('weeklyTrafficEmployeeSelect');
         if (select.value) {
             loadWeeklyTraffic(select.value);
+            saveTrafficState(trafficModeActive, select.value, this.value);
+        } else {
+            saveTrafficState(trafficModeActive, '', this.value);
         }
     }
 });
@@ -3809,6 +3873,28 @@ function openAddRow(dayIndex, dateStr, employeeId) {
     const input = newRow.querySelector('.add-entry-input');
     if (input) setTimeout(() => input.focus(), 100);
     return true;
+}
+function saveTabState(tabId) {
+    localStorage.setItem(STORAGE_KEY_TAB, tabId);
+}
+
+function saveTrafficState(mode, employeeId, weekValue) {
+    localStorage.setItem(STORAGE_KEY_TRAFFIC, mode ? 'true' : 'false');
+    if (employeeId) localStorage.setItem(STORAGE_KEY_EMPLOYEE, employeeId);
+    else localStorage.removeItem(STORAGE_KEY_EMPLOYEE);
+    if (weekValue) localStorage.setItem(STORAGE_KEY_WEEK, weekValue);
+    else localStorage.removeItem(STORAGE_KEY_WEEK);
+}
+
+function restoreTabState() {
+    return localStorage.getItem(STORAGE_KEY_TAB) || 'daily';
+}
+
+function restoreTrafficState() {
+    const mode = localStorage.getItem(STORAGE_KEY_TRAFFIC) === 'true';
+    const employeeId = localStorage.getItem(STORAGE_KEY_EMPLOYEE) || '';
+    const weekValue = localStorage.getItem(STORAGE_KEY_WEEK) || '';
+    return { mode, employeeId, weekValue };
 }
 </script>
 </body>
