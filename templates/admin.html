@@ -2021,7 +2021,6 @@
         const savedTab = restoreTabState();
         const { mode, employeeId, weekValue } = restoreTrafficState();
 
-        // Если сохранена вкладка weekly и включён режим трафика
         if (savedTab === 'weekly' && mode) {
             // Переключаемся на вкладку weekly
             const weeklyTabBtn = document.querySelector('.tab-btn[data-tab="weekly"]');
@@ -2035,28 +2034,27 @@
                 weekPicker.dispatchEvent(evt);
             }
 
-            // Восстанавливаем сотрудника
-            const select = document.getElementById('weeklyTrafficEmployeeSelect');
-            if (employeeId && select) {
-                // Ждём, пока загрузится список сотрудников (асинхронно)
-                setTimeout(() => {
-                    if (select.querySelector(`option[value="${employeeId}"]`)) {
-                        select.value = employeeId;
-                        // Загружаем данные
-                        loadWeeklyTraffic(employeeId);
-                    }
-                }, 300);
-            }
-
             // Принудительно включаем режим трафика
             trafficModeActive = true;
             const trafficContainer = document.getElementById('weeklyTrafficContainer');
             const reportContainer = document.getElementById('weeklyReportContainer');
             if (trafficContainer) trafficContainer.style.display = 'block';
             if (reportContainer) reportContainer.style.display = 'none';
-            // Меняем текст кнопки (опционально)
             const trafficBtn = document.getElementById('weeklyTrafficBtn');
             if (trafficBtn) trafficBtn.textContent = '🚦 (вкл)';
+
+            // Загружаем список сотрудников, если он ещё пуст, иначе подставляем сохранённого
+            const select = document.getElementById('weeklyTrafficEmployeeSelect');
+            if (select && select.options.length <= 1) {
+                // Если список не загружен – загружаем (он сам подставит сохранённого сотрудника)
+                loadTrafficEmployees();
+            } else if (select && employeeId) {
+                // Если список уже есть, просто выбираем сотрудника
+                if (select.querySelector(`option[value="${employeeId}"]`)) {
+                    select.value = employeeId;
+                    loadWeeklyTraffic(employeeId);
+                }
+            }
         }
     });
     async function loadRecentEntries(limit = 100) {
@@ -3262,7 +3260,12 @@ async function loadTrafficEmployees() {
         employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
         const select = document.getElementById('weeklyTrafficEmployeeSelect');
         select.innerHTML = '<option value="">Выберите сотрудника</option>';
-        // Восстанавливаем выбранного сотрудника, если есть сохранённое значение
+        employees.forEach(emp => {
+            const opt = document.createElement('option');
+            opt.value = emp.id;
+            opt.textContent = emp.full_name;
+            select.appendChild(opt);
+        });
         const savedEmp = localStorage.getItem(STORAGE_KEY_EMPLOYEE);
         if (savedEmp && select.querySelector(`option[value="${savedEmp}"]`)) {
             select.value = savedEmp;
@@ -3270,12 +3273,6 @@ async function loadTrafficEmployees() {
                 loadWeeklyTraffic(savedEmp);
             }
         }
-        employees.forEach(emp => {
-            const opt = document.createElement('option');
-            opt.value = emp.id;
-            opt.textContent = emp.full_name;
-            select.appendChild(opt);
-        });
     } catch (err) {
         showToast('Ошибка загрузки списка сотрудников', true);
         console.error(err);
