@@ -103,11 +103,9 @@ def get_sticker_index(marking: str, date_str: str):
     if os.path.exists(file_path):
         try:
             df = pd.read_excel(file_path, header=None, usecols=[2, 11], dtype=str).fillna('')
-            # Сбрасываем имена колонок, чтобы обращаться по 0, 1, ...
-            df.columns = range(len(df.columns))
             for _, row in df.iterrows():
-                sticker = str(row[0]).strip()   # колонка C
-                id_val = str(row[1]).strip()    # колонка L
+                sticker = str(row.iloc[0]).strip()
+                id_val = str(row.iloc[1]).strip()
                 if id_val and id_val != 'nan' and sticker and sticker != 'nan':
                     if id_val not in index:
                         index[id_val] = []
@@ -119,7 +117,7 @@ def get_sticker_index(marking: str, date_str: str):
     return index
 
 def get_oz_sticker_index(marking: str, date_str: str):
-    """Загружает OZ-стикеры (CSV, колонки B и P) – без usecols"""
+    """Загружает OZ-стикеры (CSV, колонки B и P)"""
     cache_key = (marking, date_str, "oz")
     if cache_key in _sticker_caches:
         return _sticker_caches[cache_key]["index"]
@@ -132,21 +130,20 @@ def get_oz_sticker_index(marking: str, date_str: str):
             df = None
             for sep in [';', ',']:
                 try:
-                    df = pd.read_csv(file_path, header=None, dtype=str, sep=sep, encoding='utf-8').fillna('')
+                    df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=sep, encoding='utf-8').fillna('')
                     break
                 except Exception:
                     continue
             if df is None:
-                df = pd.read_csv(file_path, header=None, dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
-            print(f"[OZ] Загружен {marking}, строк: {len(df)}")
+                df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
             for _, row in df.iterrows():
-                sticker = str(row[1]).strip()   # колонка B
-                art = str(row[15]).strip()      # колонка P
+                sticker = str(row.iloc[0]).strip()
+                art = str(row.iloc[1]).strip()
                 if art and art != 'nan' and sticker and sticker != 'nan':
                     if art not in index:
                         index[art] = []
                     index[art].append(sticker)
-            print(f"[OZ] Индекс для {marking}: {len(index)} артикулов")
+            print(f"[OZ] Загружен {marking}, индекс: {len(index)} артикулов")
         except Exception as e:
             print(f"Ошибка загрузки OZ-стикеров для {marking}: {e}")
             import traceback
@@ -171,27 +168,20 @@ def get_oz_qr_index(marking: str, date_str: str):
             df = None
             for sep in [';', ',']:
                 try:
-                    # Читаем только колонки 15 (артикул) и 30 (QR)
                     df = pd.read_csv(file_path, header=None, usecols=[15, 30], dtype=str, sep=sep, encoding='utf-8').fillna('')
                     break
                 except Exception:
                     continue
             if df is None:
                 df = pd.read_csv(file_path, header=None, usecols=[15, 30], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
-            # Сбрасываем имена колонок, чтобы обращаться по 0, 1
-            df.columns = range(len(df.columns))
-            print(f"[QR] Загружен {marking}, строк: {len(df)}, колонок: {len(df.columns)}")
             for _, row in df.iterrows():
-                art = str(row[0]).strip()
-                qr = str(row[1]).strip()
+                art = str(row.iloc[0]).strip()
+                qr = str(row.iloc[1]).strip()
                 if art == 'Артикул' or qr == 'Нижний штрихкод':
                     continue
                 if art and art != 'nan' and qr and qr != 'nan':
                     qr_index.setdefault(qr, []).append(art)
-            print(f"[QR] Построен индекс для {marking}, записей: {len(qr_index)}")
-            if len(qr_index) > 0:
-                sample = list(qr_index.items())[:3]
-                print(f"[QR] Примеры: {sample}")
+            print(f"[QR] Загружен индекс для {marking}, записей: {len(qr_index)}")
         except Exception as e:
             print(f"Ошибка загрузки QR-индекса для {marking}: {e}")
             import traceback
@@ -226,7 +216,11 @@ def get_marking_for_position(col_idx, col_names):
     else:
         return None, None
 
-def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False):
+def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False, oz_search_art=None):
+    """
+    oz_search_art: если передан, то поиск стикеров в OZ ведётся по этому артикулу,
+                   иначе используется code.
+    """
     table = []
     
     fsk_bar = generate_ean13(code)
@@ -270,8 +264,10 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         oz_bar_clean = oz_bar if oz_bar else '0'
         oz_pairs = []
         if not skip_stickers and mk in oz_sticker_indices:
-            stickers_for_art = oz_sticker_indices[mk].get(code, [])
+            search_art = oz_search_art if oz_search_art is not None else code
+            stickers_for_art = oz_sticker_indices[mk].get(search_art, [])
             if stickers_for_art:
+                # Строим обратный индекс: стикер → [артикулы]
                 reverse_index = {}
                 for art, st_list in oz_sticker_indices[mk].items():
                     for st in st_list:
@@ -319,6 +315,7 @@ async def mark_barcode(barcode: str):
 
     # Поиск в основном индексе по нормализованному коду
     qr_markings_map = {}  # art -> set(markings)
+    found_via_qr = False
     if normalized in index:
         barcodes_to_search = [normalized]
     else:
@@ -333,6 +330,7 @@ async def mark_barcode(barcode: str):
 
         if barcode in qr_index_all:
             barcodes_to_search = qr_index_all[barcode]
+            found_via_qr = True
         else:
             raise HTTPException(status_code=404, detail="Товар не найден")
 
@@ -374,7 +372,8 @@ async def mark_barcode(barcode: str):
         if marking:
             products[key]["Маркировки"].add(marking)
             products[key]["entries"].append((marking, is_id))
-            if marking == "FSK":
+            # Устанавливаем skip_stickers только если это FSK и товар найден НЕ по QR
+            if marking == "FSK" and not found_via_qr:
                 products[key]["skip_stickers"] = True
 
     # Определяем found_markings
