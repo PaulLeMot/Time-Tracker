@@ -971,18 +971,12 @@
         renderDropdown();
 
         const input = document.getElementById('scanInput');
-        const toggleBtn = document.getElementById('dropdownToggle');
-        const refreshBtn = document.getElementById('refreshDataBtn');
 
-        refreshBtn.addEventListener('click', refreshData);
-
-        toggleBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            toggleDropdown();
+        input.addEventListener('focus', function() {
+            this.select();
         });
 
-        input.addEventListener('focus', function() { this.select(); });
-
+        // Обработка ввода и истории
         input.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -990,9 +984,12 @@
                 if (code) {
                     performScan(code);
                 }
+                // Очищаем поле после сканирования
+                this.value = '';
                 return;
             }
 
+            // Стрелки вверх/вниз для истории
             if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (searchHistory.length === 0) return;
@@ -1023,6 +1020,7 @@
             }
         });
 
+        // Обработка ввода (для сброса истории при ручном изменении)
         input.addEventListener('input', function() {
             if (!this.value.trim()) {
                 if (searchHistory.length > 0) {
