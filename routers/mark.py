@@ -103,9 +103,11 @@ def get_sticker_index(marking: str, date_str: str):
     if os.path.exists(file_path):
         try:
             df = pd.read_excel(file_path, header=None, usecols=[2, 11], dtype=str).fillna('')
+            # Сбрасываем имена колонок, чтобы обращаться по 0, 1, ...
+            df.columns = range(len(df.columns))
             for _, row in df.iterrows():
-                sticker = str(row[0]).strip()
-                id_val = str(row[1]).strip()
+                sticker = str(row[0]).strip()   # колонка C
+                id_val = str(row[1]).strip()    # колонка L
                 if id_val and id_val != 'nan' and sticker and sticker != 'nan':
                     if id_val not in index:
                         index[id_val] = []
@@ -117,7 +119,7 @@ def get_sticker_index(marking: str, date_str: str):
     return index
 
 def get_oz_sticker_index(marking: str, date_str: str):
-    """Загружает OZ-стикеры (CSV, колонки B и P) – без usecols для совместимости"""
+    """Загружает OZ-стикеры (CSV, колонки B и P) – без usecols"""
     cache_key = (marking, date_str, "oz")
     if cache_key in _sticker_caches:
         return _sticker_caches[cache_key]["index"]
@@ -127,7 +129,6 @@ def get_oz_sticker_index(marking: str, date_str: str):
     index = {}
     if os.path.exists(file_path):
         try:
-            # Читаем все колонки, т.к. в исходном коде обращение по индексам 1 и 15
             df = None
             for sep in [';', ',']:
                 try:
@@ -177,7 +178,9 @@ def get_oz_qr_index(marking: str, date_str: str):
                     continue
             if df is None:
                 df = pd.read_csv(file_path, header=None, usecols=[15, 30], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
-            # Теперь df имеет две колонки: 0 - артикул, 1 - QR
+            # Сбрасываем имена колонок, чтобы обращаться по 0, 1
+            df.columns = range(len(df.columns))
+            print(f"[QR] Загружен {marking}, строк: {len(df)}, колонок: {len(df.columns)}")
             for _, row in df.iterrows():
                 art = str(row[0]).strip()
                 qr = str(row[1]).strip()
@@ -185,7 +188,10 @@ def get_oz_qr_index(marking: str, date_str: str):
                     continue
                 if art and art != 'nan' and qr and qr != 'nan':
                     qr_index.setdefault(qr, []).append(art)
-            print(f"[QR] Загружен индекс для {marking}, записей: {len(qr_index)}")
+            print(f"[QR] Построен индекс для {marking}, записей: {len(qr_index)}")
+            if len(qr_index) > 0:
+                sample = list(qr_index.items())[:3]
+                print(f"[QR] Примеры: {sample}")
         except Exception as e:
             print(f"Ошибка загрузки QR-индекса для {marking}: {e}")
             import traceback
