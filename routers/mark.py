@@ -104,8 +104,8 @@ def get_sticker_index(marking: str, date_str: str):
         try:
             df = pd.read_excel(file_path, header=None, usecols=[2, 11], dtype=str).fillna('')
             for _, row in df.iterrows():
-                sticker = str(row[2]).strip()
-                id_val = str(row[11]).strip()
+                sticker = str(row[0]).strip()
+                id_val = str(row[1]).strip()
                 if id_val and id_val != 'nan' and sticker and sticker != 'nan':
                     if id_val not in index:
                         index[id_val] = []
@@ -137,8 +137,8 @@ def get_oz_sticker_index(marking: str, date_str: str):
                 df = pd.read_csv(file_path, header=None, usecols=[1, 15], dtype=str, sep=None, engine='python', encoding='utf-8').fillna('')
             print(f"[OZ] Загружен {marking}, строк: {len(df)}")
             for _, row in df.iterrows():
-                sticker = str(row[1]).strip()   # колонка B
-                art = str(row[15]).strip()      # колонка P
+                sticker = str(row[0]).strip()
+                art = str(row[1]).strip()
                 if art and art != 'nan' and sticker and sticker != 'nan':
                     if art not in index:
                         index[art] = []
@@ -168,7 +168,6 @@ def get_oz_qr_index(marking: str, date_str: str):
     if os.path.exists(file_path):
         print(f"[QR] Файл существует, начинаем чтение")
         try:
-            # Пробуем разные разделители
             df = None
             used_sep = None
             for sep in [';', ',']:
@@ -196,16 +195,23 @@ def get_oz_qr_index(marking: str, date_str: str):
                 print(f"[QR] Первые 5 строк (сырые):\n{df.head().to_string()}")
                 print(f"[QR] Колонки: {list(df.columns)}")
 
-                # Проверяем, что у нас две колонки (индексы 0 и 1)
-                if len(df.columns) != 2:
-                    print(f"[QR] Ожидалось 2 колонки, получено {len(df.columns)}. Использую первые две.")
-                    # Если колонок больше, берём первые две
-                    df = df.iloc[:, :2]
+                # Ожидаем, что колонки будут называться 15 и 30 (так как мы указали usecols)
+                # Проверяем, что они есть
+                if 15 not in df.columns or 30 not in df.columns:
+                    print(f"[QR] Колонки 15 или 30 отсутствуют. Доступные колонки: {list(df.columns)}")
+                    # Если колонки названы иначе, возможно, надо использовать .iloc
+                    # Попробуем использовать первые две колонки
+                    if len(df.columns) >= 2:
+                        print("[QR] Использую первые две колонки (iloc)")
+                        df = df.iloc[:, :2]
+                    else:
+                        raise ValueError("Недостаточно колонок")
 
                 for idx, row in df.iterrows():
                     try:
-                        art = str(row[0]).strip()   # колонка P
-                        qr = str(row[1]).strip()    # колонка AE
+                        # Обращаемся по имени колонки (число 15 и 30)
+                        art = str(row[15]).strip() if 15 in row else str(row.iloc[0]).strip()
+                        qr = str(row[30]).strip() if 30 in row else str(row.iloc[1]).strip()
                     except Exception as e:
                         print(f"[QR] Ошибка доступа к строке {idx}: {e}, row: {row}")
                         continue
@@ -353,7 +359,6 @@ async def mark_barcode(barcode: str):
         barcodes_to_search = [normalized]
     else:
         print(f"Не найден в основном индексе, пробуем как QR-код")
-        # Ищем QR в OZ-файлах (столбец AE)
         qr_index_all = {}
         for mk in MARKING_KEYS:
             print(f"Загружаем QR-индекс для {mk}")
@@ -370,7 +375,6 @@ async def mark_barcode(barcode: str):
             print(f"QR не найден. Доступные QR (первые 5): {list(qr_index_all.keys())[:5]}")
             raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Собираем все позиции для найденных артикулов
     all_positions = []
     for bcode in barcodes_to_search:
         print(f"Ищем артикул {bcode} в основном индексе")
@@ -383,7 +387,6 @@ async def mark_barcode(barcode: str):
         print("Нет позиций для найденных артикулов")
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Группируем товары
     products = {}
     for row_idx, col_idx in all_positions:
         row = data[row_idx]
@@ -411,7 +414,6 @@ async def mark_barcode(barcode: str):
             if marking == "FSK":
                 products[key]["skip_stickers"] = True
 
-    # Определяем found_markings
     for key, data_item in products.items():
         if data_item["skip_stickers"]:
             data_item["sticker_markings"] = set()
@@ -425,7 +427,6 @@ async def mark_barcode(barcode: str):
         else:
             data_item["sticker_markings"] = barcode_markings
 
-    # Формируем результат
     results = []
     for key, data_item in products.items():
         row_for_table = None
