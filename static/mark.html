@@ -469,6 +469,21 @@
             .articul-image { width: 24px; height: 24px; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
         }
+        #lastScannedCode {
+            font-size: 1.5rem;
+            font-weight: 500;
+            color: #0f172a;
+            margin-top: 4px;
+            min-height: 2rem;
+            word-break: break-all;
+            transition: opacity 0.2s;
+        }
+        #lastScannedCode:empty {
+            opacity: 0;
+        }
+        #lastScannedCode:not(:empty) {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -488,6 +503,7 @@
                     </div>
                     <span id="markingDisplay"></span>
                 </div>
+                <div id="lastScannedCode" style="font-size:1.5rem; font-weight:500; color:#0f172a; margin-top:4px; min-height:2rem; word-break:break-all;"></div>
             </div>
             <div id="productInfoContainer">
                 <p class="placeholder-text">Ожидание сканирования...</p>
@@ -631,6 +647,7 @@
         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('tablesScroll').innerHTML = '';
         document.getElementById('markingDisplay').textContent = '';
+        document.getElementById('lastScannedCode').textContent = '';
         resetImage();
     }
 
@@ -638,6 +655,7 @@
         document.getElementById('productInfoContainer').innerHTML = '<div class="loading">Загрузка...</div>';
         document.getElementById('tablesScroll').innerHTML = '';
         document.getElementById('markingDisplay').textContent = '⏳';
+        document.getElementById('lastScannedCode').textContent = '';
         resetImage();
     }
 
@@ -920,6 +938,8 @@
                 return;
             }
             const data = await resp.json();
+            // Отображаем отсканированный код крупным шрифтом
+            document.getElementById('lastScannedCode').textContent = code;
             renderResults(data);
         } catch (err) {
             showError('Ошибка соединения с сервером');
@@ -973,7 +993,7 @@
         // --- Обработчики поля ввода ---
         const input = document.getElementById('scanInput');
         const toggleBtn = document.getElementById('dropdownToggle');
-        
+
         // Обработчик для кнопки-стрелки
         toggleBtn.addEventListener('click', function(e) {
             e.stopPropagation();
