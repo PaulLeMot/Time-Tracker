@@ -106,6 +106,7 @@
             align-items: center;
             justify-content: center;
             color: #0f172a;
+            position: relative;
         }
         .refresh-btn:hover {
             border-color: #3b82f6;
@@ -117,33 +118,18 @@
             cursor: not-allowed;
             transform: none;
         }
-
-        #fileStatus {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.85rem;
-            flex-shrink: 0;
-            background: #f8fafc;
-            padding: 4px 12px;
-            border-radius: 20px;
-            border: 1px solid #e2e8f0;
+        /* Индикатор состояния на кнопке */
+        .refresh-btn.status-ok {
+            border-color: #22c55e;
+            background: #f0fdf4;
         }
-        #statusIndicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #94a3b8;
-            transition: background 0.3s;
-            flex-shrink: 0;
+        .refresh-btn.status-error {
+            border-color: #ef4444;
+            background: #fef2f2;
         }
-        #statusText {
-            color: #334155;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 300px;
+        .refresh-btn.status-loading {
+            border-color: #f59e0b;
+            background: #fffbeb;
         }
 
         .input-marking-wrapper {
@@ -497,8 +483,6 @@
             .sticker-articul { font-size: 0.9rem; }
             .articul-image { width: 24px; height: 24px; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
-            #statusText { max-width: 150px; }
-            #fileStatus { padding: 2px 10px; font-size: 0.75rem; }
         }
         #lastScannedCode {
             font-size: 1.5rem;
@@ -525,11 +509,7 @@
                 <a href="/static/employee.html" class="logo-btn" title="Личный кабинет">
                     <img src="/static/ttr.png" alt="ЛК">
                 </a>
-                <button id="refreshDataBtn" class="refresh-btn" title="Обновить данные из файлов">🔃</button>
-                <div id="fileStatus">
-                    <span id="statusIndicator"></span>
-                    <span id="statusText">Проверка...</span>
-                </div>
+                <button id="refreshDataBtn" class="refresh-btn" title="Проверка статуса файлов...">🔃</button>
                 <div class="input-marking-wrapper">
                     <div class="input-container">
                         <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
@@ -981,31 +961,28 @@
         }
     }
 
-    // --- Статус файлов ---
+    // --- Статус файлов (обновление кнопки) ---
     async function updateFileStatus() {
-        const indicator = document.getElementById('statusIndicator');
-        const text = document.getElementById('statusText');
+        const btn = document.getElementById('refreshDataBtn');
         try {
             const resp = await fetch('/api/mark/status', { credentials: 'include' });
             if (!resp.ok) {
-                indicator.style.background = '#ef4444';
-                text.textContent = 'Ошибка получения статуса';
-                console.error('Status error:', resp.status);
+                btn.title = '❌ Ошибка получения статуса';
+                btn.className = 'refresh-btn status-error';
                 return;
             }
             const data = await resp.json();
-            console.log('Status data:', data);
             if (data.ok) {
-                indicator.style.background = '#22c55e';
-                text.textContent = `✅ Все файлы за ${data.date} загружены`;
+                btn.title = `✅ Все файлы за ${data.date} загружены`;
+                btn.className = 'refresh-btn status-ok';
             } else {
-                indicator.style.background = '#ef4444';
                 const missing = data.missing || [];
-                text.textContent = `❌ Отсутствуют: ${missing.join(', ')}`;
+                btn.title = `❌ Отсутствуют: ${missing.join(', ')}`;
+                btn.className = 'refresh-btn status-error';
             }
         } catch (e) {
-            indicator.style.background = '#ef4444';
-            text.textContent = 'Ошибка соединения';
+            btn.title = '❌ Ошибка соединения';
+            btn.className = 'refresh-btn status-error';
             console.error('Status fetch error:', e);
         }
     }
@@ -1015,6 +992,7 @@
         const btn = document.getElementById('refreshDataBtn');
         btn.disabled = true;
         btn.textContent = '⏳';
+        btn.className = 'refresh-btn status-loading';
         try {
             // Сначала проверяем статус файлов
             const statusResp = await fetch('/api/mark/status', { credentials: 'include' });
@@ -1025,7 +1003,7 @@
                     showToast(`Нельзя обновить: отсутствуют файлы: ${missing.join(', ')}`, true);
                     btn.disabled = false;
                     btn.textContent = '🔃';
-                    await updateFileStatus(); // обновим статус, чтобы отобразить ошибку
+                    await updateFileStatus();
                     return;
                 }
             } else {
