@@ -563,6 +563,14 @@
     let historyIndex = -1;
     const MAX_HISTORY = 20;
 
+    // Маппинг маркировка → имя файла (без расширения)
+    const logoMap = {
+        'sia': 'Amineski',
+        'ktv': 'GoJo',
+        'reg': 'FoxInBox',
+        'kpd': 'Arfefacto'
+    };
+
     function loadHistoryFromStorage() {
         try {
             const stored = localStorage.getItem('markSearchHistory');
@@ -759,10 +767,11 @@
         const foundMarkings = product['found_markings'] || [];
         const ozMarkings = foundMarkings.filter(m => m.endsWith('_OZ'));
         if (ozMarkings.length > 0) {
-            const ozName = ozMarkings[0].replace('_OZ', '');
-            const logoPath = `/static/logos/${ozName}.jpg`;
+            const ozMarking = ozMarkings[0].replace('_OZ', '');
+            const logoFileName = logoMap[ozMarking] || ozMarking; // fallback
+            const logoPath = `/static/logos/${logoFileName}.jpg`;
             logoImg.src = logoPath;
-            logoImg.alt = ozName;
+            logoImg.alt = ozMarking;
             logoImg.style.display = 'block';
             logoImg.onerror = function() {
                 this.style.display = 'none';
