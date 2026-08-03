@@ -32,6 +32,7 @@
             flex-direction: column;
             overflow: hidden;
         }
+
         .main-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -39,6 +40,7 @@
             flex: 1;
             min-height: 0;
         }
+
         .left-col {
             display: flex;
             flex-direction: column;
@@ -48,6 +50,7 @@
             padding-top: 12px;
             overflow: hidden;
         }
+
         .right-col {
             display: flex;
             flex-direction: column;
@@ -56,6 +59,7 @@
             min-height: 0;
             overflow: hidden;
         }
+
         .search-row {
             display: flex;
             align-items: center;
@@ -87,6 +91,7 @@
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
         }
+
         .refresh-btn {
             flex-shrink: 0;
             width: 44px;
@@ -125,6 +130,7 @@
             border-color: #f59e0b;
             background: #fffbeb;
         }
+
         .input-marking-wrapper {
             display: flex;
             align-items: center;
@@ -157,6 +163,7 @@
         #scanInput::placeholder {
             color: #94a3b8;
         }
+
         .dropdown-toggle {
             position: absolute;
             right: 10px;
@@ -182,6 +189,7 @@
         .dropdown-toggle.open {
             transform: translateY(-50%) rotate(180deg);
         }
+
         #markingDisplay {
             flex-shrink: 0;
             font-weight: bold;
@@ -192,6 +200,7 @@
             text-overflow: ellipsis;
             max-width: 200px;
         }
+
         .dropdown-content {
             display: none;
             position: absolute;
@@ -233,6 +242,7 @@
             text-align: center;
             font-size: 0.9rem;
         }
+
         #productInfoContainer {
             flex-shrink: 0;
         }
@@ -271,6 +281,8 @@
             font-weight: 500;
             color: #475569;
         }
+
+        /* Блок с отсканированным кодом и логотипом */
         #lastScannedCode {
             display: flex;
             align-items: center;
@@ -290,13 +302,12 @@
         #markingLogo {
             height: 40px;
             width: auto;
-            max-width: 100px;
             flex-shrink: 0;
             display: none;
             object-fit: contain;
             border-radius: 4px;
-            background: rgba(0,0,0,0.05); /* временно для отладки */
         }
+
         .tables-scroll {
             flex: 1;
             min-height: 0;
@@ -306,6 +317,7 @@
             gap: 2px;
             padding-right: 4px;
         }
+
         .sticker-section {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -354,6 +366,7 @@
             font-weight: 400;
             font-size: 1rem;
         }
+
         .articul-with-image {
             display: flex;
             align-items: center;
@@ -370,6 +383,7 @@
         .articul-image-error {
             display: none;
         }
+
         .table-container {
             border: 1px solid #e2e8f0;
             border-radius: 12px;
@@ -397,6 +411,7 @@
         .table-container tr:last-child td {
             border-bottom: none;
         }
+
         .badge {
             display: inline-block;
             padding: 2px 12px;
@@ -410,6 +425,7 @@
         .badge-wb { background: #6b21a5; }
         .badge-oz { background: #1e40af; }
         .badge-fsk { background: #64748b; }
+
         .image-wrapper {
             flex: 1;
             min-height: 0;
@@ -434,6 +450,7 @@
             text-align: center;
             padding: 20px;
         }
+
         .no-result { color: #ef4444; text-align: center; padding: 20px 0; font-size: 1.1rem; }
         .loading { text-align: center; color: #64748b; padding: 20px 0; }
         .error {
@@ -449,6 +466,7 @@
             padding: 20px 0;
             width: 100%;
         }
+
         .toast {
             position: fixed;
             bottom: 20px;
@@ -465,6 +483,7 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         .toast.show { opacity: 1; }
+
         @media (max-width: 700px) {
             .container { padding: 16px; }
             .main-grid {
@@ -489,7 +508,7 @@
             .articul-image { width: 24px; height: 24px; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
             #scannedCodeText { font-size: 1.2rem; }
-            #markingLogo { height: 30px; max-width: 70px; }
+            #markingLogo { height: 30px; }
         }
         #lastScannedCode:empty {
             opacity: 0;
@@ -519,6 +538,7 @@
                     <span id="markingDisplay"></span>
                 </div>
             </div>
+            <!-- Блок для отображения последнего сканированного кода и логотипа -->
             <div id="lastScannedCode">
                 <span id="scannedCodeText"></span>
                 <img id="markingLogo" src="" alt="Логотип маркировки">
@@ -745,20 +765,17 @@
         codeText.textContent = code;
 
         const foundMarkings = product['found_markings'] || [];
-        console.log('foundMarkings:', foundMarkings);
+        console.log('foundMarkings:', foundMarkings); // отладка
         const ozMarkings = foundMarkings.filter(m => m.endsWith('_OZ'));
-        console.log('ozMarkings:', ozMarkings);
+        console.log('ozMarkings:', ozMarkings); // отладка
         if (ozMarkings.length > 0) {
             const ozMarking = ozMarkings[0].replace('_OZ', '').toLowerCase();
             const logoFileName = logoMap[ozMarking] || ozMarking;
+            console.log('ozMarking:', ozMarking, 'logoFileName:', logoFileName); // отладка
             const logoPath = `/static/logos/${logoFileName}.jpg`;
-            console.log('Setting logo path:', logoPath);
             logoImg.src = logoPath;
             logoImg.alt = ozMarking;
             logoImg.style.display = 'block';
-            logoImg.onload = function() {
-                console.log('Logo loaded successfully:', this.src);
-            };
             logoImg.onerror = function() {
                 console.error('Logo load error:', this.src);
                 this.style.display = 'none';
@@ -1107,12 +1124,14 @@
                 this.value = '';
                 return;
             }
+
             if (e.key === 'Escape') {
                 this.value = '';
                 this.blur();
                 closeDropdown();
                 return;
             }
+
             if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (searchHistory.length === 0) return;
@@ -1127,6 +1146,7 @@
                 this.setSelectionRange(this.value.length, this.value.length);
                 return;
             }
+
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 if (searchHistory.length === 0 || historyIndex === -1) return;

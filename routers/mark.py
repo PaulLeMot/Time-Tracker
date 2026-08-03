@@ -364,7 +364,12 @@ async def mark_barcode(barcode: str):
         oz_sticker_indices[mk] = get_oz_sticker_index(mk, today_str)
 
     found_via_qr = False
+    found_via_fsk = False
     qr_art_markings = {}  # art -> set(markings)
+
+    # Определяем, был ли введён FSK-штрихкод (начинается с 2400000 и длина 13)
+    if barcode.startswith("2400000") and len(barcode) == 13:
+        found_via_fsk = True
 
     if normalized in index:
         barcodes_to_search = [normalized]
@@ -422,15 +427,16 @@ async def mark_barcode(barcode: str):
 
         marking, is_id = get_marking_for_position(col_idx, col_names)
         if marking:
-            # При QR-поиске не добавляем FSK из структурной позиции col_idx==0
-            if marking == "FSK" and found_via_qr:
-                # Пропускаем, т.к. это не настоящая маркировка
-                pass
+            # При FSK-штрихкоде не добавляем FSK в маркировки, а выставляем skip_stickers
+            if marking == "FSK" and found_via_fsk:
+                products[key]["skip_stickers"] = True
             else:
                 products[key]["Маркировки"].add(marking)
                 products[key]["entries"].append((marking, is_id))
-                if marking == "FSK" and not found_via_qr:
-                    products[key]["skip_stickers"] = True
+                if marking == "FSK" and not found_via_qr and not found_via_fsk:
+                    # Это артикул, но FSK-маркировку можно добавить, но skip_stickers не нужен
+                    # В данном случае мы её добавили, но skip_stickers не выставляем
+                    pass
 
     for key, data_item in products.items():
         if data_item["skip_stickers"]:
