@@ -65,6 +65,7 @@
             align-items: center;
             gap: 12px;
             flex-shrink: 0;
+            flex-wrap: wrap;
         }
         .logo-btn {
             flex-shrink: 0;
@@ -115,6 +116,30 @@
             opacity: 0.6;
             cursor: not-allowed;
             transform: none;
+        }
+
+        #fileStatus {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        #statusIndicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #94a3b8;
+            transition: background 0.3s;
+            flex-shrink: 0;
+        }
+        #statusText {
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 300px;
         }
 
         .input-marking-wrapper {
@@ -321,7 +346,7 @@
         .sticker-highlight {
             font-weight: 700;
             font-size: 1.5rem;
-            padding: 0 4px;  /* ← пробелы до и после жирных цифр */
+            padding: 0 4px;
         }
         .sticker-normal {
             font-weight: 400;
@@ -468,6 +493,7 @@
             .sticker-articul { font-size: 0.9rem; }
             .articul-image { width: 24px; height: 24px; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
+            #statusText { max-width: 150px; }
         }
         #lastScannedCode {
             font-size: 1.5rem;
@@ -495,6 +521,10 @@
                     <img src="/static/ttr.png" alt="ЛК">
                 </a>
                 <button id="refreshDataBtn" class="refresh-btn" title="Обновить данные из файлов">🔃</button>
+                <div id="fileStatus">
+                    <span id="statusIndicator"></span>
+                    <span id="statusText">Проверка...</span>
+                </div>
                 <div class="input-marking-wrapper">
                     <div class="input-container">
                         <input type="text" id="scanInput" placeholder="Штрих-код или артикул..." autofocus>
@@ -947,12 +977,57 @@
         }
     }
 
+    // --- Статус файлов ---
+    async function updateFileStatus() {
+        const indicator = document.getElementById('statusIndicator');
+        const text = document.getElementById('statusText');
+        try {
+            const resp = await fetch('/api/mark/status', { credentials: 'include' });
+            if (!resp.ok) {
+                indicator.style.background = '#ef4444';
+                text.textContent = 'Ошибка получения статуса';
+                return;
+            }
+            const data = await resp.json();
+            if (data.ok) {
+                indicator.style.background = '#22c55e';
+                text.textContent = `✅ Все файлы за ${data.date} загружены`;
+            } else {
+                indicator.style.background = '#ef4444';
+                const missing = data.missing || [];
+                text.textContent = `❌ Отсутствуют: ${missing.join(', ')}`;
+            }
+        } catch (e) {
+            indicator.style.background = '#ef4444';
+            text.textContent = 'Ошибка соединения';
+        }
+    }
+
     // --- Кнопка обновления ---
     async function refreshData() {
         const btn = document.getElementById('refreshDataBtn');
         btn.disabled = true;
         btn.textContent = '⏳';
         try {
+            // Сначала проверяем статус файлов
+            const statusResp = await fetch('/api/mark/status', { credentials: 'include' });
+            if (statusResp.ok) {
+                const statusData = await statusResp.json();
+                if (!statusData.ok) {
+                    const missing = statusData.missing || [];
+                    showToast(`Нельзя обновить: отсутствуют файлы: ${missing.join(', ')}`, true);
+                    btn.disabled = false;
+                    btn.textContent = '🔃';
+                    return;
+                }
+            } else {
+                showToast('Ошибка проверки статуса файлов', true);
+                btn.disabled = false;
+                btn.textContent = '🔃';
+                return;
+            }
+
+            // Если всё ок – очищаем кэш
             const resp = await fetch('/api/mark/refresh', {
                 method: 'POST',
                 credentials: 'include'
@@ -968,6 +1043,8 @@
             }
             const data = await resp.json();
             showToast(data.message || 'Данные обновлены');
+            // Обновляем статус после очистки
+            await updateFileStatus();
             document.getElementById('productInfoContainer').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
             document.getElementById('tablesScroll').innerHTML = '';
             document.getElementById('markingDisplay').textContent = '';
@@ -989,6 +1066,8 @@
 
         loadHistoryFromStorage();
         renderDropdown();
+        // Обновляем статус файлов при загрузке страницы
+        await updateFileStatus();
 
         // --- Обработчики поля ввода ---
         const input = document.getElementById('scanInput');
@@ -1065,6 +1144,9 @@
                 }
             }
         });
+
+        // Обработчик кнопки обновления
+        document.getElementById('refreshDataBtn').addEventListener('click', refreshData);
     });
 </script>
 </body>

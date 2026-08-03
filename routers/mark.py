@@ -21,6 +21,36 @@ _sticker_caches = {}
 MARKING_KEYS = ["sia", "ktv", "reg", "kpd"]
 EXCLUDED_COLUMNS = {12, 15, 19, 22, 26, 29, 33, 36}
 
+def get_today_str() -> str:
+    return datetime.now().strftime("%y%m%d")
+
+def check_files_status(date_str: str) -> dict:
+    """Проверяет наличие всех необходимых файлов за указанную дату."""
+    base_rep = "/work/!МП_(FSk)/!Rep"
+    base_fbs = "/work/!МП_(FSk)/!FBS"
+    files = {
+        f"{date_str}_mp_rep.xlsx": os.path.join(base_rep, f"{date_str}_mp_rep.xlsx"),
+    }
+    for mk in MARKING_KEYS:
+        files[f"{date_str}_FBS/input/{mk}_WB.xlsx"] = os.path.join(
+            base_fbs, f"{date_str}_FBS", "input", f"{mk}_WB.xlsx"
+        )
+        files[f"{date_str}_FBS/input/{mk}_OZ.csv"] = os.path.join(
+            base_fbs, f"{date_str}_FBS", "input", f"{mk}_OZ.csv"
+        )
+    status = {}
+    missing = []
+    for name, path in files.items():
+        exists = os.path.exists(path)
+        status[name] = exists
+        if not exists:
+            missing.append(name)
+    return {
+        "ok": len(missing) == 0,
+        "files": status,
+        "missing": missing
+    }
+
 def normalize_barcode(barcode: str) -> str:
     barcode = barcode.strip()
     if barcode.startswith("2400000") and len(barcode) == 13:
@@ -92,7 +122,6 @@ def get_cached_data():
     return _cache["data"], _cache["index"], _cache["col_names"], _cache["date_str"]
 
 def get_sticker_index(marking: str, date_str: str):
-    """Загружает WB-стикеры (Excel, колонки C и L)"""
     cache_key = (marking, date_str, "wb")
     if cache_key in _sticker_caches:
         return _sticker_caches[cache_key]["index"]
@@ -117,7 +146,6 @@ def get_sticker_index(marking: str, date_str: str):
     return index
 
 def get_oz_sticker_index(marking: str, date_str: str):
-    """Загружает OZ-стикеры (CSV, колонки B и P)"""
     cache_key = (marking, date_str, "oz")
     if cache_key in _sticker_caches:
         return _sticker_caches[cache_key]["index"]
@@ -154,7 +182,6 @@ def get_oz_sticker_index(marking: str, date_str: str):
     return index
 
 def get_oz_qr_index(marking: str, date_str: str):
-    """Загружает OZ-файл и возвращает qr_index (QR → список артикулов)"""
     cache_key = (marking, date_str, "oz_qr")
     if cache_key in _sticker_caches:
         return _sticker_caches[cache_key].get("qr_index", {})
@@ -217,10 +244,6 @@ def get_marking_for_position(col_idx, col_names):
         return None, None
 
 def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False, oz_search_art=None):
-    """
-    oz_search_art: если передан, то поиск стикеров в OZ ведётся по этому артикулу,
-                   иначе используется code.
-    """
     table = []
     
     fsk_bar = generate_ean13(code)
@@ -241,7 +264,6 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         except ValueError:
             continue
 
-        # --- WB ---
         wb_id = row.get(col_names[mk_idx + 1], '').strip() if mk_idx + 1 < len(col_names) else '0'
         wb_bar = row.get(col_names[mk_idx + 3], '').strip() if mk_idx + 3 < len(col_names) else '0'
         wb_id_clean = wb_id if wb_id else '0'
@@ -257,7 +279,6 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
             "stickers": wb_stickers
         })
         
-        # --- OZ ---
         oz_id = row.get(col_names[mk_idx + 4], '').strip() if mk_idx + 4 < len(col_names) else '0'
         oz_bar = row.get(col_names[mk_idx + 6], '').strip() if mk_idx + 6 < len(col_names) else '0'
         oz_id_clean = oz_id if oz_id else '0'
@@ -267,7 +288,6 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
             search_art = oz_search_art if oz_search_art is not None else code
             stickers_for_art = oz_sticker_indices[mk].get(search_art, [])
             if stickers_for_art:
-                # Строим обратный индекс: стикер → [артикулы]
                 reverse_index = {}
                 for art, st_list in oz_sticker_indices[mk].items():
                     for st in st_list:
@@ -301,25 +321,21 @@ async def mark_barcode(barcode: str):
         raise HTTPException(status_code=400, detail="Некорректный штрих-код")
     
     data, index, col_names, _ = get_cached_data()
-    today_str = datetime.now().strftime("%y%m%d")
+    today_str = get_today_str()
 
-    # Загружаем WB-стикеры
     sticker_indices = {}
     for mk in MARKING_KEYS:
         sticker_indices[mk] = get_sticker_index(mk, today_str)
 
-    # Загружаем OZ-стикеры (артикул → стикеры)
     oz_sticker_indices = {}
     for mk in MARKING_KEYS:
         oz_sticker_indices[mk] = get_oz_sticker_index(mk, today_str)
 
-    # Поиск в основном индексе по нормализованному коду
-    qr_markings_map = {}  # art -> set(markings)
+    qr_markings_map = {}
     found_via_qr = False
     if normalized in index:
         barcodes_to_search = [normalized]
     else:
-        # Ищем QR в OZ-файлах (столбец AE)
         qr_index_all = {}
         for mk in MARKING_KEYS:
             qr_idx = get_oz_qr_index(mk, today_str)
@@ -334,7 +350,6 @@ async def mark_barcode(barcode: str):
         else:
             raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Собираем все позиции для найденных артикулов
     all_positions = []
     for bcode in barcodes_to_search:
         if bcode in index:
@@ -342,7 +357,6 @@ async def mark_barcode(barcode: str):
     if not all_positions:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Группируем товары
     products = {}
     for row_idx, col_idx in all_positions:
         row = data[row_idx]
@@ -364,7 +378,6 @@ async def mark_barcode(barcode: str):
                 "qr_markings": set(),
             }
 
-        # Если товар найден по QR, запоминаем маркировки
         if code in qr_markings_map:
             products[key]["qr_markings"].update(qr_markings_map[code])
 
@@ -372,19 +385,15 @@ async def mark_barcode(barcode: str):
         if marking:
             products[key]["Маркировки"].add(marking)
             products[key]["entries"].append((marking, is_id))
-            # Устанавливаем skip_stickers только если это FSK и товар найден НЕ по QR
             if marking == "FSK" and not found_via_qr:
                 products[key]["skip_stickers"] = True
 
-    # Определяем found_markings
     for key, data_item in products.items():
         if data_item["skip_stickers"]:
             data_item["sticker_markings"] = set()
             continue
 
-        # Добавляем маркировки из QR
         qr_markings = {f"{mk}_OZ" for mk in data_item["qr_markings"]}
-
         id_markings = {marking for marking, is_id in data_item["entries"] if is_id is True}
         barcode_markings = {marking for marking, is_id in data_item["entries"] if is_id is False}
 
@@ -398,7 +407,6 @@ async def mark_barcode(barcode: str):
 
         data_item["sticker_markings"] = all_markings
 
-    # Формируем результат
     results = []
     for key, data_item in products.items():
         row_for_table = None
@@ -436,8 +444,27 @@ async def mark_barcode(barcode: str):
     
     return results
 
+@router.get("/api/mark/status")
+async def get_status():
+    today_str = get_today_str()
+    status = check_files_status(today_str)
+    return {
+        "date": today_str,
+        "ok": status["ok"],
+        "files": status["files"],
+        "missing": status["missing"]
+    }
+
 @router.post("/api/mark/refresh")
 async def refresh_cache():
+    today_str = get_today_str()
+    status = check_files_status(today_str)
+    if not status["ok"]:
+        missing_list = "\n".join(status["missing"])
+        raise HTTPException(
+            status_code=400,
+            detail=f"Отсутствуют файлы за {today_str}:\n{missing_list}"
+        )
     _cache.update({
         "file_path": None,
         "file_mtime": None,
