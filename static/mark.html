@@ -124,6 +124,10 @@
             gap: 8px;
             font-size: 0.85rem;
             flex-shrink: 0;
+            background: #f8fafc;
+            padding: 4px 12px;
+            border-radius: 20px;
+            border: 1px solid #e2e8f0;
         }
         #statusIndicator {
             display: inline-block;
@@ -135,7 +139,7 @@
             flex-shrink: 0;
         }
         #statusText {
-            color: #64748b;
+            color: #334155;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -494,6 +498,7 @@
             .articul-image { width: 24px; height: 24px; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
             #statusText { max-width: 150px; }
+            #fileStatus { padding: 2px 10px; font-size: 0.75rem; }
         }
         #lastScannedCode {
             font-size: 1.5rem;
@@ -968,7 +973,6 @@
                 return;
             }
             const data = await resp.json();
-            // Отображаем отсканированный код крупным шрифтом
             document.getElementById('lastScannedCode').textContent = code;
             renderResults(data);
         } catch (err) {
@@ -986,9 +990,11 @@
             if (!resp.ok) {
                 indicator.style.background = '#ef4444';
                 text.textContent = 'Ошибка получения статуса';
+                console.error('Status error:', resp.status);
                 return;
             }
             const data = await resp.json();
+            console.log('Status data:', data);
             if (data.ok) {
                 indicator.style.background = '#22c55e';
                 text.textContent = `✅ Все файлы за ${data.date} загружены`;
@@ -1000,6 +1006,7 @@
         } catch (e) {
             indicator.style.background = '#ef4444';
             text.textContent = 'Ошибка соединения';
+            console.error('Status fetch error:', e);
         }
     }
 
@@ -1018,12 +1025,14 @@
                     showToast(`Нельзя обновить: отсутствуют файлы: ${missing.join(', ')}`, true);
                     btn.disabled = false;
                     btn.textContent = '🔃';
+                    await updateFileStatus(); // обновим статус, чтобы отобразить ошибку
                     return;
                 }
             } else {
                 showToast('Ошибка проверки статуса файлов', true);
                 btn.disabled = false;
                 btn.textContent = '🔃';
+                await updateFileStatus();
                 return;
             }
 
@@ -1039,6 +1048,9 @@
                     errMsg = err.detail || errMsg;
                 } catch(e) {}
                 showToast(errMsg, true);
+                btn.disabled = false;
+                btn.textContent = '🔃';
+                await updateFileStatus();
                 return;
             }
             const data = await resp.json();
@@ -1053,6 +1065,7 @@
         } catch (err) {
             showToast('Ошибка соединения с сервером', true);
             console.error(err);
+            await updateFileStatus();
         } finally {
             btn.disabled = false;
             btn.textContent = '🔃';
