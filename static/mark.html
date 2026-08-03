@@ -765,15 +765,19 @@
         codeText.textContent = code;
 
         const foundMarkings = product['found_markings'] || [];
+        console.log('foundMarkings:', foundMarkings); // отладка
         const ozMarkings = foundMarkings.filter(m => m.endsWith('_OZ'));
+        console.log('ozMarkings:', ozMarkings); // отладка
         if (ozMarkings.length > 0) {
-            const ozMarking = ozMarkings[0].replace('_OZ', '');
-            const logoFileName = logoMap[ozMarking] || ozMarking; // fallback
+            const ozMarking = ozMarkings[0].replace('_OZ', '').toLowerCase();
+            const logoFileName = logoMap[ozMarking] || ozMarking;
+            console.log('ozMarking:', ozMarking, 'logoFileName:', logoFileName); // отладка
             const logoPath = `/static/logos/${logoFileName}.jpg`;
             logoImg.src = logoPath;
             logoImg.alt = ozMarking;
             logoImg.style.display = 'block';
             logoImg.onerror = function() {
+                console.error('Logo load error:', this.src);
                 this.style.display = 'none';
             };
         } else {
