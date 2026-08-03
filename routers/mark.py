@@ -205,7 +205,6 @@ def get_oz_qr_index(marking: str, date_str: str):
                 if art == 'Артикул' or qr == 'Нижний штрихкод':
                     continue
                 if art and art != 'nan' and qr and qr != 'nan':
-                    # Сохраняем и артикул, и маркировку
                     qr_index.setdefault(qr, []).append({"art": art, "marking": marking})
             print(f"[QR] Загружен индекс для {marking}, записей: {len(qr_index)}")
         except Exception as e:
@@ -365,7 +364,6 @@ async def mark_barcode(barcode: str):
         oz_sticker_indices[mk] = get_oz_sticker_index(mk, today_str)
 
     found_via_qr = False
-    qr_info = {}  # art -> set(markings)
     qr_art_markings = {}  # art -> set(markings)
 
     if normalized in index:
@@ -418,15 +416,21 @@ async def mark_barcode(barcode: str):
                 "qr_markings": set(),
             }
 
+        # Добавляем маркировки из QR, если артикул совпадает
         if found_via_qr and code in qr_art_markings:
             products[key]["qr_markings"].update(qr_art_markings[code])
 
         marking, is_id = get_marking_for_position(col_idx, col_names)
         if marking:
-            products[key]["Маркировки"].add(marking)
-            products[key]["entries"].append((marking, is_id))
-            if marking == "FSK" and not found_via_qr:
-                products[key]["skip_stickers"] = True
+            # При QR-поиске не добавляем FSK из структурной позиции col_idx==0
+            if marking == "FSK" and found_via_qr:
+                # Пропускаем, т.к. это не настоящая маркировка
+                pass
+            else:
+                products[key]["Маркировки"].add(marking)
+                products[key]["entries"].append((marking, is_id))
+                if marking == "FSK" and not found_via_qr:
+                    products[key]["skip_stickers"] = True
 
     for key, data_item in products.items():
         if data_item["skip_stickers"]:
@@ -455,7 +459,6 @@ async def mark_barcode(barcode: str):
                 row_for_table = data[row_idx]
                 break
         if row_for_table is not None:
-            # Для QR передаём первый найденный артикул (он уже есть в qr_art_markings)
             oz_search_art = next(iter(qr_art_markings.keys())) if found_via_qr and qr_art_markings else None
             table = get_row_data(
                 row_for_table,
@@ -471,12 +474,20 @@ async def mark_barcode(barcode: str):
 
         found_markings = list(data_item["sticker_markings"])
 
+        # Определяем отображаемую "Маркировку":
+        # при поиске через QR используем именно ту маркировку, по которой найден QR-код,
+        # а не структурную позицию col_idx==0 (которая всегда даёт "FSK")
+        if found_via_qr and data_item["qr_markings"]:
+            display_marking = ", ".join(sorted(f"{mk}_OZ" for mk in data_item["qr_markings"]))
+        else:
+            display_marking = ", ".join(sorted(data_item["Маркировки"])) if data_item["Маркировки"] else None
+
         item = {
             "Код": data_item["Код"],
             "Вид": data_item["Вид"],
             "Фандом": data_item["Фандом"],
             "Название": data_item["Название"],
-            "Маркировка": ", ".join(sorted(data_item["Маркировки"])) if data_item["Маркировки"] else None,
+            "Маркировка": display_marking,
             "found_markings": found_markings,
             "table": table
         }
