@@ -549,8 +549,10 @@
         'reg': 'FoxInBox',
         'kpd': 'Arfefacto'
     };
-    // Список брендов для проверки
     const BRAND_KEYS = ['sia', 'ktv', 'reg', 'kpd'];
+
+    // Глобальная переменная для хранения последнего отсканированного кода
+    let lastScannedCode = '';
 
     function loadHistoryFromStorage() {
         try {
@@ -675,6 +677,7 @@
         document.getElementById('scannedCodeText').textContent = '';
         document.getElementById('markingLogo').style.display = 'none';
         resetImage();
+        lastScannedCode = '';
     }
 
     function showLoading() {
@@ -727,7 +730,7 @@
             infoDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             scrollDiv.innerHTML = '';
             markingSpan.textContent = '';
-            codeText.textContent = '';
+            codeText.textContent = lastScannedCode || ''; // показываем последний введённый код, если есть
             logoImg.style.display = 'none';
             resetImage();
             return;
@@ -743,12 +746,10 @@
         markingSpan.textContent = product['Маркировка'] || '';
 
         // --- Отображаем код и логотип ---
-        codeText.textContent = code;
+        // Показываем последний отсканированный код (сохранённый в lastScannedCode)
+        codeText.textContent = lastScannedCode;
 
         const foundMarkings = product['found_markings'] || [];
-        console.log('foundMarkings:', foundMarkings);
-
-        // Ищем любую маркировку, которая соответствует одному из брендов (sia/ktv/reg/kpd)
         let brandMarking = null;
         for (const m of foundMarkings) {
             const base = m.split('_')[0];
@@ -757,7 +758,6 @@
                 break;
             }
         }
-        console.log('brandMarking:', brandMarking);
 
         if (brandMarking) {
             const logoFileName = logoMap[brandMarking];
@@ -980,6 +980,9 @@
             return;
         }
 
+        // Сохраняем введённый код
+        lastScannedCode = code;
+
         showLoading();
         try {
             const resp = await fetch(`/api/mark/${encodeURIComponent(code)}`, { credentials: 'include' });
@@ -994,6 +997,7 @@
             }
             const data = await resp.json();
             document.getElementById('lastScannedCode').style.display = 'flex';
+            // Передаём данные в renderResults, она использует lastScannedCode
             renderResults(data);
         } catch (err) {
             showError('Ошибка соединения с сервером');
@@ -1077,6 +1081,7 @@
             document.getElementById('markingLogo').style.display = 'none';
             resetImage();
             historyIndex = -1;
+            lastScannedCode = '';
         } catch (err) {
             showToast('Ошибка соединения с сервером', true);
             console.error(err);
