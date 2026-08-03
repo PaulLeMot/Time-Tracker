@@ -25,7 +25,6 @@ def get_today_str() -> str:
     return datetime.now().strftime("%y%m%d")
 
 def get_excel_file_exists() -> bool:
-    """Проверяет, существует ли хотя бы один файл *_mp_rep.xlsx за последние 30 дней."""
     base_path = "/work/!МП_(FSk)/!Rep"
     today = datetime.now()
     for days_back in range(0, 31):
@@ -38,30 +37,17 @@ def get_excel_file_exists() -> bool:
     return False
 
 def check_files_status(date_str: str) -> dict:
-    """Проверяет наличие необходимых файлов:
-       - mp_rep: хотя бы один за последние 30 дней
-       - OZ/WB: строго за сегодняшнюю дату
-    """
     base_fbs = "/work/!МП_(FSk)/!FBS"
-    
     files = {}
-    # Проверяем mp_rep (не привязан к дате)
     mp_rep_exists = get_excel_file_exists()
     files["mp_rep.xlsx (любой за 30 дней)"] = mp_rep_exists
-    
-    # Проверяем OZ и WB за сегодня
     for mk in MARKING_KEYS:
         wb_path = os.path.join(base_fbs, f"{date_str}_FBS", "input", f"{mk}_WB.xlsx")
         oz_path = os.path.join(base_fbs, f"{date_str}_FBS", "input", f"{mk}_OZ.csv")
         files[f"{date_str}_FBS/input/{mk}_WB.xlsx"] = os.path.exists(wb_path)
         files[f"{date_str}_FBS/input/{mk}_OZ.csv"] = os.path.exists(oz_path)
-    
     missing = [name for name, exists in files.items() if not exists]
-    return {
-        "ok": len(missing) == 0,
-        "files": files,
-        "missing": missing
-    }
+    return {"ok": len(missing) == 0, "files": files, "missing": missing}
 
 def normalize_barcode(barcode: str) -> str:
     barcode = barcode.strip()
@@ -219,7 +205,8 @@ def get_oz_qr_index(marking: str, date_str: str):
                 if art == 'Артикул' or qr == 'Нижний штрихкод':
                     continue
                 if art and art != 'nan' and qr and qr != 'nan':
-                    qr_index.setdefault(qr, []).append(art)
+                    # Сохраняем и артикул, и маркировку
+                    qr_index.setdefault(qr, []).append({"art": art, "marking": marking})
             print(f"[QR] Загружен индекс для {marking}, записей: {len(qr_index)}")
         except Exception as e:
             print(f"Ошибка загрузки QR-индекса для {marking}: {e}")
@@ -322,7 +309,7 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
     table.extend(oz_rows)
     return table
 
-# ========== ЭНДПОИНТЫ (конкретные пути ДО общего параметра) ==========
+# ========== ЭНДПОИНТЫ ==========
 
 @router.get("/api/mark/status")
 async def get_status():
@@ -377,22 +364,29 @@ async def mark_barcode(barcode: str):
     for mk in MARKING_KEYS:
         oz_sticker_indices[mk] = get_oz_sticker_index(mk, today_str)
 
-    qr_markings_map = {}
     found_via_qr = False
+    qr_info = {}  # art -> set(markings)
+    qr_art_markings = {}  # art -> set(markings)
+
     if normalized in index:
         barcodes_to_search = [normalized]
     else:
         qr_index_all = {}
         for mk in MARKING_KEYS:
             qr_idx = get_oz_qr_index(mk, today_str)
-            for qr, arts in qr_idx.items():
-                qr_index_all.setdefault(qr, []).extend(arts)
-                for art in arts:
-                    qr_markings_map.setdefault(art, set()).add(mk)
+            for qr, items in qr_idx.items():
+                qr_index_all.setdefault(qr, []).extend(items)
 
         if barcode in qr_index_all:
-            barcodes_to_search = qr_index_all[barcode]
             found_via_qr = True
+            qr_items = qr_index_all[barcode]
+            barcodes_to_search = []
+            for item in qr_items:
+                art = item["art"]
+                marking = item["marking"]
+                if art not in barcodes_to_search:
+                    barcodes_to_search.append(art)
+                qr_art_markings.setdefault(art, set()).add(marking)
         else:
             raise HTTPException(status_code=404, detail="Товар не найден")
 
@@ -424,8 +418,8 @@ async def mark_barcode(barcode: str):
                 "qr_markings": set(),
             }
 
-        if code in qr_markings_map:
-            products[key]["qr_markings"].update(qr_markings_map[code])
+        if found_via_qr and code in qr_art_markings:
+            products[key]["qr_markings"].update(qr_art_markings[code])
 
         marking, is_id = get_marking_for_position(col_idx, col_names)
         if marking:
@@ -461,13 +455,16 @@ async def mark_barcode(barcode: str):
                 row_for_table = data[row_idx]
                 break
         if row_for_table is not None:
+            # Для QR передаём первый найденный артикул (он уже есть в qr_art_markings)
+            oz_search_art = next(iter(qr_art_markings.keys())) if found_via_qr and qr_art_markings else None
             table = get_row_data(
                 row_for_table,
                 col_names,
                 data_item["Код"],
                 sticker_indices,
                 oz_sticker_indices,
-                skip_stickers=data_item["skip_stickers"]
+                skip_stickers=data_item["skip_stickers"],
+                oz_search_art=oz_search_art
             )
         else:
             table = []
