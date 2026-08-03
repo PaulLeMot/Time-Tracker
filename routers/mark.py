@@ -310,6 +310,40 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
     table.extend(oz_rows)
     return table
 
+# ========== ЭНДПОИНТЫ (ВАЖНЫЙ ПОРЯДОК: сначала конкретные, потом общий) ==========
+
+@router.get("/api/mark/status")
+async def get_status():
+    today_str = get_today_str()
+    status = check_files_status(today_str)
+    return {
+        "date": today_str,
+        "ok": status["ok"],
+        "files": status["files"],
+        "missing": status["missing"]
+    }
+
+@router.post("/api/mark/refresh")
+async def refresh_cache():
+    today_str = get_today_str()
+    status = check_files_status(today_str)
+    if not status["ok"]:
+        missing_list = "\n".join(status["missing"])
+        raise HTTPException(
+            status_code=400,
+            detail=f"Отсутствуют файлы за {today_str}:\n{missing_list}"
+        )
+    _cache.update({
+        "file_path": None,
+        "file_mtime": None,
+        "data": None,
+        "index": None,
+        "col_names": None,
+        "date_str": None,
+    })
+    _sticker_caches.clear()
+    return {"message": "Кэш очищен. Данные будут перезагружены при следующем запросе."}
+
 @router.get("/api/mark/{barcode:path}")
 async def mark_barcode(barcode: str):
     barcode = barcode.strip()
@@ -443,38 +477,6 @@ async def mark_barcode(barcode: str):
         raise HTTPException(status_code=404, detail="Товар не найден")
     
     return results
-
-@router.get("/api/mark/status")
-async def get_status():
-    today_str = get_today_str()
-    status = check_files_status(today_str)
-    return {
-        "date": today_str,
-        "ok": status["ok"],
-        "files": status["files"],
-        "missing": status["missing"]
-    }
-
-@router.post("/api/mark/refresh")
-async def refresh_cache():
-    today_str = get_today_str()
-    status = check_files_status(today_str)
-    if not status["ok"]:
-        missing_list = "\n".join(status["missing"])
-        raise HTTPException(
-            status_code=400,
-            detail=f"Отсутствуют файлы за {today_str}:\n{missing_list}"
-        )
-    _cache.update({
-        "file_path": None,
-        "file_mtime": None,
-        "data": None,
-        "index": None,
-        "col_names": None,
-        "date_str": None,
-    })
-    _sticker_caches.clear()
-    return {"message": "Кэш очищен. Данные будут перезагружены при следующем запросе."}
 
 @router.get("/mark")
 async def mark_page():
