@@ -24,30 +24,42 @@ EXCLUDED_COLUMNS = {12, 15, 19, 22, 26, 29, 33, 36}
 def get_today_str() -> str:
     return datetime.now().strftime("%y%m%d")
 
+def get_excel_file_exists() -> bool:
+    """Проверяет, существует ли хотя бы один файл *_mp_rep.xlsx за последние 30 дней."""
+    base_path = "/work/!МП_(FSk)/!Rep"
+    today = datetime.now()
+    for days_back in range(0, 31):
+        date = today - timedelta(days=days_back)
+        date_str = date.strftime("%y%m%d")
+        file_name = f"{date_str}_mp_rep.xlsx"
+        file_path = os.path.join(base_path, file_name)
+        if os.path.exists(file_path):
+            return True
+    return False
+
 def check_files_status(date_str: str) -> dict:
-    """Проверяет наличие всех необходимых файлов за указанную дату."""
-    base_rep = "/work/!МП_(FSk)/!Rep"
+    """Проверяет наличие необходимых файлов:
+       - mp_rep: хотя бы один за последние 30 дней
+       - OZ/WB: строго за сегодняшнюю дату
+    """
     base_fbs = "/work/!МП_(FSk)/!FBS"
-    files = {
-        f"{date_str}_mp_rep.xlsx": os.path.join(base_rep, f"{date_str}_mp_rep.xlsx"),
-    }
+    
+    files = {}
+    # Проверяем mp_rep (не привязан к дате)
+    mp_rep_exists = get_excel_file_exists()
+    files["mp_rep.xlsx (любой за 30 дней)"] = mp_rep_exists
+    
+    # Проверяем OZ и WB за сегодня
     for mk in MARKING_KEYS:
-        files[f"{date_str}_FBS/input/{mk}_WB.xlsx"] = os.path.join(
-            base_fbs, f"{date_str}_FBS", "input", f"{mk}_WB.xlsx"
-        )
-        files[f"{date_str}_FBS/input/{mk}_OZ.csv"] = os.path.join(
-            base_fbs, f"{date_str}_FBS", "input", f"{mk}_OZ.csv"
-        )
-    status = {}
-    missing = []
-    for name, path in files.items():
-        exists = os.path.exists(path)
-        status[name] = exists
-        if not exists:
-            missing.append(name)
+        wb_path = os.path.join(base_fbs, f"{date_str}_FBS", "input", f"{mk}_WB.xlsx")
+        oz_path = os.path.join(base_fbs, f"{date_str}_FBS", "input", f"{mk}_OZ.csv")
+        files[f"{date_str}_FBS/input/{mk}_WB.xlsx"] = os.path.exists(wb_path)
+        files[f"{date_str}_FBS/input/{mk}_OZ.csv"] = os.path.exists(oz_path)
+    
+    missing = [name for name, exists in files.items() if not exists]
     return {
         "ok": len(missing) == 0,
-        "files": status,
+        "files": files,
         "missing": missing
     }
 
@@ -310,7 +322,7 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
     table.extend(oz_rows)
     return table
 
-# ========== ЭНДПОИНТЫ (ВАЖНЫЙ ПОРЯДОК: сначала конкретные, потом общий) ==========
+# ========== ЭНДПОИНТЫ (конкретные пути ДО общего параметра) ==========
 
 @router.get("/api/mark/status")
 async def get_status():
@@ -331,7 +343,7 @@ async def refresh_cache():
         missing_list = "\n".join(status["missing"])
         raise HTTPException(
             status_code=400,
-            detail=f"Отсутствуют файлы за {today_str}:\n{missing_list}"
+            detail=f"Отсутствуют необходимые файлы:\n{missing_list}"
         )
     _cache.update({
         "file_path": None,
