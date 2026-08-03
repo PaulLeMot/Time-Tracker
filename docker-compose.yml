@@ -38,6 +38,7 @@ services:
       - "/mnt/work/_img_(orig_copy)/250:/app/static/img"
       - "/mnt/work/_img_(orig_copy)/250:/app/import_data"
       - "/mnt/work:/work"
+      - "/mnt/work/Брендбук. Макеты. Рекламные шаблоны/260223 брендбук/site+:/app/static/logos"
     restart: unless-stopped
     deploy:
       resources:

@@ -118,7 +118,6 @@
             cursor: not-allowed;
             transform: none;
         }
-        /* Индикатор состояния на кнопке */
         .refresh-btn.status-ok {
             border-color: #22c55e;
             background: #f0fdf4;
@@ -202,7 +201,6 @@
             max-width: 200px;
         }
 
-        /* Выпадающий список истории */
         .dropdown-content {
             display: none;
             position: absolute;
@@ -282,6 +280,32 @@
         .product-info .details-line .fandom-part {
             font-weight: 500;
             color: #475569;
+        }
+
+        /* Блок с отсканированным кодом и логотипом */
+        #lastScannedCode {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 4px;
+            min-height: 2rem;
+            gap: 12px;
+        }
+        #scannedCodeText {
+            font-size: 1.5rem;
+            font-weight: 500;
+            color: #0f172a;
+            word-break: break-all;
+            flex: 1;
+            min-width: 0;
+        }
+        #markingLogo {
+            height: 40px;
+            width: auto;
+            flex-shrink: 0;
+            display: none;
+            object-fit: contain;
+            border-radius: 4px;
         }
 
         .tables-scroll {
@@ -483,21 +507,16 @@
             .sticker-articul { font-size: 0.9rem; }
             .articul-image { width: 24px; height: 24px; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
-        }
-        #lastScannedCode {
-            font-size: 1.5rem;
-            font-weight: 500;
-            color: #0f172a;
-            margin-top: 4px;
-            min-height: 2rem;
-            word-break: break-all;
-            transition: opacity 0.2s;
+            #scannedCodeText { font-size: 1.2rem; }
+            #markingLogo { height: 30px; }
         }
         #lastScannedCode:empty {
             opacity: 0;
+            display: none;
         }
         #lastScannedCode:not(:empty) {
             opacity: 1;
+            display: flex;
         }
     </style>
 </head>
@@ -519,7 +538,11 @@
                     <span id="markingDisplay"></span>
                 </div>
             </div>
-            <div id="lastScannedCode"></div>
+            <!-- Блок для отображения последнего сканированного кода и логотипа -->
+            <div id="lastScannedCode">
+                <span id="scannedCodeText"></span>
+                <img id="markingLogo" src="" alt="Логотип маркировки">
+            </div>
             <div id="productInfoContainer">
                 <p class="placeholder-text">Ожидание сканирования...</p>
             </div>
@@ -637,8 +660,6 @@
         }
     });
 
-    // --- Остальные функции ---
-
     function escapeHtml(str) {
         if (!str) return '';
         return String(str).replace(/[&<>"]/g, function(m) {
@@ -662,7 +683,8 @@
         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('tablesScroll').innerHTML = '';
         document.getElementById('markingDisplay').textContent = '';
-        document.getElementById('lastScannedCode').textContent = '';
+        document.getElementById('scannedCodeText').textContent = '';
+        document.getElementById('markingLogo').style.display = 'none';
         resetImage();
     }
 
@@ -670,7 +692,8 @@
         document.getElementById('productInfoContainer').innerHTML = '<div class="loading">Загрузка...</div>';
         document.getElementById('tablesScroll').innerHTML = '';
         document.getElementById('markingDisplay').textContent = '⏳';
-        document.getElementById('lastScannedCode').textContent = '';
+        document.getElementById('scannedCodeText').textContent = '';
+        document.getElementById('markingLogo').style.display = 'none';
         resetImage();
     }
 
@@ -681,7 +704,6 @@
         noImg.style.display = 'flex';
     }
 
-    // Форматирование стикера: выделяем 4 цифры до первого дефиса, с отступами через CSS
     function formatSticker(sticker) {
         const dashIndex = sticker.indexOf('-');
         if (dashIndex !== -1 && dashIndex >= 4) {
@@ -694,7 +716,6 @@
         }
     }
 
-    // Генерация маленькой картинки для артикула
     function articulWithImage(articul) {
         if (!articul) return '';
         const imgSrc = `/static/img/${encodeURIComponent(articul)}.jpg`;
@@ -710,11 +731,15 @@
         const markingSpan = document.getElementById('markingDisplay');
         const img = document.getElementById('productImage');
         const noImg = document.getElementById('noImageLabel');
+        const codeText = document.getElementById('scannedCodeText');
+        const logoImg = document.getElementById('markingLogo');
 
         if (!products || products.length === 0) {
             infoDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             scrollDiv.innerHTML = '';
             markingSpan.textContent = '';
+            codeText.textContent = '';
+            logoImg.style.display = 'none';
             resetImage();
             return;
         }
@@ -724,10 +749,27 @@
         const type = product['Вид'] || '—';
         const fandom = product['Фандом'] || '—';
         const name = product['Название'] || '—';
-        const marking = product['Маркировка'] || '';
         const tableData = product['table'] || [];
 
-        markingSpan.textContent = marking || '';
+        markingSpan.textContent = product['Маркировка'] || '';
+
+        // --- Отображаем код и логотип ---
+        codeText.textContent = code;
+
+        const foundMarkings = product['found_markings'] || [];
+        const ozMarkings = foundMarkings.filter(m => m.endsWith('_OZ'));
+        if (ozMarkings.length > 0) {
+            const ozName = ozMarkings[0].replace('_OZ', '');
+            const logoPath = `/static/logos/${ozName}.jpg`;
+            logoImg.src = logoPath;
+            logoImg.alt = ozName;
+            logoImg.style.display = 'block';
+            logoImg.onerror = function() {
+                this.style.display = 'none';
+            };
+        } else {
+            logoImg.style.display = 'none';
+        }
 
         const imageUrl = code ? `/static/img/${code}.jpg` : null;
 
@@ -751,9 +793,9 @@
 
         for (const prod of products) {
             const t = prod.table || [];
-            const foundMarkings = prod.found_markings || [];
+            const foundMarkingsProd = prod.found_markings || [];
             for (const row of t) {
-                if (row.stickers && row.stickers.length > 0 && foundMarkings.includes(row.marking)) {
+                if (row.stickers && row.stickers.length > 0 && foundMarkingsProd.includes(row.marking)) {
                     const platform = row.platform || '';
                     if (platform === 'OZ') {
                         hasOZ = true;
@@ -777,7 +819,6 @@
         if (hasOZ && allPairs.length > 0) {
             const mainArticul = code;
 
-            // Подсчёт уникальных артикулов на стикер
             const stickerArticulCount = {};
             const stickerToArticuls = {};
             for (const pair of allPairs) {
@@ -790,7 +831,6 @@
                 stickerArticulCount[st] = stickerToArticuls[st].size;
             }
 
-            // Определяем основной стикер
             let mainSticker = null;
             let maxCount = 0;
             const candidates = allPairs.filter(p => p.articul === mainArticul);
@@ -810,7 +850,6 @@
             const byArticul = allPairs.filter(p => p.articul === mainArticul && p.sticker !== mainSticker);
             const totalCount = allPairs.length;
 
-            // --- Секция "Всего найдено" (основная пара) ---
             let sectionHtml = `<div class="sticker-section">`;
             sectionHtml += `<div class="sticker-count">Всего найдено: ${totalCount}</div>`;
             sectionHtml += `<table><tbody><tr>
@@ -819,7 +858,6 @@
             </tr></tbody></table></div>`;
             scrollHtml += sectionHtml;
 
-            // --- Секция "Также найдено по отправке" ---
             if (byShipment.length > 0) {
                 let shipmentHtml = `<div class="sticker-section">`;
                 shipmentHtml += `<div class="sticker-count">Также найдено по отправке: ${byShipment.length}</div>`;
@@ -834,7 +872,6 @@
                 scrollHtml += shipmentHtml;
             }
 
-            // --- Секция "Также найдено по артикулу" ---
             if (byArticul.length > 0) {
                 let articulHtml = `<div class="sticker-section">`;
                 articulHtml += `<div class="sticker-count">Также найдено по артикулу: ${byArticul.length}</div>`;
@@ -850,7 +887,6 @@
             }
 
         } else if (wbStickers.length > 0) {
-            // WB-стикеры (без артикулов)
             let sectionHtml = `<div class="sticker-section">`;
             sectionHtml += `<div class="sticker-count">Найдено товаров: ${wbStickers.length}</div>`;
             sectionHtml += `<table><tbody>`;
@@ -868,7 +904,6 @@
             scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
-        // --- Таблица маркировок (ID, штрих-код) ---
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
@@ -896,7 +931,6 @@
         scrollDiv.innerHTML = scrollHtml;
         scrollDiv.scrollTop = 0;
 
-        // --- Изображение ---
         if (imageUrl) {
             img.src = imageUrl;
             img.alt = escapeHtml(name);
@@ -953,7 +987,7 @@
                 return;
             }
             const data = await resp.json();
-            document.getElementById('lastScannedCode').textContent = code;
+            document.getElementById('lastScannedCode').style.display = 'flex';
             renderResults(data);
         } catch (err) {
             showError('Ошибка соединения с сервером');
@@ -961,7 +995,6 @@
         }
     }
 
-    // --- Статус файлов (обновление кнопки) ---
     async function updateFileStatus() {
         const btn = document.getElementById('refreshDataBtn');
         try {
@@ -987,14 +1020,12 @@
         }
     }
 
-    // --- Кнопка обновления ---
     async function refreshData() {
         const btn = document.getElementById('refreshDataBtn');
         btn.disabled = true;
         btn.textContent = '⏳';
         btn.className = 'refresh-btn status-loading';
         try {
-            // Сначала проверяем статус файлов
             const statusResp = await fetch('/api/mark/status', { credentials: 'include' });
             if (statusResp.ok) {
                 const statusData = await statusResp.json();
@@ -1014,7 +1045,6 @@
                 return;
             }
 
-            // Если всё ок – очищаем кэш
             const resp = await fetch('/api/mark/refresh', {
                 method: 'POST',
                 credentials: 'include'
@@ -1033,11 +1063,12 @@
             }
             const data = await resp.json();
             showToast(data.message || 'Данные обновлены');
-            // Обновляем статус после очистки
             await updateFileStatus();
             document.getElementById('productInfoContainer').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
             document.getElementById('tablesScroll').innerHTML = '';
             document.getElementById('markingDisplay').textContent = '';
+            document.getElementById('scannedCodeText').textContent = '';
+            document.getElementById('markingLogo').style.display = 'none';
             resetImage();
             historyIndex = -1;
         } catch (err) {
@@ -1050,32 +1081,26 @@
         }
     }
 
-    // --- Инициализация ---
     document.addEventListener('DOMContentLoaded', async function() {
         const ok = await checkAuth();
         if (!ok) return;
 
         loadHistoryFromStorage();
         renderDropdown();
-        // Обновляем статус файлов при загрузке страницы
         await updateFileStatus();
 
-        // --- Обработчики поля ввода ---
         const input = document.getElementById('scanInput');
         const toggleBtn = document.getElementById('dropdownToggle');
 
-        // Обработчик для кнопки-стрелки
         toggleBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             toggleDropdown();
         });
 
-        // При фокусе выделяем весь текст (чтобы новый скан его перезаписал)
         input.addEventListener('focus', function() {
             this.select();
         });
 
-        // Обработка клавиш
         input.addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -1083,20 +1108,17 @@
                 if (code) {
                     performScan(code);
                 }
-                // Очищаем поле после сканирования
                 this.value = '';
                 return;
             }
 
             if (e.key === 'Escape') {
-                // Очищаем поле и снимаем фокус
                 this.value = '';
                 this.blur();
                 closeDropdown();
                 return;
             }
 
-            // Стрелки для истории
             if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (searchHistory.length === 0) return;
@@ -1127,7 +1149,6 @@
             }
         });
 
-        // При ручном вводе сбрасываем индекс истории, если поле пустое
         input.addEventListener('input', function() {
             if (!this.value.trim()) {
                 if (searchHistory.length > 0) {
@@ -1136,7 +1157,6 @@
             }
         });
 
-        // Обработчик кнопки обновления
         document.getElementById('refreshDataBtn').addEventListener('click', refreshData);
     });
 </script>
