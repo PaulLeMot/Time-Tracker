@@ -806,7 +806,7 @@
     function showError(message) {
         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('tablesScroll').innerHTML = '';
-        // Не трогаем markingDisplay
+        // сохраняем выбранную маркировку или FSK
         resetImage();
         lastScannedCode = '';
     }
@@ -890,7 +890,12 @@
         const name = product['Название'] || '—';
         const tableData = product['table'] || [];
 
-        markingSpan.textContent = selectedMarking || 'FSK';
+        // --- ОТОБРАЖЕНИЕ МАРКИРОВКИ: если выбран фильтр, показываем его, иначе маркировку товара ---
+        if (selectedMarking) {
+            markingSpan.textContent = selectedMarking;
+        } else {
+            markingSpan.textContent = product['Маркировка'] || 'FSK';
+        }
 
         codeText.textContent = lastScannedCode;
 
@@ -1125,7 +1130,8 @@
                         showToast(`❌ Код не соответствует выбранной маркировке (${selectedMarking})`, true);
                         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ Код не соответствует маркировке ${selectedMarking}</div>`;
                         document.getElementById('tablesScroll').innerHTML = '';
-                        document.getElementById('markingDisplay').textContent = selectedMarking; // сохраняем выбранную
+                        // Сохраняем выбранную маркировку в надписи
+                        document.getElementById('markingDisplay').textContent = selectedMarking;
                         document.getElementById('scannedCodeText').textContent = '';
                         resetImage();
                         return;
