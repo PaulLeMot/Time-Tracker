@@ -682,8 +682,15 @@
     // Открытие/закрытие выпадающего списка при клике на надпись
     markingDisplay.addEventListener('click', function(e) {
         e.stopPropagation();
-        markingDropdown.classList.toggle('open');
-        console.log('Dropdown toggled, open:', markingDropdown.classList.contains('open'));
+        e.preventDefault();
+        // Явно переключаем класс вместо toggle для большей надёжности
+        if (markingDropdown.classList.contains('open')) {
+            markingDropdown.classList.remove('open');
+            markingDisplay.blur(); // убираем фокус, если он есть
+        } else {
+            markingDropdown.classList.add('open');
+        }
+        console.log('Dropdown open:', markingDropdown.classList.contains('open'));
     });
 
     // Закрытие dropdown при клике вне его
