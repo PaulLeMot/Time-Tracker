@@ -450,7 +450,7 @@
             padding: 8px;
             background: #fafafa;
             flex-shrink: 0;
-            margin-top: 20px;
+            margin-top: 0;
         }
         .table-container table {
             width: 100%;
@@ -1070,13 +1070,16 @@
             scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
+        // ========== ПУСТЫЕ СТРОКИ МЕЖДУ ТАБЛИЦАМИ ==========
         let emptyRows = '';
         for (let i = 0; i < 10; i++) {
             emptyRows += '<br>';
         }
+        scrollHtml += emptyRows;
 
+        // --- Таблица маркировок ---
         if (tableData.length) {
-            let tableHtml = `<div class="table-container">${emptyRows}<table>
+            let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
             for (const row of tableData) {
                 let badgeClass = '';
