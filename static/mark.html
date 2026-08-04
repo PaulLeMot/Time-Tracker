@@ -192,6 +192,25 @@
             text-overflow: ellipsis;
             max-width: 200px;
         }
+        /* Стили для селекта фильтра */
+        #markingFilter {
+            margin-left: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid #cbd5e1;
+            background: white;
+            font-size: 1rem;
+            outline: none;
+            cursor: pointer;
+            transition: 0.2s;
+            height: 38px;
+            min-width: 100px;
+        }
+        #markingFilter.filter-active {
+            background-color: #8b0000 !important;
+            color: white !important;
+            border-color: #8b0000 !important;
+        }
         .dropdown-content {
             display: none;
             position: absolute;
@@ -350,6 +369,7 @@
             font-size: 3.0rem;
             color: #000;
             padding: 0 2px;
+            text-align: center;
         }
         .sticker-articul {
             font-weight: 700;
@@ -484,6 +504,7 @@
             .refresh-btn { width: 40px; height: 40px; font-size: 1rem; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; padding-right: 44px; }
             #markingDisplay { font-size: 1rem; max-width: 120px; }
+            #markingFilter { font-size: 0.85rem; min-width: 80px; }
             .product-info .name-line { font-size: 1.2rem; }
             .product-info .details-line { font-size: 1rem; }
             .sticker-section { font-size: 0.8rem; }
@@ -525,6 +546,17 @@
                         <div id="historyDropdown" class="dropdown-content"></div>
                     </div>
                     <span id="markingDisplay"></span>
+                    <select id="markingFilter">
+                        <option value="">Все</option>
+                        <option value="sia_WB">sia_WB</option>
+                        <option value="sia_OZ">sia_OZ</option>
+                        <option value="ktv_WB">ktv_WB</option>
+                        <option value="ktv_OZ">ktv_OZ</option>
+                        <option value="reg_WB">reg_WB</option>
+                        <option value="reg_OZ">reg_OZ</option>
+                        <option value="kpd_WB">kpd_WB</option>
+                        <option value="kpd_OZ">kpd_OZ</option>
+                    </select>
                 </div>
             </div>
             <div id="lastScannedCode">
@@ -562,6 +594,29 @@
 
     // Глобальная переменная для хранения последнего отсканированного кода
     let lastScannedCode = '';
+
+    // --- Фильтр по маркировке ---
+    let selectedMarking = ''; // '' = все
+
+    const filterSelect = document.getElementById('markingFilter');
+    filterSelect.addEventListener('change', function() {
+        const val = this.value;
+        if (val === selectedMarking) {
+            // Повторный клик на ту же маркировку – сброс
+            this.value = '';
+            selectedMarking = '';
+            this.classList.remove('filter-active');
+            showToast('Фильтр сброшен');
+            return;
+        }
+        selectedMarking = val;
+        if (val) {
+            this.classList.add('filter-active');
+        } else {
+            this.classList.remove('filter-active');
+        }
+        showToast(`Выбрана маркировка: ${val || 'Все'}`);
+    });
 
     function loadHistoryFromStorage() {
         try {
@@ -880,7 +935,6 @@
 
             for (const item of allStickers) {
                 sectionHtml += `<tr>`;
-                // Стикер с выделением последних 4 цифр
                 sectionHtml += `<td>${formatSticker(item.sticker)}</td>`;
                 if (showArticul) {
                     if (item.articul) {
@@ -996,6 +1050,25 @@
                 return;
             }
             const data = await resp.json();
+
+            // --- Проверка фильтра по маркировке ---
+            if (selectedMarking) {
+                const product = data[0];
+                if (product) {
+                    const markings = product.found_markings || [];
+                    const matched = markings.some(m => m === selectedMarking);
+                    if (!matched) {
+                        showToast(`❌ Код не соответствует выбранной маркировке (${selectedMarking})`, true);
+                        document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ Код не соответствует маркировке ${selectedMarking}</div>`;
+                        document.getElementById('tablesScroll').innerHTML = '';
+                        document.getElementById('markingDisplay').textContent = '';
+                        document.getElementById('scannedCodeText').textContent = '';
+                        resetImage();
+                        return;
+                    }
+                }
+            }
+
             document.getElementById('lastScannedCode').style.display = 'flex';
             renderResults(data);
         } catch (err) {
