@@ -359,6 +359,7 @@
             font-weight: 700;
             font-size: 3.0rem;
             color: #2563eb;
+            text-align: center;
         }
         .articul-with-image {
             display: flex;
@@ -711,14 +712,15 @@
             const beforeHighlight = sticker.substring(0, dashIndex - 4);
             const highlightPart = sticker.substring(dashIndex - 4, dashIndex);
             const restPart = sticker.substring(dashIndex);
-            return `<span class="sticker-normal">${escapeHtml(beforeHighlight)}</span><span class="sticker-highlight">${escapeHtml(highlightPart)}</span><span class="sticker-normal">${escapeHtml(restPart)}</span>`;
+            // Добавляем 3 неразрывных пробела между частями
+            return `<span class="sticker-normal">${escapeHtml(beforeHighlight)}</span>&nbsp;&nbsp;&nbsp;<span class="sticker-highlight">${escapeHtml(highlightPart)}</span><span class="sticker-normal">${escapeHtml(restPart)}</span>`;
         } else {
-            // Если дефиса нет или он слишком рано, выделяем последние 4 символа
+            // Если дефиса нет или он слишком рано – выделяем последние 4 символа
             const len = sticker.length;
             if (len > 4) {
                 const before = sticker.slice(0, len - 4);
                 const lastFour = sticker.slice(len - 4);
-                return `<span class="sticker-normal">${escapeHtml(before)}</span><span class="sticker-highlight">${escapeHtml(lastFour)}</span>`;
+                return `<span class="sticker-normal">${escapeHtml(before)}</span>&nbsp;&nbsp;&nbsp;<span class="sticker-highlight">${escapeHtml(lastFour)}</span>`;
             } else {
                 return `<span class="sticker-highlight">${escapeHtml(sticker)}</span>`;
             }
