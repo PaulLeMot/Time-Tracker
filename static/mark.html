@@ -192,31 +192,59 @@
             text-overflow: ellipsis;
             max-width: 200px;
             cursor: pointer;
-            transition: color 0.2s;
+            position: relative;
+            padding: 4px 8px;
+            border-radius: 8px;
+            transition: background 0.2s, color 0.2s;
+            user-select: none;
+        }
+        #markingDisplay:hover {
+            background: #f1f5f9;
         }
         #markingDisplay.filter-active {
-            color: #8b0000;
+            color: #8b0000 !important;
+            font-weight: 700;
         }
-        #markingDisplay.filter-active:hover {
-            text-decoration: underline;
-        }
-        #markingFilter {
+        /* Кастомный выпадающий список */
+        .marking-dropdown {
             display: none;
-            margin-left: 8px;
-            padding: 4px 8px;
-            border-radius: 20px;
-            border: 1px solid #cbd5e1;
+            position: absolute;
+            top: 100%;
+            left: 0;
             background: white;
-            font-size: 1rem;
-            outline: none;
-            cursor: pointer;
-            height: 34px;
-            min-width: 100px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            padding: 6px 0;
+            border: 1px solid #e2e8f0;
+            min-width: 150px;
+            margin-top: 4px;
         }
-        #markingFilter.filter-active {
-            background-color: #8b0000 !important;
-            color: white !important;
-            border-color: #8b0000 !important;
+        .marking-dropdown.open {
+            display: block;
+        }
+        .marking-dropdown-item {
+            padding: 10px 18px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            transition: background 0.15s;
+            color: #0f172a;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .marking-dropdown-item:last-child {
+            border-bottom: none;
+        }
+        .marking-dropdown-item:hover {
+            background: #f1f5f9;
+        }
+        .marking-dropdown-item:active {
+            background: #e2e8f0;
+        }
+        .marking-dropdown-item.selected {
+            background: #f1f5f9;
+            font-weight: 600;
         }
         .dropdown-content {
             display: none;
@@ -511,7 +539,6 @@
             .refresh-btn { width: 40px; height: 40px; font-size: 1rem; }
             #scanInput { font-size: 0.95rem; padding: 10px 14px; padding-right: 44px; }
             #markingDisplay { font-size: 1rem; max-width: 120px; }
-            #markingFilter { font-size: 0.85rem; min-width: 80px; }
             .product-info .name-line { font-size: 1.2rem; }
             .product-info .details-line { font-size: 1rem; }
             .sticker-section { font-size: 0.8rem; }
@@ -553,17 +580,6 @@
                         <div id="historyDropdown" class="dropdown-content"></div>
                     </div>
                     <span id="markingDisplay">FSK</span>
-                    <select id="markingFilter">
-                        <option value="">Все</option>
-                        <option value="sia_WB">sia_WB</option>
-                        <option value="sia_OZ">sia_OZ</option>
-                        <option value="ktv_WB">ktv_WB</option>
-                        <option value="ktv_OZ">ktv_OZ</option>
-                        <option value="reg_WB">reg_WB</option>
-                        <option value="reg_OZ">reg_OZ</option>
-                        <option value="kpd_WB">kpd_WB</option>
-                        <option value="kpd_OZ">kpd_OZ</option>
-                    </select>
                 </div>
             </div>
             <div id="lastScannedCode">
@@ -604,66 +620,71 @@
 
     // --- Фильтр по маркировке ---
     let selectedMarking = ''; // '' = все
-    const displaySpan = document.getElementById('markingDisplay');
-    const filterSelect = document.getElementById('markingFilter');
-    let isFilterOpen = false;
+    const markingDisplay = document.getElementById('markingDisplay');
+    const markingDropdown = document.createElement('div');
+    markingDropdown.className = 'marking-dropdown';
+    markingDisplay.parentNode.appendChild(markingDropdown);
 
-    // Клик по надписи – показываем селект
-    displaySpan.addEventListener('click', function() {
-        if (isFilterOpen) {
-            // Если уже открыт – сбрасываем фильтр (как повторный клик)
-            filterSelect.value = '';
-            selectedMarking = '';
-            displaySpan.textContent = 'FSK';
-            displaySpan.classList.remove('filter-active');
-            filterSelect.style.display = 'none';
-            isFilterOpen = false;
-            showToast('Фильтр сброшен');
-            return;
-        }
-        // Открываем селект
-        filterSelect.style.display = 'inline-block';
-        filterSelect.focus();
-        isFilterOpen = true;
-        // Если уже была выбрана маркировка, показываем её в селекте
-        if (selectedMarking) {
-            filterSelect.value = selectedMarking;
-        }
-    });
+    // Список маркировок
+    const MARKING_OPTIONS = [
+        { value: '', label: 'Все' },
+        { value: 'sia_WB', label: 'sia_WB' },
+        { value: 'sia_OZ', label: 'sia_OZ' },
+        { value: 'ktv_WB', label: 'ktv_WB' },
+        { value: 'ktv_OZ', label: 'ktv_OZ' },
+        { value: 'reg_WB', label: 'reg_WB' },
+        { value: 'reg_OZ', label: 'reg_OZ' },
+        { value: 'kpd_WB', label: 'kpd_WB' },
+        { value: 'kpd_OZ', label: 'kpd_OZ' }
+    ];
 
-    // При потере фокуса селектом – скрываем его и применяем выбор (если выбран)
-    filterSelect.addEventListener('change', function() {
-        const val = this.value;
-        selectedMarking = val;
-        if (val) {
-            displaySpan.textContent = val;
-            displaySpan.classList.add('filter-active');
-            showToast(`Выбрана маркировка: ${val}`);
-        } else {
-            displaySpan.textContent = 'FSK';
-            displaySpan.classList.remove('filter-active');
-            showToast('Фильтр сброшен');
-        }
-        // Скрываем селект
-        filterSelect.style.display = 'none';
-        isFilterOpen = false;
-    });
-
-    // Если клик вне селекта – скрываем его (но не применяем изменения, если не было выбора)
-    document.addEventListener('click', function(e) {
-        if (isFilterOpen && !filterSelect.contains(e.target) && e.target !== displaySpan) {
-            filterSelect.style.display = 'none';
-            isFilterOpen = false;
-            // Возвращаем предыдущее значение (если было)
-            if (selectedMarking) {
-                filterSelect.value = selectedMarking;
-                displaySpan.textContent = selectedMarking;
-                displaySpan.classList.add('filter-active');
-            } else {
-                filterSelect.value = '';
-                displaySpan.textContent = 'FSK';
-                displaySpan.classList.remove('filter-active');
+    function renderDropdown() {
+        markingDropdown.innerHTML = '';
+        MARKING_OPTIONS.forEach(opt => {
+            const item = document.createElement('div');
+            item.className = 'marking-dropdown-item';
+            if (opt.value === selectedMarking) {
+                item.classList.add('selected');
             }
+            item.textContent = opt.label;
+            item.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const val = opt.value;
+                if (val === selectedMarking) {
+                    // Повторный клик на ту же маркировку – сброс
+                    selectedMarking = '';
+                    markingDisplay.textContent = 'FSK';
+                    markingDisplay.classList.remove('filter-active');
+                    markingDropdown.classList.remove('open');
+                    showToast('Фильтр сброшен');
+                    return;
+                }
+                selectedMarking = val;
+                if (val) {
+                    markingDisplay.textContent = val;
+                    markingDisplay.classList.add('filter-active');
+                } else {
+                    markingDisplay.textContent = 'FSK';
+                    markingDisplay.classList.remove('filter-active');
+                }
+                markingDropdown.classList.remove('open');
+                showToast(`Выбрана маркировка: ${val || 'Все'}`);
+            });
+            markingDropdown.appendChild(item);
+        });
+    }
+    renderDropdown();
+
+    // Открытие/закрытие выпадающего списка при клике на надпись
+    markingDisplay.addEventListener('click', function(e) {
+        e.stopPropagation();
+        markingDropdown.classList.toggle('open');
+    });
+
+    // Закрытие dropdown при клике вне его
+    document.addEventListener('click', function(e) {
+        if (!markingDisplay.contains(e.target) && !markingDropdown.contains(e.target)) {
+            markingDropdown.classList.remove('open');
         }
     });
 
@@ -702,10 +723,10 @@
         }
         saveHistoryToStorage();
         historyIndex = searchHistory.length - 1;
-        renderDropdown();
+        renderDropdownHistory();
     }
 
-    function renderDropdown() {
+    function renderDropdownHistory() {
         const container = document.getElementById('historyDropdown');
         if (!container) return;
         if (searchHistory.length === 0) {
@@ -725,32 +746,32 @@
                 const value = this.dataset.value;
                 if (value) {
                     document.getElementById('scanInput').value = value;
-                    closeDropdown();
+                    closeDropdownHistory();
                     performScan(value);
                 }
             });
         });
     }
 
-    function toggleDropdown() {
+    function toggleDropdownHistory() {
         const container = document.getElementById('historyDropdown');
         const toggleBtn = document.getElementById('dropdownToggle');
         if (container.classList.contains('open')) {
-            closeDropdown();
+            closeDropdownHistory();
         } else {
-            openDropdown();
+            openDropdownHistory();
         }
     }
 
-    function openDropdown() {
+    function openDropdownHistory() {
         const container = document.getElementById('historyDropdown');
         const toggleBtn = document.getElementById('dropdownToggle');
         container.classList.add('open');
         toggleBtn.classList.add('open');
-        renderDropdown();
+        renderDropdownHistory();
     }
 
-    function closeDropdown() {
+    function closeDropdownHistory() {
         const container = document.getElementById('historyDropdown');
         const toggleBtn = document.getElementById('dropdownToggle');
         container.classList.remove('open');
@@ -760,7 +781,7 @@
     document.addEventListener('click', function(e) {
         const wrapper = document.querySelector('.input-container');
         if (wrapper && !wrapper.contains(e.target)) {
-            closeDropdown();
+            closeDropdownHistory();
         }
     });
 
@@ -786,9 +807,8 @@
     function showError(message) {
         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('tablesScroll').innerHTML = '';
-        document.getElementById('markingDisplay').textContent = '';
-        document.getElementById('scannedCodeText').textContent = '';
-        document.getElementById('markingLogo').style.display = 'none';
+        document.getElementById('markingDisplay').textContent = selectedMarking || 'FSK';
+        // Не сбрасываем фильтр
         resetImage();
         lastScannedCode = '';
     }
@@ -796,9 +816,7 @@
     function showLoading() {
         document.getElementById('productInfoContainer').innerHTML = '<div class="loading">Загрузка...</div>';
         document.getElementById('tablesScroll').innerHTML = '';
-        document.getElementById('markingDisplay').textContent = '⏳';
-        document.getElementById('scannedCodeText').textContent = '';
-        document.getElementById('markingLogo').style.display = 'none';
+        document.getElementById('markingDisplay').textContent = selectedMarking || 'FSK';
         resetImage();
     }
 
@@ -861,7 +879,7 @@
         if (!products || products.length === 0) {
             infoDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             scrollDiv.innerHTML = '';
-            markingSpan.textContent = '';
+            markingSpan.textContent = selectedMarking || 'FSK';
             codeText.textContent = lastScannedCode || '';
             logoImg.style.display = 'none';
             resetImage();
@@ -875,7 +893,7 @@
         const name = product['Название'] || '—';
         const tableData = product['table'] || [];
 
-        markingSpan.textContent = product['Маркировка'] || '';
+        markingSpan.textContent = selectedMarking || 'FSK';
 
         codeText.textContent = lastScannedCode;
 
@@ -1110,7 +1128,7 @@
                         showToast(`❌ Код не соответствует выбранной маркировке (${selectedMarking})`, true);
                         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ Код не соответствует маркировке ${selectedMarking}</div>`;
                         document.getElementById('tablesScroll').innerHTML = '';
-                        document.getElementById('markingDisplay').textContent = '';
+                        document.getElementById('markingDisplay').textContent = selectedMarking; // сохраняем выбранную
                         document.getElementById('scannedCodeText').textContent = '';
                         resetImage();
                         return;
@@ -1197,7 +1215,7 @@
             await updateFileStatus();
             document.getElementById('productInfoContainer').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
             document.getElementById('tablesScroll').innerHTML = '';
-            document.getElementById('markingDisplay').textContent = '';
+            document.getElementById('markingDisplay').textContent = selectedMarking || 'FSK';
             document.getElementById('scannedCodeText').textContent = '';
             document.getElementById('markingLogo').style.display = 'none';
             resetImage();
@@ -1218,7 +1236,7 @@
         if (!ok) return;
 
         loadHistoryFromStorage();
-        renderDropdown();
+        renderDropdownHistory();
         await updateFileStatus();
 
         const input = document.getElementById('scanInput');
@@ -1226,7 +1244,7 @@
 
         toggleBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            toggleDropdown();
+            toggleDropdownHistory();
         });
 
         input.addEventListener('focus', function() {
@@ -1246,7 +1264,7 @@
             if (e.key === 'Escape') {
                 this.value = '';
                 this.blur();
-                closeDropdown();
+                closeDropdownHistory();
                 return;
             }
             if (e.key === 'ArrowUp') {
