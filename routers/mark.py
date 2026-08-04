@@ -221,13 +221,12 @@ def get_oz_qr_index(marking: str, date_str: str):
         _sticker_caches[cache_key] = {}
     _sticker_caches[cache_key]["qr_index"] = qr_index
     return qr_index
-
 def get_list_wb_row(marking: str, date_str: str, sticker: str) -> int | None:
     """
     Ищет стикер в Excel-файле из папки list (только WB).
-    Определяет колонку по заголовку "Стикер", если не находит, пробует индексы 6 (G) и 5 (F).
-    Возвращает номер строки (начиная с 1) минус 5 (т.к. данные начинаются с 6-й строки).
-    Если файл отсутствует, стикер не найден или колонка не найдена, возвращает None.
+    Заголовки находятся в 5-й строке (индекс 4).
+    Ищет колонку с заголовком "Стикер" (с большой буквы).
+    Если не находит, пробует индексы 6 (G) и 5 (F) последовательно.
     """
     base_path = "/work/!МП_(FSk)/!FBS"
     file_path = os.path.join(base_path, f"{date_str}_FBS", "list", f"{marking}_WB.xlsx")
@@ -236,37 +235,42 @@ def get_list_wb_row(marking: str, date_str: str, sticker: str) -> int | None:
         return None
 
     try:
-        # Читаем первую строку как заголовки
-        header_df = pd.read_excel(file_path, header=None, nrows=1, dtype=str).fillna('')
+        # Читаем строку 5 (индекс 4) как заголовки
+        header_df = pd.read_excel(file_path, header=None, skiprows=4, nrows=1, dtype=str).fillna('')
         sticker_col_idx = None
+
+        # Ищем колонку с заголовком "Стикер"
         for idx, val in enumerate(header_df.iloc[0]):
-            if val.strip().lower() == 'стикер':
+            if str(val).strip() == 'Стикер':
                 sticker_col_idx = idx
+                print(f"[LIST] Найдена колонка с заголовком 'Стикер' на индексе {idx}")
                 break
 
-        # Если не нашли по заголовку, пробуем индексы 6 (G) и 5 (F)
+        # Если не нашли, пробуем индексы 6 (G) и 5 (F)
         if sticker_col_idx is None:
-            for col_idx in [6, 5]:
-                # Проверим, что колонка существует (не выходит за границы)
-                if col_idx < len(header_df.iloc[0]):
-                    sticker_col_idx = col_idx
-                    print(f"[LIST] Не найден заголовок 'Стикер', используем колонку с индексом {col_idx} ({chr(65+col_idx)})")
-                    break
+            for idx in [6, 5]:
+                try:
+                    if idx < len(header_df.iloc[0]):
+                        sticker_col_idx = idx
+                        print(f"[LIST] Используем колонку с индексом {idx}")
+                        break
+                except:
+                    pass
 
         if sticker_col_idx is None:
             print(f"[LIST] В файле {file_path} не найдена колонка с заголовком 'Стикер' и индексы 6,5 отсутствуют")
             return None
 
-        # Читаем всю таблицу, берём только найденную колонку
+        # Читаем всю таблицу, берём только найденную колонку, пропускаем 5 строк (заголовки)
         df = pd.read_excel(file_path, header=None, usecols=[sticker_col_idx], dtype=str).fillna('')
-        # Скипаем первую строку (заголовок)
-        df = df.iloc[1:].reset_index(drop=True)
+        # Пропускаем первые 5 строк (заголовки)
+        df = df.iloc[5:].reset_index(drop=True)
 
         clean_sticker = sticker.replace(' ', '')
         for idx, value in enumerate(df.iloc[:, 0]):
             clean_value = str(value).replace(' ', '')
             if clean_value == clean_sticker:
-                row_num = idx + 1  # первая строка данных (после заголовка) имеет индекс 0 -> номер 1
+                row_num = idx + 1  # первая строка данных после заголовков
                 print(f"[LIST] Найден стикер {sticker} в строке {row_num} (Excel строка {row_num + 5})")
                 return row_num
     except Exception as e:
