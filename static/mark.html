@@ -191,19 +191,26 @@
             overflow: hidden;
             text-overflow: ellipsis;
             max-width: 200px;
+            cursor: pointer;
+            transition: color 0.2s;
         }
-        /* Стили для селекта фильтра */
+        #markingDisplay.filter-active {
+            color: #8b0000;
+        }
+        #markingDisplay.filter-active:hover {
+            text-decoration: underline;
+        }
         #markingFilter {
+            display: none;
             margin-left: 8px;
-            padding: 6px 12px;
+            padding: 4px 8px;
             border-radius: 20px;
             border: 1px solid #cbd5e1;
             background: white;
             font-size: 1rem;
             outline: none;
             cursor: pointer;
-            transition: 0.2s;
-            height: 38px;
+            height: 34px;
             min-width: 100px;
         }
         #markingFilter.filter-active {
@@ -545,7 +552,7 @@
                         <button id="dropdownToggle" class="dropdown-toggle">▼</button>
                         <div id="historyDropdown" class="dropdown-content"></div>
                     </div>
-                    <span id="markingDisplay"></span>
+                    <span id="markingDisplay">FSK</span>
                     <select id="markingFilter">
                         <option value="">Все</option>
                         <option value="sia_WB">sia_WB</option>
@@ -597,25 +604,67 @@
 
     // --- Фильтр по маркировке ---
     let selectedMarking = ''; // '' = все
-
+    const displaySpan = document.getElementById('markingDisplay');
     const filterSelect = document.getElementById('markingFilter');
-    filterSelect.addEventListener('change', function() {
-        const val = this.value;
-        if (val === selectedMarking) {
-            // Повторный клик на ту же маркировку – сброс
-            this.value = '';
+    let isFilterOpen = false;
+
+    // Клик по надписи – показываем селект
+    displaySpan.addEventListener('click', function() {
+        if (isFilterOpen) {
+            // Если уже открыт – сбрасываем фильтр (как повторный клик)
+            filterSelect.value = '';
             selectedMarking = '';
-            this.classList.remove('filter-active');
+            displaySpan.textContent = 'FSK';
+            displaySpan.classList.remove('filter-active');
+            filterSelect.style.display = 'none';
+            isFilterOpen = false;
             showToast('Фильтр сброшен');
             return;
         }
+        // Открываем селект
+        filterSelect.style.display = 'inline-block';
+        filterSelect.focus();
+        isFilterOpen = true;
+        // Если уже была выбрана маркировка, показываем её в селекте
+        if (selectedMarking) {
+            filterSelect.value = selectedMarking;
+        }
+    });
+
+    // При потере фокуса селектом – скрываем его и применяем выбор (если выбран)
+    filterSelect.addEventListener('change', function() {
+        const val = this.value;
         selectedMarking = val;
         if (val) {
-            this.classList.add('filter-active');
+            displaySpan.textContent = val;
+            displaySpan.classList.add('filter-active');
+            showToast(`Выбрана маркировка: ${val}`);
         } else {
-            this.classList.remove('filter-active');
+            displaySpan.textContent = 'FSK';
+            displaySpan.classList.remove('filter-active');
+            showToast('Фильтр сброшен');
         }
-        showToast(`Выбрана маркировка: ${val || 'Все'}`);
+        // Скрываем селект
+        filterSelect.style.display = 'none';
+        isFilterOpen = false;
+    });
+
+    // Если клик вне селекта – скрываем его (но не применяем изменения, если не было выбора)
+    document.addEventListener('click', function(e) {
+        if (isFilterOpen && !filterSelect.contains(e.target) && e.target !== displaySpan) {
+            filterSelect.style.display = 'none';
+            isFilterOpen = false;
+            // Возвращаем предыдущее значение (если было)
+            if (selectedMarking) {
+                filterSelect.value = selectedMarking;
+                displaySpan.textContent = selectedMarking;
+                displaySpan.classList.add('filter-active');
+            } else {
+                filterSelect.value = '';
+                displaySpan.textContent = 'FSK';
+                displaySpan.classList.remove('filter-active');
+            }
+        }
     });
 
     function loadHistoryFromStorage() {
