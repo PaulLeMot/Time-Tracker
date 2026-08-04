@@ -911,10 +911,36 @@
             scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
-        // --- Таблица маркировок (ID, штрих-код) с добавлением номера строки ---
+        // --- Таблица "Порядковый номер" ---
+        let rowNumberHtml = '';
+        // Собираем номера строк для WB-стикеров из всех строк tableData
+        const allRowNumbers = [];
+        for (const row of tableData) {
+            if (row.platform === 'WB' && row.stickers && Array.isArray(row.stickers)) {
+                for (const st of row.stickers) {
+                    if (typeof st === 'object' && st.row !== undefined && st.row !== null) {
+                        allRowNumbers.push(st.row);
+                    }
+                }
+            }
+        }
+        // Уникальные, сортируем по возрастанию
+        const uniqueSorted = [...new Set(allRowNumbers)].sort((a, b) => a - b);
+        if (uniqueSorted.length > 0) {
+            rowNumberHtml = `<div class="table-container"><table>
+                <thead><tr><th>Порядковый номер</th></tr></thead>
+                <tbody>`;
+            for (const num of uniqueSorted) {
+                rowNumberHtml += `<tr><td>${escapeHtml(num)}</td></tr>`;
+            }
+            rowNumberHtml += `</tbody></table></div>`;
+            scrollHtml += rowNumberHtml;
+        }
+
+        // --- Таблица маркировок (ID, штрих-код) ---
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
-                <thead><tr><th>Порядковый номер</th><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
+                <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
             for (const row of tableData) {
                 let badgeClass = '';
                 if (row.platform === 'WB') {
@@ -924,18 +950,7 @@
                 } else {
                     badgeClass = 'badge-fsk';
                 }
-                // Извлекаем номера строк для WB
-                let rowNumbers = '';
-                if (row.platform === 'WB' && row.stickers && Array.isArray(row.stickers)) {
-                    const numbers = row.stickers
-                        .map(s => (typeof s === 'object' && s.row !== undefined && s.row !== null) ? s.row : null)
-                        .filter(n => n !== null && n !== undefined);
-                    if (numbers.length > 0) {
-                        rowNumbers = numbers.join(', ');
-                    }
-                }
                 tableHtml += `<tr>
-                    <td>${escapeHtml(rowNumbers || '—')}</td>
                     <td><span class="badge ${badgeClass}">${escapeHtml(row.marking)}</span></td>
                     <td>${escapeHtml(row.id)}</td>
                     <td>${escapeHtml(row.bar)}</td>
