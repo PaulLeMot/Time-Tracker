@@ -757,6 +757,15 @@
                 <div id="weeklyTrafficTableContainer">
                     <p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>
                 </div>
+                <div id="weeklyTrafficSummary" style="display: none; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 12px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
+                    <span style="color: green; font-weight: 500;">
+                        ✅ Отработано: <span id="trafficWorked">00:00</span>
+                        <span id="trafficWorkedRaw" style="color: #64748b; font-weight: 400; font-size: 0.9rem; margin-left: 4px;">(00:00)</span>
+                    </span>
+                    <span style="color: darkorange; font-weight: 500;">
+                        ☕ Перерывы: <span id="trafficBreak">00:00</span>
+                    </span>
+                </div>
             </div>
         </div>
         <div class="tab-content" id="recent-tab" style="display: none;">
@@ -2099,14 +2108,12 @@
                 }
 
                 let rowClass = '';
-                if (recentEmployeeId) {
-                    switch (entry.action_code) {
-                        case 'start': rowClass = 'recent-start'; break;
-                        case 'break_start': rowClass = 'recent-break-start'; break;
-                        case 'break_end': rowClass = 'recent-break-end'; break;
-                        case 'end': rowClass = 'recent-end'; break;
-                        default: rowClass = '';
-                    }
+                switch (entry.action_code) {
+                    case 'start': rowClass = 'recent-start'; break;
+                    case 'break_start': rowClass = 'recent-break-start'; break;
+                    case 'break_end': rowClass = 'recent-break-end'; break;
+                    case 'end': rowClass = 'recent-end'; break;
+                    default: rowClass = '';
                 }
 
                 html += `<tr class="${rowClass}">
@@ -3277,16 +3284,20 @@ async function loadTrafficEmployees() {
 
 async function loadWeeklyTraffic(employeeId) {
     const container = document.getElementById('weeklyTrafficTableContainer');
+    const summaryDiv = document.getElementById('weeklyTrafficSummary');
     if (!employeeId) {
         container.innerHTML = '<p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>';
+        if (summaryDiv) summaryDiv.style.display = 'none';
         return;
     }
     container.innerHTML = '<p>Загрузка...</p>';
+    if (summaryDiv) summaryDiv.style.display = 'none';
 
     const weekPicker = document.getElementById('weekPicker');
     const weekValue = weekPicker.value;
     if (!weekValue) {
         container.innerHTML = '<p style="color: #ef4444;">Не выбрана неделя</p>';
+        if (summaryDiv) summaryDiv.style.display = 'none';
         return;
     }
     const [year, week] = weekValue.split('-W');
@@ -3299,7 +3310,6 @@ async function loadWeeklyTraffic(employeeId) {
         dates.push(d);
     }
 
-    // Сохраняем даты для кнопок добавления и кликов по пустым ячейкам
     window._weeklyTrafficDates = dates.map(d => {
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -3307,13 +3317,11 @@ async function loadWeeklyTraffic(employeeId) {
         return `${year}-${month}-${day}`;
     });
 
-    // Формируем строку даты понедельника локально (без UTC)
     const y = monday.getFullYear();
     const m = String(monday.getMonth() + 1).padStart(2, '0');
     const d = String(monday.getDate()).padStart(2, '0');
     const mondayStr = `${y}-${m}-${d}`;
 
-    // 1. Загружаем недельный отчёт (уже готовые данные с округлением и концом дня)
     let weeklyReport = null;
     try {
         const resp = await fetch(`/api/reports/weekly?start_date=${mondayStr}`, { credentials: 'include' });
@@ -3321,14 +3329,31 @@ async function loadWeeklyTraffic(employeeId) {
         weeklyReport = await resp.json();
     } catch (err) {
         container.innerHTML = `<p style="color: #ef4444;">Ошибка загрузки: ${err.message}</p>`;
+        if (summaryDiv) summaryDiv.style.display = 'none';
         return;
     }
 
-    // Находим данные по выбранному сотруднику
     const empData = weeklyReport.find(emp => emp.employee_id == employeeId);
     if (!empData) {
         container.innerHTML = '<p style="color: #94a3b8;">Нет данных за эту неделю для выбранного сотрудника</p>';
+        if (summaryDiv) summaryDiv.style.display = 'none';
         return;
+    }
+
+    // --- СТАТИСТИКА ---
+    if (summaryDiv) {
+        const totalWorked = empData.total_worked_hours || 0;
+        const totalRawWorked = empData.total_raw_worked_hours || totalWorked; // если нет raw, используем total
+        const totalBreak = empData.total_break_minutes || 0;
+
+        const workedDisplay = formatHoursToHHMM(totalWorked);
+        const rawWorkedDisplay = formatHoursToHHMM(totalRawWorked);
+        const breakDisplay = formatMinutesToHHMM(totalBreak);
+
+        document.getElementById('trafficWorked').textContent = workedDisplay;
+        document.getElementById('trafficWorkedRaw').textContent = `(${rawWorkedDisplay})`;
+        document.getElementById('trafficBreak').textContent = breakDisplay;
+        summaryDiv.style.display = 'flex';
     }
 
     // 2. Загружаем отметки для каждого дня (через /api/reports/employee)
