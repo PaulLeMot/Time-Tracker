@@ -304,6 +304,10 @@
             width: 100%;
         }
         .product-info .name-line {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px;
+            align-items: baseline;
             font-size: 1.4rem;
             font-weight: 600;
             color: #0f172a;
@@ -317,8 +321,10 @@
             font-size: 1.5rem;
             font-weight: 700;
             color: #0f172a;
-            margin-right: 8px;
             white-space: nowrap;
+        }
+        .product-info .name-line span:last-child {
+            word-break: break-word;
         }
         .product-info .details-line {
             font-size: 1.1rem;
@@ -546,6 +552,7 @@
             #scanInput { font-size: 0.95rem; padding: 10px 14px; padding-right: 44px; }
             #markingDisplay { font-size: 1rem; max-width: 120px; }
             .product-info .name-line { font-size: 1.2rem; }
+            .product-info .name-line .code-part { font-size: 1.3rem; }
             .product-info .details-line { font-size: 1rem; }
             .sticker-section { font-size: 0.8rem; }
             .sticker-section td { padding: 4px 8px; }
@@ -843,14 +850,14 @@
         document.getElementById('tablesScroll').innerHTML = '';
         resetImage();
         lastScannedCode = '';
-        updateLogo(); // обновляем логотип в соответствии с фильтром
+        updateLogo();
     }
 
     function showLoading() {
         document.getElementById('productInfoContainer').innerHTML = '<div class="loading">Загрузка...</div>';
         document.getElementById('tablesScroll').innerHTML = '';
         resetImage();
-        updateLogo(); // показываем логотип бренда, если фильтр активен, иначе скрываем
+        updateLogo();
     }
 
     function resetImage() {
@@ -1140,6 +1147,9 @@
 
         lastScannedCode = code;
 
+        // Очищаем поле ввода
+        document.getElementById('scanInput').value = '';
+
         showLoading();
         try {
             const resp = await fetch(`/api/mark/${encodeURIComponent(code)}`, { credentials: 'include' });
@@ -1166,7 +1176,7 @@
                         document.getElementById('markingLabelText').textContent = selectedMarking;
                         document.getElementById('scannedCodeText').textContent = '';
                         resetImage();
-                        updateLogo(); // показываем логотип бренда, если фильтр активен
+                        updateLogo();
                         return;
                     }
                 }
@@ -1294,7 +1304,7 @@
                 if (code) {
                     performScan(code);
                 }
-                this.value = '';
+                // поле очищается внутри performScan
                 return;
             }
             if (e.key === 'Escape') {
