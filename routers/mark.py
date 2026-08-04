@@ -231,18 +231,25 @@ def get_list_wb_row(marking: str, date_str: str, sticker: str) -> int | None:
     base_path = "/work/!МП_(FSk)/!FBS"
     file_path = os.path.join(base_path, f"{date_str}_FBS", "list", f"{marking}_WB.xlsx")
     if not os.path.exists(file_path):
+        print(f"[LIST] Файл не найден: {file_path}")
         return None
 
     try:
         # Читаем только колонку G (индекс 6)
         df = pd.read_excel(file_path, header=None, usecols=[6], dtype=str).fillna('')
+        # Удаляем все пробелы из искомого стикера для сравнения
+        clean_sticker = sticker.replace(' ', '')
         for idx, value in enumerate(df.iloc[:, 0]):
-            if str(value).strip() == sticker:
-                # idx – 0-based, строка в Excel = idx + 1, вычитаем 5
-                return idx + 1 - 5
+            # Удаляем все пробелы из значения из файла
+            clean_value = str(value).replace(' ', '')
+            if clean_value == clean_sticker:
+                row_num = idx + 1 - 5
+                print(f"[LIST] Найден стикер {sticker} (в файле: {value}) в строке {row_num} (Excel строка {idx+1})")
+                return row_num
     except Exception as e:
-        print(f"Ошибка поиска стикера в list/WB для {marking}: {e}")
+        print(f"[LIST] Ошибка поиска стикера в {file_path}: {e}")
         return None
+    print(f"[LIST] Стикер {sticker} не найден в {file_path}")
     return None
 
 def get_marking_for_position(col_idx, col_names):
