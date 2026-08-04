@@ -761,7 +761,6 @@
 
         markingSpan.textContent = product['Маркировка'] || '';
 
-        // --- Отображаем код и логотип ---
         codeText.textContent = lastScannedCode;
 
         const foundMarkings = product['found_markings'] || [];
@@ -807,11 +806,8 @@
             </div>
         `;
 
-        // --- Сбор данных ---
-        let allPairs = []; // для OZ
-        let wbStickersWithRow = []; // массив объектов {sticker, row}
-        let hasOZ = false;
-        let hasRow = false;
+        // --- Сбор всех стикеров ---
+        let allStickers = [];
 
         for (const prod of products) {
             const t = prod.table || [];
@@ -820,29 +816,26 @@
                 if (row.stickers && row.stickers.length > 0 && foundMarkingsProd.includes(row.marking)) {
                     const platform = row.platform || '';
                     if (platform === 'OZ') {
-                        hasOZ = true;
                         for (const item of row.stickers) {
-                            allPairs.push({
+                            allStickers.push({
                                 sticker: item.sticker,
                                 articul: item.articul,
-                                row: null // OZ не имеет row
+                                row: null
                             });
                         }
                     } else if (platform === 'WB') {
                         for (const sticker of row.stickers) {
                             if (typeof sticker === 'object' && sticker.sticker !== undefined) {
-                                const rowVal = sticker.row !== undefined ? sticker.row : null;
-                                if (rowVal !== null && rowVal !== undefined) hasRow = true;
-                                wbStickersWithRow.push({
+                                allStickers.push({
                                     sticker: sticker.sticker,
-                                    row: rowVal,
-                                    articul: null // WB не имеет артикула
+                                    articul: null,
+                                    row: sticker.row !== undefined ? sticker.row : null
                                 });
                             } else {
-                                wbStickersWithRow.push({
+                                allStickers.push({
                                     sticker: sticker,
-                                    row: null,
-                                    articul: null
+                                    articul: null,
+                                    row: null
                                 });
                             }
                         }
@@ -851,26 +844,7 @@
             }
         }
 
-        // Объединяем все стикеры в один массив
-        let allStickers = [];
-        // OZ
-        for (const item of allPairs) {
-            allStickers.push({
-                sticker: item.sticker,
-                articul: item.articul,
-                row: null
-            });
-        }
-        // WB
-        for (const item of wbStickersWithRow) {
-            allStickers.push({
-                sticker: item.sticker,
-                articul: null,
-                row: item.row
-            });
-        }
-
-        // Сортируем по последним 4 цифрам (по возрастанию)
+        // Сортировка по последним 4 цифрам
         allStickers.sort((a, b) => {
             const aLast = getLastFourDigits(a.sticker);
             const bLast = getLastFourDigits(b.sticker);
@@ -879,25 +853,27 @@
 
         let scrollHtml = '';
 
-        // --- Единая таблица стикеров ---
+        // --- Таблица стикеров с колонками: Стикер, Последние 4 цифры, Артикул (если есть), Порядковый номер (если есть) ---
         if (allStickers.length > 0) {
-            // Определяем, нужно ли показывать колонку "Артикул" (если есть хоть один articul)
             const showArticul = allStickers.some(item => item.articul !== null && item.articul !== undefined);
-            // Определяем, нужно ли показывать колонку "Порядковый номер" (если есть хоть один row)
             const showRow = allStickers.some(item => item.row !== null && item.row !== undefined);
 
             let sectionHtml = `<div class="sticker-section">`;
             sectionHtml += `<div class="sticker-count">Найдено товаров: ${allStickers.length}</div>`;
             sectionHtml += `<table><thead><tr>`;
             sectionHtml += `<th>Стикер</th>`;
+            sectionHtml += `<th>Последние 4 цифры</th>`;
             if (showArticul) sectionHtml += `<th>Артикул</th>`;
             if (showRow) sectionHtml += `<th>Порядковый номер</th>`;
             sectionHtml += `</tr></thead><tbody>`;
 
             for (const item of allStickers) {
+                const lastFour = getLastFourDigits(item.sticker);
                 sectionHtml += `<tr>`;
-                // Стикер (с выделением последних 4 цифр)
-                sectionHtml += `<td>${formatSticker(item.sticker)}</td>`;
+                // Полный стикер
+                sectionHtml += `<td>${escapeHtml(item.sticker)}</td>`;
+                // Последние 4 цифры (чёрный, размер 3.0rem)
+                sectionHtml += `<td class="sticker-last" style="color: #000;">${String(lastFour).padStart(4, '0')}</td>`;
                 // Артикул (если есть)
                 if (showArticul) {
                     if (item.articul) {
@@ -920,11 +896,10 @@
             sectionHtml += `</tbody></table></div>`;
             scrollHtml += sectionHtml;
         } else {
-            scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
+            scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last" style="color: #000;">0000</td></tr></tbody></table></div>`;
         }
 
         // --- Таблица маркировок с 10 пустыми строками перед ней ---
-        // Добавляем 10 пустых строк (br)
         let emptyRows = '';
         for (let i = 0; i < 10; i++) {
             emptyRows += '<br>';
