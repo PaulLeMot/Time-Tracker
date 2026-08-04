@@ -3342,17 +3342,23 @@ async function loadWeeklyTraffic(employeeId) {
 
     // --- СТАТИСТИКА ---
     if (summaryDiv) {
-        const totalWorked = empData.total_worked_hours || 0;
-        const totalRawWorked = empData.total_raw_worked_hours || totalWorked; // если нет raw, используем total
+        // Используем total_worked_display (уже с округлением) если есть, иначе форматируем total_worked_hours
+        const totalWorkedDisplay = empData.total_worked_display || formatHoursToHHMM(empData.total_worked_hours || 0);
+        const totalRawWorked = empData.total_raw_worked_hours; // может отсутствовать
         const totalBreak = empData.total_break_minutes || 0;
 
-        const workedDisplay = formatHoursToHHMM(totalWorked);
-        const rawWorkedDisplay = formatHoursToHHMM(totalRawWorked);
-        const breakDisplay = formatMinutesToHHMM(totalBreak);
-
-        document.getElementById('trafficWorked').textContent = workedDisplay;
-        document.getElementById('trafficWorkedRaw').textContent = `(${rawWorkedDisplay})`;
-        document.getElementById('trafficBreak').textContent = breakDisplay;
+        document.getElementById('trafficWorked').textContent = totalWorkedDisplay;
+        
+        // Если есть raw-время, показываем его в скобках, иначе скрываем
+        const rawSpan = document.getElementById('trafficWorkedRaw');
+        if (totalRawWorked !== undefined && totalRawWorked !== null) {
+            rawSpan.textContent = `(${formatHoursToHHMM(totalRawWorked)})`;
+            rawSpan.style.display = 'inline';
+        } else {
+            rawSpan.style.display = 'none';
+        }
+        
+        document.getElementById('trafficBreak').textContent = formatMinutesToHHMM(totalBreak);
         summaryDiv.style.display = 'flex';
     }
 
