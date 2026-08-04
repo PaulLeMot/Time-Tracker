@@ -632,6 +632,7 @@
     const markingDisplay = document.getElementById('markingDisplay');
     const markingLabelText = document.getElementById('markingLabelText');
     const markingDropdown = document.getElementById('markingDropdown');
+    const logoImg = document.getElementById('markingLogo');
 
     // Список маркировок
     const MARKING_OPTIONS = [
@@ -645,6 +646,27 @@
         { value: 'kpd_WB', label: 'kpd_WB' },
         { value: 'kpd_OZ', label: 'kpd_OZ' }
     ];
+
+    // Функция обновления логотипа
+    function updateLogo() {
+        if (selectedMarking) {
+            const base = selectedMarking.split('_')[0];
+            if (BRAND_KEYS.includes(base)) {
+                const logoFileName = logoMap[base];
+                if (logoFileName) {
+                    const logoPath = `/static/logos/${logoFileName}.jpg`;
+                    logoImg.src = logoPath;
+                    logoImg.alt = base;
+                    logoImg.style.display = 'block';
+                    logoImg.onerror = function() {
+                        this.style.display = 'none';
+                    };
+                    return;
+                }
+            }
+        }
+        logoImg.style.display = 'none';
+    }
 
     function renderMarkingDropdown() {
         markingDropdown.innerHTML = '';
@@ -665,6 +687,7 @@
                     markingDisplay.classList.remove('filter-active');
                     markingDropdown.classList.remove('open');
                     showToast('Фильтр сброшен');
+                    updateLogo();
                     return;
                 }
                 selectedMarking = val;
@@ -677,6 +700,7 @@
                 }
                 markingDropdown.classList.remove('open');
                 showToast(`Выбрана маркировка: ${val || 'Все'}`);
+                updateLogo();
             });
             markingDropdown.appendChild(item);
         });
@@ -819,12 +843,14 @@
         document.getElementById('tablesScroll').innerHTML = '';
         resetImage();
         lastScannedCode = '';
+        updateLogo(); // обновляем логотип в соответствии с фильтром
     }
 
     function showLoading() {
         document.getElementById('productInfoContainer').innerHTML = '<div class="loading">Загрузка...</div>';
         document.getElementById('tablesScroll').innerHTML = '';
         resetImage();
+        updateLogo(); // показываем логотип бренда, если фильтр активен, иначе скрываем
     }
 
     function resetImage() {
@@ -878,7 +904,6 @@
         const img = document.getElementById('productImage');
         const noImg = document.getElementById('noImageLabel');
         const codeText = document.getElementById('scannedCodeText');
-        const logoImg = document.getElementById('markingLogo');
 
         if (!products || products.length === 0) {
             infoDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
@@ -905,22 +930,29 @@
 
         codeText.textContent = lastScannedCode;
 
-        const foundMarkings = product['found_markings'] || [];
-        let brandMarking = null;
-        for (const m of foundMarkings) {
-            const base = m.split('_')[0];
+        // --- Логотип: приоритет фильтра ---
+        let brandForLogo = null;
+        if (selectedMarking) {
+            const base = selectedMarking.split('_')[0];
             if (BRAND_KEYS.includes(base)) {
-                brandMarking = base;
-                break;
+                brandForLogo = base;
+            }
+        } else {
+            const foundMarkings = product['found_markings'] || [];
+            for (const m of foundMarkings) {
+                const base = m.split('_')[0];
+                if (BRAND_KEYS.includes(base)) {
+                    brandForLogo = base;
+                    break;
+                }
             }
         }
-
-        if (brandMarking) {
-            const logoFileName = logoMap[brandMarking];
+        if (brandForLogo) {
+            const logoFileName = logoMap[brandForLogo];
             if (logoFileName) {
                 const logoPath = `/static/logos/${logoFileName}.jpg`;
                 logoImg.src = logoPath;
-                logoImg.alt = brandMarking;
+                logoImg.alt = brandForLogo;
                 logoImg.style.display = 'block';
                 logoImg.onerror = function() {
                     console.error('Logo load error:', this.src);
@@ -1134,6 +1166,7 @@
                         document.getElementById('markingLabelText').textContent = selectedMarking;
                         document.getElementById('scannedCodeText').textContent = '';
                         resetImage();
+                        updateLogo(); // показываем логотип бренда, если фильтр активен
                         return;
                     }
                 }
@@ -1220,7 +1253,7 @@
             document.getElementById('tablesScroll').innerHTML = '';
             document.getElementById('markingLabelText').textContent = selectedMarking || 'FSK';
             document.getElementById('scannedCodeText').textContent = '';
-            document.getElementById('markingLogo').style.display = 'none';
+            logoImg.style.display = 'none';
             resetImage();
             historyIndex = -1;
             lastScannedCode = '';
