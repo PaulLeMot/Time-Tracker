@@ -793,7 +793,7 @@
 
         // --- Сбор данных ---
         let allPairs = [];
-        let wbStickers = [];
+        let wbStickersWithRow = []; // массив объектов {sticker, row}
         let hasOZ = false;
 
         for (const prod of products) {
@@ -812,9 +812,14 @@
                         }
                     } else if (platform === 'WB') {
                         for (const sticker of row.stickers) {
-                            // Если стикер — объект (есть поле sticker), берем sticker, иначе сам элемент
-                            const st = typeof sticker === 'object' ? sticker.sticker : sticker;
-                            wbStickers.push(st);
+                            if (typeof sticker === 'object' && sticker.sticker !== undefined) {
+                                wbStickersWithRow.push({
+                                    sticker: sticker.sticker,
+                                    row: sticker.row !== undefined ? sticker.row : null
+                                });
+                            } else {
+                                wbStickersWithRow.push({ sticker: sticker, row: null });
+                            }
                         }
                     }
                 }
@@ -823,6 +828,7 @@
 
         let scrollHtml = '';
 
+        // --- OZ секция ---
         if (hasOZ && allPairs.length > 0) {
             const mainArticul = code;
 
@@ -892,12 +898,13 @@
                 articulHtml += `</tbody></table></div>`;
                 scrollHtml += articulHtml;
             }
-
-        } else if (wbStickers.length > 0) {
+        } else if (wbStickersWithRow.length > 0) {
+            // Если нет OZ, но есть WB стикеры
             let sectionHtml = `<div class="sticker-section">`;
-            sectionHtml += `<div class="sticker-count">Найдено товаров: ${wbStickers.length}</div>`;
+            sectionHtml += `<div class="sticker-count">Найдено товаров: ${wbStickersWithRow.length}</div>`;
             sectionHtml += `<table><tbody>`;
-            for (const sticker of wbStickers) {
+            for (const item of wbStickersWithRow) {
+                const sticker = item.sticker;
                 const firstPart = sticker.length > 4 ? sticker.slice(0, -4) : '';
                 const lastPart = sticker.length > 4 ? sticker.slice(-4) : sticker;
                 sectionHtml += `<tr>
@@ -911,33 +918,19 @@
             scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
-        // --- Таблица "Порядковый номер" ---
-        let rowNumberHtml = '';
-        // Собираем номера строк для WB-стикеров из всех строк tableData
-        const allRowNumbers = [];
-        for (const row of tableData) {
-            if (row.platform === 'WB' && row.stickers && Array.isArray(row.stickers)) {
-                for (const st of row.stickers) {
-                    if (typeof st === 'object' && st.row !== undefined && st.row !== null) {
-                        allRowNumbers.push(st.row);
-                    }
-                }
+        // --- Отдельная таблица "Порядковый номер" (только для WB с row) ---
+        const wbRows = wbStickersWithRow.filter(item => item.row !== null && item.row !== undefined);
+        if (wbRows.length > 0) {
+            let rowHtml = `<div class="sticker-section"><div class="sticker-count">Порядковый номер</div>`;
+            rowHtml += `<table><tbody>`;
+            for (const item of wbRows) {
+                rowHtml += `<tr><td>${escapeHtml(item.sticker)}</td><td>${escapeHtml(item.row)}</td></tr>`;
             }
-        }
-        // Уникальные, сортируем по возрастанию
-        const uniqueSorted = [...new Set(allRowNumbers)].sort((a, b) => a - b);
-        if (uniqueSorted.length > 0) {
-            rowNumberHtml = `<div class="table-container"><table>
-                <thead><tr><th>Порядковый номер</th></tr></thead>
-                <tbody>`;
-            for (const num of uniqueSorted) {
-                rowNumberHtml += `<tr><td>${escapeHtml(num)}</td></tr>`;
-            }
-            rowNumberHtml += `</tbody></table></div>`;
-            scrollHtml += rowNumberHtml;
+            rowHtml += `</tbody></table></div>`;
+            scrollHtml += rowHtml;
         }
 
-        // --- Таблица маркировок (ID, штрих-код) ---
+        // --- Таблица маркировок (без колонки порядкового номера) ---
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
