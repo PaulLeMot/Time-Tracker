@@ -580,6 +580,7 @@
                         <div id="historyDropdown" class="dropdown-content"></div>
                     </div>
                     <span id="markingDisplay">FSK</span>
+                    <div id="markingDropdown" class="marking-dropdown"></div>
                 </div>
             </div>
             <div id="lastScannedCode">
@@ -621,9 +622,7 @@
     // --- Фильтр по маркировке ---
     let selectedMarking = ''; // '' = все
     const markingDisplay = document.getElementById('markingDisplay');
-    const markingDropdown = document.createElement('div');
-    markingDropdown.className = 'marking-dropdown';
-    markingDisplay.parentNode.appendChild(markingDropdown);
+    const markingDropdown = document.getElementById('markingDropdown');
 
     // Список маркировок
     const MARKING_OPTIONS = [
@@ -638,7 +637,7 @@
         { value: 'kpd_OZ', label: 'kpd_OZ' }
     ];
 
-    function renderDropdown() {
+    function renderMarkingDropdown() {
         markingDropdown.innerHTML = '';
         MARKING_OPTIONS.forEach(opt => {
             const item = document.createElement('div');
@@ -673,20 +672,25 @@
             markingDropdown.appendChild(item);
         });
     }
-    renderDropdown();
+    renderMarkingDropdown();
 
-    // Открытие/закрытие выпадающего списка при клике на надпись
-    markingDisplay.addEventListener('click', function(e) {
-        e.stopPropagation();
-        markingDropdown.classList.toggle('open');
+    // Открытие/закрытие выпадающего списка при клике на надпись (используем делегирование)
+    document.addEventListener('click', function(e) {
+        const target = e.target.closest('#markingDisplay');
+        if (target) {
+            e.stopPropagation();
+            markingDropdown.classList.toggle('open');
+        }
     });
 
     // Закрытие dropdown при клике вне его
     document.addEventListener('click', function(e) {
-        if (!markingDisplay.contains(e.target) && !markingDropdown.contains(e.target)) {
+        if (!e.target.closest('.input-marking-wrapper')) {
             markingDropdown.classList.remove('open');
         }
     });
+
+    // Закрытие при клике на пункт dropdown уже реализовано в обработчиках пунктов
 
     function loadHistoryFromStorage() {
         try {
@@ -807,8 +811,7 @@
     function showError(message) {
         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('tablesScroll').innerHTML = '';
-        document.getElementById('markingDisplay').textContent = selectedMarking || 'FSK';
-        // Не сбрасываем фильтр
+        // не трогаем markingDisplay
         resetImage();
         lastScannedCode = '';
     }
@@ -816,7 +819,6 @@
     function showLoading() {
         document.getElementById('productInfoContainer').innerHTML = '<div class="loading">Загрузка...</div>';
         document.getElementById('tablesScroll').innerHTML = '';
-        document.getElementById('markingDisplay').textContent = selectedMarking || 'FSK';
         resetImage();
     }
 
