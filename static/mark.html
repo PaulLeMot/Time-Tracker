@@ -730,7 +730,7 @@
             infoDiv.innerHTML = '<div class="no-result">⚠️ Товар не найден</div>';
             scrollDiv.innerHTML = '';
             markingSpan.textContent = '';
-            codeText.textContent = lastScannedCode || ''; // показываем последний введённый код, если есть
+            codeText.textContent = lastScannedCode || '';
             logoImg.style.display = 'none';
             resetImage();
             return;
@@ -746,7 +746,6 @@
         markingSpan.textContent = product['Маркировка'] || '';
 
         // --- Отображаем код и логотип ---
-        // Показываем последний отсканированный код (сохранённый в lastScannedCode)
         codeText.textContent = lastScannedCode;
 
         const foundMarkings = product['found_markings'] || [];
@@ -813,7 +812,9 @@
                         }
                     } else if (platform === 'WB') {
                         for (const sticker of row.stickers) {
-                            wbStickers.push(sticker);
+                            // Если стикер — объект (есть поле sticker), берем sticker, иначе сам элемент
+                            const st = typeof sticker === 'object' ? sticker.sticker : sticker;
+                            wbStickers.push(st);
                         }
                     }
                 }
@@ -910,9 +911,10 @@
             scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
+        // --- Таблица маркировок (ID, штрих-код) с добавлением номера строки ---
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
-                <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
+                <thead><tr><th>Порядковый номер</th><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
             for (const row of tableData) {
                 let badgeClass = '';
                 if (row.platform === 'WB') {
@@ -922,7 +924,18 @@
                 } else {
                     badgeClass = 'badge-fsk';
                 }
+                // Извлекаем номера строк для WB
+                let rowNumbers = '';
+                if (row.platform === 'WB' && row.stickers && Array.isArray(row.stickers)) {
+                    const numbers = row.stickers
+                        .map(s => (typeof s === 'object' && s.row !== undefined && s.row !== null) ? s.row : null)
+                        .filter(n => n !== null && n !== undefined);
+                    if (numbers.length > 0) {
+                        rowNumbers = numbers.join(', ');
+                    }
+                }
                 tableHtml += `<tr>
+                    <td>${escapeHtml(rowNumbers || '—')}</td>
                     <td><span class="badge ${badgeClass}">${escapeHtml(row.marking)}</span></td>
                     <td>${escapeHtml(row.id)}</td>
                     <td>${escapeHtml(row.bar)}</td>
@@ -980,7 +993,6 @@
             return;
         }
 
-        // Сохраняем введённый код
         lastScannedCode = code;
 
         showLoading();
@@ -997,7 +1009,6 @@
             }
             const data = await resp.json();
             document.getElementById('lastScannedCode').style.display = 'flex';
-            // Передаём данные в renderResults, она использует lastScannedCode
             renderResults(data);
         } catch (err) {
             showError('Ошибка соединения с сервером');

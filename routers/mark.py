@@ -46,6 +46,9 @@ def check_files_status(date_str: str) -> dict:
         oz_path = os.path.join(base_fbs, f"{date_str}_FBS", "input", f"{mk}_OZ.csv")
         files[f"{date_str}_FBS/input/{mk}_WB.xlsx"] = os.path.exists(wb_path)
         files[f"{date_str}_FBS/input/{mk}_OZ.csv"] = os.path.exists(oz_path)
+        # Проверяем также наличие файлов в папке list (только WB)
+        list_wb_path = os.path.join(base_fbs, f"{date_str}_FBS", "list", f"{mk}_WB.xlsx")
+        files[f"{date_str}_FBS/list/{mk}_WB.xlsx"] = os.path.exists(list_wb_path)
     missing = [name for name, exists in files.items() if not exists]
     return {"ok": len(missing) == 0, "files": files, "missing": missing}
 
@@ -218,6 +221,29 @@ def get_oz_qr_index(marking: str, date_str: str):
         _sticker_caches[cache_key] = {}
     _sticker_caches[cache_key]["qr_index"] = qr_index
     return qr_index
+
+def get_list_wb_row(marking: str, date_str: str, sticker: str) -> int | None:
+    """
+    Ищет стикер в Excel-файле из папки list (только WB).
+    Возвращает номер строки (начиная с 1) минус 5 (т.к. данные начинаются с 6-й строки).
+    Если файл отсутствует или стикер не найден, возвращает None.
+    """
+    base_path = "/work/!МП_(FSk)/!FBS"
+    file_path = os.path.join(base_path, f"{date_str}_FBS", "list", f"{marking}_WB.xlsx")
+    if not os.path.exists(file_path):
+        return None
+
+    try:
+        # Читаем только колонку G (индекс 6)
+        df = pd.read_excel(file_path, header=None, usecols=[6], dtype=str).fillna('')
+        for idx, value in enumerate(df.iloc[:, 0]):
+            if str(value).strip() == sticker:
+                # idx – 0-based, строка в Excel = idx + 1, вычитаем 5
+                return idx + 1 - 5
+    except Exception as e:
+        print(f"Ошибка поиска стикера в list/WB для {marking}: {e}")
+        return None
+    return None
 
 def get_marking_for_position(col_idx, col_names):
     if col_idx == 0:
@@ -435,7 +461,6 @@ async def mark_barcode(barcode: str):
                 products[key]["entries"].append((marking, is_id))
                 if marking == "FSK" and not found_via_qr and not found_via_fsk:
                     # Это артикул, но FSK-маркировку можно добавить, но skip_stickers не нужен
-                    # В данном случае мы её добавили, но skip_stickers не выставляем
                     pass
 
     for key, data_item in products.items():
@@ -478,11 +503,29 @@ async def mark_barcode(barcode: str):
         else:
             table = []
 
+        # === НОВАЯ ЛОГИКА: обогащение WB-стикеров номерами строк из list ===
+        if table:
+            for row in table:
+                if row.get("platform") == "WB" and row.get("stickers"):
+                    # row["stickers"] – это список строк (стикеров)
+                    new_stickers = []
+                    for st in row["stickers"]:
+                        if isinstance(st, str):
+                            row_num = get_list_wb_row(
+                                row["marking"].split('_')[0] if '_' in row["marking"] else "",
+                                today_str,
+                                st
+                            )
+                            new_stickers.append({"sticker": st, "row": row_num if row_num is not None else None})
+                        else:
+                            # Если вдруг уже словарь, оставляем как есть
+                            new_stickers.append(st)
+                    row["stickers"] = new_stickers
+        # === КОНЕЦ НОВОЙ ЛОГИКИ ===
+
         found_markings = list(data_item["sticker_markings"])
 
         # Определяем отображаемую "Маркировку":
-        # при поиске через QR используем именно ту маркировку, по которой найден QR-код,
-        # а не структурную позицию col_idx==0 (которая всегда даёт "FSK")
         if found_via_qr and data_item["qr_markings"]:
             display_marking = ", ".join(sorted(f"{mk}_OZ" for mk in data_item["qr_markings"]))
         else:
