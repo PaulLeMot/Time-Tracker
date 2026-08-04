@@ -749,6 +749,15 @@
             <div id="weeklyReportContainer"></div>
             <div id="weeklyTrafficContainer" style="display: none; margin-top: 16px;">
                 <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+                    <div id="weeklyTrafficSummary" style="display: none; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 12px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
+                        <span style="color: green; font-weight: 500;">
+                            ✅ Отработано: <span id="trafficWorked">00:00</span>
+                            <span id="trafficWorkedRaw" style="color: #64748b; font-weight: 400; font-size: 0.9rem; margin-left: 4px;">(00:00)</span>
+                        </span>
+                        <span style="color: darkorange; font-weight: 500;">
+                            ☕ Перерывы: <span id="trafficBreak">00:00</span>
+                        </span>
+                    </div>
                     <label for="weeklyTrafficEmployeeSelect" style="font-weight: 500;">👤 Сотрудник:</label>
                     <select id="weeklyTrafficEmployeeSelect" style="width: 300px; padding: 8px; border-radius: 20px; border: 1px solid #cbd5e1;">
                         <option value="">Выберите сотрудника</option>
@@ -756,15 +765,6 @@
                 </div>
                 <div id="weeklyTrafficTableContainer">
                     <p style="color: #94a3b8;">Выберите сотрудника для отображения отметок</p>
-                </div>
-                <div id="weeklyTrafficSummary" style="display: none; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 12px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
-                    <span style="color: green; font-weight: 500;">
-                        ✅ Отработано: <span id="trafficWorked">00:00</span>
-                        <span id="trafficWorkedRaw" style="color: #64748b; font-weight: 400; font-size: 0.9rem; margin-left: 4px;">(00:00)</span>
-                    </span>
-                    <span style="color: darkorange; font-weight: 500;">
-                        ☕ Перерывы: <span id="trafficBreak">00:00</span>
-                    </span>
                 </div>
             </div>
         </div>
