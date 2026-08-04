@@ -352,7 +352,7 @@
             word-break: break-all;
             flex: 1;
             min-width: 0;
-            margin-left: 120px;
+            margin-left: 112px;
         }
         #markingLogo {
             height: 40px;
@@ -418,6 +418,9 @@
             font-size: 3.0rem;
             color: #000;
             padding: 0 2px;
+        }
+        .sticker-highlight.duplicate {
+            color: #22c55e !important;
         }
         .sticker-articul {
             font-weight: 700;
@@ -565,7 +568,7 @@
             .row-number { font-size: 2.0rem; }
             .articul-image { width: 24px; height: 24px; }
             .dropdown-toggle { right: 8px; width: 28px; height: 28px; font-size: 1rem; }
-            #scannedCodeText { font-size: 1.2rem; }
+            #scannedCodeText { font-size: 1.2rem; margin-left: 80px; }
             #markingLogo { height: 30px; max-width: 70px; }
         }
         #lastScannedCode:empty {
@@ -869,23 +872,27 @@
     }
 
     // Функция форматирования стикера: выделяет последние 4 цифры до дефиса (или просто последние 4 символа)
-    function formatSticker(sticker) {
+    function formatSticker(sticker, isDuplicate = false) {
         const dashIndex = sticker.indexOf('-');
+        let beforeHighlight, highlightPart, restPart;
         if (dashIndex !== -1 && dashIndex >= 4) {
-            const beforeHighlight = sticker.substring(0, dashIndex - 4);
-            const highlightPart = sticker.substring(dashIndex - 4, dashIndex);
-            const restPart = sticker.substring(dashIndex);
-            return `<span class="sticker-normal">${escapeHtml(beforeHighlight)}</span>&nbsp;&nbsp;&nbsp;<span class="sticker-highlight">${escapeHtml(highlightPart)}</span><span class="sticker-normal">${escapeHtml(restPart)}</span>`;
+            beforeHighlight = sticker.substring(0, dashIndex - 4);
+            highlightPart = sticker.substring(dashIndex - 4, dashIndex);
+            restPart = sticker.substring(dashIndex);
         } else {
             const len = sticker.length;
             if (len > 4) {
-                const before = sticker.slice(0, len - 4);
-                const lastFour = sticker.slice(len - 4);
-                return `<span class="sticker-normal">${escapeHtml(before)}</span>&nbsp;&nbsp;&nbsp;<span class="sticker-highlight">${escapeHtml(lastFour)}</span>`;
+                beforeHighlight = sticker.slice(0, len - 4);
+                highlightPart = sticker.slice(len - 4);
+                restPart = '';
             } else {
-                return `<span class="sticker-highlight">${escapeHtml(sticker)}</span>`;
+                beforeHighlight = '';
+                highlightPart = sticker;
+                restPart = '';
             }
         }
+        const highlightClass = `sticker-highlight${isDuplicate ? ' duplicate' : ''}`;
+        return `<span class="sticker-normal">${escapeHtml(beforeHighlight)}</span>&nbsp;&nbsp;&nbsp;<span class="${highlightClass}">${escapeHtml(highlightPart)}</span>${restPart ? `<span class="sticker-normal">${escapeHtml(restPart)}</span>` : ''}`;
     }
 
     function getLastFourDigits(sticker) {
@@ -1025,10 +1032,18 @@
             }
         }
 
+        // Сортировка по последним 4 цифрам
         allStickers.sort((a, b) => {
             const aLast = getLastFourDigits(a.sticker);
             const bLast = getLastFourDigits(b.sticker);
             return aLast - bLast;
+        });
+
+        // Подсчёт количества вхождений последних 4 цифр
+        const lastFourCount = {};
+        allStickers.forEach(item => {
+            const key = getLastFourDigits(item.sticker);
+            lastFourCount[key] = (lastFourCount[key] || 0) + 1;
         });
 
         let scrollHtml = '';
@@ -1046,8 +1061,12 @@
             sectionHtml += `</tr></thead><tbody>`;
 
             for (const item of allStickers) {
+                const lastFour = getLastFourDigits(item.sticker);
+                const isDuplicate = lastFourCount[lastFour] > 1;
+                const stickerHtml = formatSticker(item.sticker, isDuplicate);
+
                 sectionHtml += `<tr>`;
-                sectionHtml += `<td>${formatSticker(item.sticker)}</td>`;
+                sectionHtml += `<td>${stickerHtml}</td>`;
                 if (showArticul) {
                     if (item.articul) {
                         sectionHtml += `<td>${articulWithImage(item.articul)}</td>`;
@@ -1071,14 +1090,14 @@
             scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
-        // ========== ПУСТЫЕ СТРОКИ МЕЖДУ ТАБЛИЦАМИ ==========
+        // Пустые строки между таблицами
         let emptyRows = '';
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 10; i++) {
             emptyRows += '<br>';
         }
         scrollHtml += emptyRows;
 
-        // --- Таблица маркировок ---
+        // Таблица маркировок
         if (tableData.length) {
             let tableHtml = `<div class="table-container"><table>
                 <thead><tr><th>Маркировка</th><th>ID</th><th>Штрих-код</th></tr></thead><tbody>`;
