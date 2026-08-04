@@ -225,8 +225,7 @@ def get_oz_qr_index(marking: str, date_str: str):
 def get_list_wb_row(marking: str, date_str: str, sticker: str) -> int | None:
     """
     Ищет стикер в Excel-файле из папки list (только WB).
-    Возвращает номер строки (начиная с 1) минус 5 (т.к. данные начинаются с 6-й строки).
-    Если файл отсутствует или стикер не найден, возвращает None.
+    Возвращает номер строки (начиная с 1) минус 5.
     """
     base_path = "/work/!МП_(FSk)/!FBS"
     file_path = os.path.join(base_path, f"{date_str}_FBS", "list", f"{marking}_WB.xlsx")
@@ -237,14 +236,14 @@ def get_list_wb_row(marking: str, date_str: str, sticker: str) -> int | None:
     try:
         # Читаем только колонку G (индекс 6)
         df = pd.read_excel(file_path, header=None, usecols=[6], dtype=str).fillna('')
-        # Удаляем все пробелы из искомого стикера для сравнения
+        # Отладочный вывод первых 5 значений
+        print(f"[LIST] Для {marking} первые 5 значений из колонки G: {df.iloc[:5, 0].tolist()}")
         clean_sticker = sticker.replace(' ', '')
         for idx, value in enumerate(df.iloc[:, 0]):
-            # Удаляем все пробелы из значения из файла
             clean_value = str(value).replace(' ', '')
             if clean_value == clean_sticker:
                 row_num = idx + 1 - 5
-                print(f"[LIST] Найден стикер {sticker} (в файле: {value}) в строке {row_num} (Excel строка {idx+1})")
+                print(f"[LIST] Найден стикер {sticker} в строке {row_num} (Excel строка {idx+1})")
                 return row_num
     except Exception as e:
         print(f"[LIST] Ошибка поиска стикера в {file_path}: {e}")
