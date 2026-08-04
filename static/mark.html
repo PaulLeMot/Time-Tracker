@@ -131,6 +131,7 @@
             flex: 1;
             gap: 12px;
             min-width: 0;
+            position: relative;
         }
         .input-container {
             flex: 1;
@@ -192,11 +193,11 @@
             text-overflow: ellipsis;
             max-width: 200px;
             cursor: pointer;
-            position: relative;
             padding: 4px 8px;
             border-radius: 8px;
             transition: background 0.2s, color 0.2s;
             user-select: none;
+            position: relative;
         }
         #markingDisplay:hover {
             background: #f1f5f9;
@@ -205,7 +206,6 @@
             color: #8b0000 !important;
             font-weight: 700;
         }
-        /* Кастомный выпадающий список */
         .marking-dropdown {
             display: none;
             position: absolute;
@@ -674,13 +674,10 @@
     }
     renderMarkingDropdown();
 
-    // Открытие/закрытие выпадающего списка при клике на надпись (используем делегирование)
-    document.addEventListener('click', function(e) {
-        const target = e.target.closest('#markingDisplay');
-        if (target) {
-            e.stopPropagation();
-            markingDropdown.classList.toggle('open');
-        }
+    // Открытие/закрытие выпадающего списка при клике на надпись
+    markingDisplay.addEventListener('click', function(e) {
+        e.stopPropagation();
+        markingDropdown.classList.toggle('open');
     });
 
     // Закрытие dropdown при клике вне его
@@ -689,8 +686,6 @@
             markingDropdown.classList.remove('open');
         }
     });
-
-    // Закрытие при клике на пункт dropdown уже реализовано в обработчиках пунктов
 
     function loadHistoryFromStorage() {
         try {
@@ -811,7 +806,7 @@
     function showError(message) {
         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ ${escapeHtml(message)}</div>`;
         document.getElementById('tablesScroll').innerHTML = '';
-        // не трогаем markingDisplay
+        // Не трогаем markingDisplay
         resetImage();
         lastScannedCode = '';
     }
