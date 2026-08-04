@@ -191,7 +191,6 @@
             color: #0f172a;
             white-space: nowrap;
             overflow: visible;
-            text-overflow: ellipsis;
             max-width: 200px;
             cursor: pointer;
             padding: 4px 8px;
@@ -208,6 +207,10 @@
         #markingDisplay.filter-active {
             color: #8b0000 !important;
             font-weight: 700;
+        }
+        #markingLabelText {
+            display: inline-block;
+            transition: color 0.2s;
         }
         .marking-dropdown {
             position: absolute;
@@ -226,7 +229,7 @@
             display: none;
         }
         .marking-dropdown.open {
-            display: block;
+            display: block !important;
         }
         .marking-dropdown-item {
             padding: 10px 18px;
@@ -583,7 +586,7 @@
                         <div id="historyDropdown" class="dropdown-content"></div>
                     </div>
                     <span id="markingDisplay">
-                        FSK
+                        <span id="markingLabelText">FSK</span>
                         <div id="markingDropdown" class="marking-dropdown"></div>
                     </span>
                 </div>
@@ -627,6 +630,7 @@
     // --- Фильтр по маркировке ---
     let selectedMarking = ''; // '' = все
     const markingDisplay = document.getElementById('markingDisplay');
+    const markingLabelText = document.getElementById('markingLabelText');
     const markingDropdown = document.getElementById('markingDropdown');
 
     // Список маркировок
@@ -657,7 +661,7 @@
                 if (val === selectedMarking) {
                     // Повторный клик на ту же маркировку – сброс
                     selectedMarking = '';
-                    markingDisplay.textContent = 'FSK';
+                    markingLabelText.textContent = 'FSK';
                     markingDisplay.classList.remove('filter-active');
                     markingDropdown.classList.remove('open');
                     showToast('Фильтр сброшен');
@@ -665,10 +669,10 @@
                 }
                 selectedMarking = val;
                 if (val) {
-                    markingDisplay.textContent = val;
+                    markingLabelText.textContent = val;
                     markingDisplay.classList.add('filter-active');
                 } else {
-                    markingDisplay.textContent = 'FSK';
+                    markingLabelText.textContent = 'FSK';
                     markingDisplay.classList.remove('filter-active');
                 }
                 markingDropdown.classList.remove('open');
@@ -683,14 +687,8 @@
     markingDisplay.addEventListener('click', function(e) {
         e.stopPropagation();
         e.preventDefault();
-        // Явно переключаем класс вместо toggle для большей надёжности
-        if (markingDropdown.classList.contains('open')) {
-            markingDropdown.classList.remove('open');
-            markingDisplay.blur(); // убираем фокус, если он есть
-        } else {
-            markingDropdown.classList.add('open');
-        }
-        console.log('Dropdown open:', markingDropdown.classList.contains('open'));
+        markingDropdown.classList.toggle('open');
+        console.log('Dropdown toggled, open:', markingDropdown.classList.contains('open'));
     });
 
     // Закрытие dropdown при клике вне его
@@ -843,10 +841,8 @@
             const beforeHighlight = sticker.substring(0, dashIndex - 4);
             const highlightPart = sticker.substring(dashIndex - 4, dashIndex);
             const restPart = sticker.substring(dashIndex);
-            // Добавляем 3 неразрывных пробела между частями
             return `<span class="sticker-normal">${escapeHtml(beforeHighlight)}</span>&nbsp;&nbsp;&nbsp;<span class="sticker-highlight">${escapeHtml(highlightPart)}</span><span class="sticker-normal">${escapeHtml(restPart)}</span>`;
         } else {
-            // Если дефиса нет или он слишком рано – выделяем последние 4 символа
             const len = sticker.length;
             if (len > 4) {
                 const before = sticker.slice(0, len - 4);
@@ -858,7 +854,6 @@
         }
     }
 
-    // Вспомогательная функция для извлечения последних 4 цифр для сортировки
     function getLastFourDigits(sticker) {
         if (!sticker) return 0;
         const cleaned = sticker.replace(/\s/g, '');
@@ -879,7 +874,7 @@
     function renderResults(products) {
         const infoDiv = document.getElementById('productInfoContainer');
         const scrollDiv = document.getElementById('tablesScroll');
-        const markingSpan = document.getElementById('markingDisplay');
+        const markingSpan = document.getElementById('markingLabelText');
         const img = document.getElementById('productImage');
         const noImg = document.getElementById('noImageLabel');
         const codeText = document.getElementById('scannedCodeText');
@@ -902,7 +897,6 @@
         const name = product['Название'] || '—';
         const tableData = product['table'] || [];
 
-        // --- ОТОБРАЖЕНИЕ МАРКИРОВКИ: если выбран фильтр, показываем его, иначе маркировку товара ---
         if (selectedMarking) {
             markingSpan.textContent = selectedMarking;
         } else {
@@ -954,7 +948,6 @@
             </div>
         `;
 
-        // --- Сбор всех стикеров ---
         let allStickers = [];
 
         for (const prod of products) {
@@ -992,7 +985,6 @@
             }
         }
 
-        // Сортировка по последним 4 цифрам
         allStickers.sort((a, b) => {
             const aLast = getLastFourDigits(a.sticker);
             const bLast = getLastFourDigits(b.sticker);
@@ -1001,7 +993,6 @@
 
         let scrollHtml = '';
 
-        // --- Таблица стикеров: одна колонка с выделением последних 4 цифр ---
         if (allStickers.length > 0) {
             const showArticul = allStickers.some(item => item.articul !== null && item.articul !== undefined);
             const showRow = allStickers.some(item => item.row !== null && item.row !== undefined);
@@ -1040,7 +1031,6 @@
             scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
-        // --- Таблица маркировок с 10 пустыми строками перед ней ---
         let emptyRows = '';
         for (let i = 0; i < 10; i++) {
             emptyRows += '<br>';
@@ -1132,7 +1122,6 @@
             }
             const data = await resp.json();
 
-            // --- Проверка фильтра по маркировке ---
             if (selectedMarking) {
                 const product = data[0];
                 if (product) {
@@ -1142,7 +1131,7 @@
                         showToast(`❌ Код не соответствует выбранной маркировке (${selectedMarking})`, true);
                         document.getElementById('productInfoContainer').innerHTML = `<div class="error">❌ Код не соответствует маркировке ${selectedMarking}</div>`;
                         document.getElementById('tablesScroll').innerHTML = '';
-                        document.getElementById('markingDisplay').textContent = selectedMarking;
+                        document.getElementById('markingLabelText').textContent = selectedMarking;
                         document.getElementById('scannedCodeText').textContent = '';
                         resetImage();
                         return;
@@ -1229,7 +1218,7 @@
             await updateFileStatus();
             document.getElementById('productInfoContainer').innerHTML = '<p class="placeholder-text">Ожидание сканирования...</p>';
             document.getElementById('tablesScroll').innerHTML = '';
-            document.getElementById('markingDisplay').textContent = selectedMarking || 'FSK';
+            document.getElementById('markingLabelText').textContent = selectedMarking || 'FSK';
             document.getElementById('scannedCodeText').textContent = '';
             document.getElementById('markingLogo').style.display = 'none';
             resetImage();
