@@ -711,9 +711,9 @@
 
         /* Колонка ФИО — ровно 80px, текст слева, перенос */
         .daily-traffic-table td.fio-cell {
-            width: 80px;
-            max-width: 80px;
-            min-width: 80px;
+            width: 200px;
+            max-width: 200px;
+            min-width: 200px;
             text-align: left;
             white-space: normal;
             word-break: break-word;
@@ -733,7 +733,7 @@
         /* Блоки самих отметок — как в недельном трафике */
         .daily-cell {
             display: inline-block;
-            min-width: 50px;
+            min-width: 200px;
             padding: 8px 6px;
             border-radius: 8px;
             font-weight: 500;
@@ -751,6 +751,7 @@
         .daily-cell.unknown { background-color: #f1f5f9; color: #94a3b8; }
         /* Подсветка редактируемой ячейки в дневном светофоре */
         .daily-traffic-table td.editing {
+            max-width: 200px;
             border: 2px solid #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
             outline: none;
@@ -850,7 +851,7 @@
                     <li data-status="ended">🏁 Завершил</li>
                 </ul>
             </div>
-            <button id="dailyTrafficBtn" class="btn">🚦 Светофор (день)</button>
+            <button id="dailyTrafficBtn" class="btn">🚦</button>
         </div>
             <div id="reportContainer"></div>
         </div>
@@ -4527,13 +4528,11 @@ document.getElementById('dailyTrafficBtn').addEventListener('click', function(e)
     }
     dailyTrafficModeActive = !dailyTrafficModeActive;
     if (dailyTrafficModeActive) {
-        this.textContent = '📋 Вернуться к отчёту';
-        this.style.background = '#ef4444';
+        this.textContent = '🚦';
         // Загружаем светофор
         loadDailyTraffic(date);
     } else {
-        this.textContent = '🚦 Светофор (день)';
-        this.style.background = '#8b5cf6';
+        this.textContent = '🚦';
         // Возвращаем обычный отчёт
         if (dailyReportData) {
             // Перерисовываем обычный отчёт, используя сохранённые данные
