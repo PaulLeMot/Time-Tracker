@@ -695,6 +695,120 @@
             cursor: not-allowed;
             transform: none;
         }
+        /* Дневной светофор — компактная таблица */
+        .daily-traffic-table {
+            width: auto;              /* таблица только по содержимому, не растягивается */
+            border-collapse: collapse;
+            margin: 0;                /* прижимаем к левому краю */
+        }
+
+        /* Убираем все линии и лишние отступы */
+        .daily-traffic-table td,
+        .daily-traffic-table th {
+            border: none;
+            padding: 4px 4px;
+        }
+
+        /* Колонка ФИО — ровно 80px, текст слева, перенос */
+        .daily-traffic-table td.fio-cell {
+            width: 80px;
+            max-width: 80px;
+            min-width: 80px;
+            text-align: left;
+            white-space: normal;
+            word-break: break-word;
+            padding-right: 8px;       /* небольшой отступ от отметок */
+            vertical-align: middle;
+        }
+
+        /* Ячейки отметок — ширина по содержимому, не растягиваются */
+        .daily-traffic-table td:not(.fio-cell) {
+            width: auto;              /* не фиксируем ширину, только по содержимому */
+            white-space: nowrap;
+            padding: 4px 2px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        /* Блоки самих отметок — как в недельном трафике */
+        .daily-cell {
+            display: inline-block;
+            min-width: 50px;
+            padding: 8px 6px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            text-align: center;
+            background-color: #f1f5f9;
+            color: #1e293b;
+        }
+
+        /* Цвета (полупрозрачные) */
+        .daily-cell.start { background-color: rgba(34, 197, 94, 0.15); }
+        .daily-cell.break_start { background-color: rgba(250, 204, 21, 0.2); }
+        .daily-cell.break_end { background-color: rgba(249, 115, 22, 0.2); }
+        .daily-cell.end { background-color: rgba(239, 68, 68, 0.15); }
+        .daily-cell.unknown { background-color: #f1f5f9; color: #94a3b8; }
+        /* Подсветка редактируемой ячейки в дневном светофоре */
+        .daily-traffic-table td.editing {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+            outline: none;
+            background-color: #f8fafc !important;
+        }
+
+        /* Стили для элементов управления в редактируемой ячейке дневного светофора */
+        .daily-traffic-table td.editing .edit-controls {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            padding: 4px;
+        }
+
+        .daily-traffic-table td.editing .edit-time-input {
+            width: 60px;
+            padding: 2px 4px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            text-align: center;
+            font-family: monospace;
+            outline: none;
+        }
+
+        .daily-traffic-table td.editing .edit-color-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid #cbd5e1;
+            cursor: pointer;
+            transition: 0.2s;
+            flex-shrink: 0;
+        }
+
+        .daily-traffic-table td.editing .edit-color-btn.start { background: #22c55e; border-color: #16a34a; }
+        .daily-traffic-table td.editing .edit-color-btn.break_start { background: #facc15; border-color: #eab308; }
+        .daily-traffic-table td.editing .edit-color-btn.break_end { background: #f97316; border-color: #ea580c; }
+        .daily-traffic-table td.editing .edit-color-btn.end { background: #ef4444; border-color: #dc2626; }
+
+        .daily-traffic-table td.editing .edit-save-btn,
+        .daily-traffic-table td.editing .edit-delete-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0 2px;
+            transition: 0.2s;
+        }
+
+        .daily-traffic-table td.editing .edit-save-btn { color: #3b82f6; }
+        .daily-traffic-table td.editing .edit-save-btn:hover { transform: scale(1.1); color: #2563eb; }
+
+        .daily-traffic-table td.editing .edit-delete-btn { color: #ef4444; }
+        .daily-traffic-table td.editing .edit-delete-btn:hover { transform: scale(1.1); color: #dc2626; }
+
     </style>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -736,6 +850,7 @@
                     <li data-status="ended">🏁 Завершил</li>
                 </ul>
             </div>
+            <button id="dailyTrafficBtn" class="btn">🚦 Светофор (день)</button>
         </div>
             <div id="reportContainer"></div>
         </div>
@@ -997,6 +1112,10 @@
     const STORAGE_KEY_EMPLOYEE = 'admin_traffic_employee';
     const STORAGE_KEY_WEEK = 'admin_traffic_week';
     const colorCycle = ['start', 'break_start', 'break_end', 'end'];
+    let dailyTrafficModeActive = false;
+    let dailyReportData = null;
+    let dailyCurrentlyEditingId = null;
+    let dailyCurrentlyAddingTd = null;
     
     const colorLabels = {
         'start': 'Начало дня',
@@ -1341,11 +1460,18 @@
 
     async function loadDailyReport(date) {
         const container = document.getElementById('reportContainer');
+        if (dailyTrafficModeActive) {
+            dailyTrafficModeActive = false;
+            const btn = document.getElementById('dailyTrafficBtn');
+            btn.textContent = '🚦 Светофор (день)';
+            btn.style.background = '#8b5cf6';
+        }
         container.innerHTML = '<p>Загрузка...</p>';
         try {
             const resp = await fetch(`/api/reports/daily?date=${date}`);
             if (!resp.ok) throw new Error('Ошибка загрузки отчёта');
             let report = await resp.json();
+            dailyReportData = report;
             if (!report.length) {
                 container.innerHTML = '<p>Нет данных за этот день</p>';
                 return;
@@ -1457,6 +1583,9 @@
 
     async function loadWeeklyReport(weekStart) {
         const container = document.getElementById('weeklyReportContainer');
+        if (dailyTrafficModeActive) {
+            return;
+        }
         container.innerHTML = '<p>Загрузка...</p>';
         try {
             const resp = await fetch(`/api/reports/weekly?start_date=${weekStart}`);
@@ -4247,6 +4376,476 @@ function closeAddMode(td) {
     if (currentlyEditingId !== null) {
         closeEditMode();
     }
+}
+async function loadDailyTraffic(date) {
+    const container = document.getElementById('reportContainer');
+    container.innerHTML = '<p>Загрузка...</p>';
+    try {
+        // Всегда загружаем свежие данные за указанную дату
+        const resp = await fetch(`/api/reports/daily?date=${date}`);
+        if (!resp.ok) throw new Error('Ошибка загрузки отчёта');
+        const report = await resp.json();
+        dailyReportData = report;
+        if (!report.length) {
+            container.innerHTML = '<p>Нет данных за этот день</p>';
+            return;
+        }
+
+        // Загружаем отметки для каждого сотрудника
+        const employeesWithEntries = [];
+        for (const emp of report) {
+            const id = emp.employee_id;
+            try {
+                const resp = await fetch(`/api/reports/employee/${id}?date=${date}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Ошибка загрузки отметок');
+                const data = await resp.json();
+                const entries = data.entries || [];
+                entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                employeesWithEntries.push({ ...emp, entries });
+            } catch (err) {
+                console.warn(`Не удалось загрузить отметки для ${emp.full_name}`, err);
+                employeesWithEntries.push({ ...emp, entries: [] });
+            }
+        }
+
+        let maxEntries = 0;
+        employeesWithEntries.forEach(emp => {
+            if (emp.entries.length > maxEntries) maxEntries = emp.entries.length;
+        });
+        if (maxEntries === 0) {
+            container.innerHTML = '<p>Нет отметок за этот день</p>';
+            return;
+        }
+
+        const colorClassMap = {
+            'start': 'start',
+            'break_start': 'break_start',
+            'break_end': 'break_end',
+            'end': 'end'
+        };
+
+        // Строим таблицу с атрибутами данных
+        let html = `<div style="overflow-x: auto;">
+            <table class="daily-traffic-table">
+                <tbody>`;
+
+        for (const emp of employeesWithEntries) {
+            const empId = emp.employee_id;
+            html += `<tr><td class="fio-cell">${escapeHtml(emp.full_name)}</td>`;
+            const entries = emp.entries;
+            for (let i = 0; i < maxEntries; i++) {
+                if (i < entries.length) {
+                    const entry = entries[i];
+                    const time = entry.timestamp.slice(11, 16);
+                    const action = entry.action;
+                    const cellClass = colorClassMap[action] || 'unknown';
+                    html += `<td data-entry-id="${entry.id}" data-timestamp="${entry.timestamp}" data-action="${action}" data-employee-id="${empId}">
+                                <span class="daily-cell ${cellClass}">${escapeHtml(time)}</span>
+                            </td>`;
+                } else {
+                    html += `<td data-employee-id="${empId}">
+                                <span class="daily-cell unknown">—</span>
+                            </td>`;
+                }
+            }
+            // Дополнительная ячейка с прочерком
+            html += `<td data-employee-id="${empId}">
+                        <span class="daily-cell unknown">—</span>
+                    </td>`;
+            html += `</tr>`;
+        }
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
+
+        // --- ЕДИНЫЙ ОБРАБОТЧИК КЛИКОВ ---
+        // Удаляем старый обработчик, если был
+        if (window._dailyTrafficClickHandler) {
+            document.removeEventListener('click', window._dailyTrafficClickHandler);
+        }
+
+        window._dailyTrafficClickHandler = function(e) {
+            // Проверяем, был ли клик внутри контейнера (до любых мутаций)
+            const insideContainer = container.contains(e.target);
+
+            // Если клик снаружи – закрываем редакторы и выходим
+            if (!insideContainer) {
+                closeDailyEditMode();
+                closeDailyAddMode();
+                return;
+            }
+
+            // Если клик по элементам управления внутри редактируемой ячейки – игнорируем
+            if (e.target.closest('.edit-controls')) {
+                return;
+            }
+
+            // !!! ВАЖНО: Закрываем все старые редакторы перед открытием нового !!!
+            closeDailyEditMode();
+            closeDailyAddMode();
+
+            // Теперь обрабатываем ячейку, по которой кликнули
+            const td = e.target.closest('td');
+            if (!td) return;
+
+            const span = td.querySelector('.daily-cell');
+            if (!span) return;
+
+            const empId = parseInt(td.dataset.employeeId);
+            if (!empId) return;
+
+            // Если ячейка уже в режиме редактирования (не должно быть, но на всякий случай)
+            if (td.classList.contains('editing')) return;
+
+            // Если есть отметка (не unknown)
+            if (!span.classList.contains('unknown')) {
+                const entryId = td.dataset.entryId;
+                const timestamp = td.dataset.timestamp;
+                const action = td.dataset.action;
+                if (entryId && timestamp && action) {
+                    makeDailyCellEditable(td, parseInt(entryId), timestamp, action, empId, date);
+                }
+            } else {
+                // Прочерк – добавление
+                makeDailyCellAddable(td, empId, date);
+            }
+        };
+
+        document.addEventListener('click', window._dailyTrafficClickHandler);
+
+    } catch (err) {
+        container.innerHTML = `<p style="color: #ef4444;">Ошибка загрузки: ${err.message}</p>`;
+        showToast(err.message, true);
+    }
+}
+// Обработчик кнопки дневного светофора
+document.getElementById('dailyTrafficBtn').addEventListener('click', function(e) {
+    e.stopPropagation();
+    const date = document.getElementById('reportDate').value;
+    if (!date) {
+        showToast('Выберите дату', true);
+        return;
+    }
+    dailyTrafficModeActive = !dailyTrafficModeActive;
+    if (dailyTrafficModeActive) {
+        this.textContent = '📋 Вернуться к отчёту';
+        this.style.background = '#ef4444';
+        // Загружаем светофор
+        loadDailyTraffic(date);
+    } else {
+        this.textContent = '🚦 Светофор (день)';
+        this.style.background = '#8b5cf6';
+        // Возвращаем обычный отчёт
+        if (dailyReportData) {
+            // Перерисовываем обычный отчёт, используя сохранённые данные
+            // Но проще перезагрузить через loadDailyReport
+            loadDailyReport(date);
+        } else {
+            loadDailyReport(date);
+        }
+    }
+});
+function closeDailyEditMode() {
+    if (dailyCurrentlyEditingId === null) return;
+    const td = document.querySelector('#reportContainer td.editing');
+    if (td) {
+        const originalHtml = td.dataset.originalHtml || '';
+        td.className = td.dataset.originalClasses || '';
+        td.innerHTML = originalHtml;
+        td.style.cssText = '';
+        delete td.dataset.originalHtml;
+        delete td.dataset.originalClasses;
+        delete td.dataset.originalTime;
+        delete td.dataset.originalAction;
+    }
+    dailyCurrentlyEditingId = null;
+}
+function closeDailyAddMode(td) {
+    if (!td) td = dailyCurrentlyAddingTd;
+    if (td) {
+        const originalHtml = td.dataset.originalHtml || '';
+        td.className = td.dataset.originalClasses || '';
+        td.innerHTML = originalHtml;
+        td.style.padding = '';
+        td.style.textAlign = '';
+        td.style.borderRadius = '';
+        td.style.backgroundColor = '';
+        td.style.border = '';
+        td.style.boxShadow = '';
+        delete td.dataset.originalHtml;
+        delete td.dataset.originalClasses;
+        delete td.dataset.adding;
+    }
+    dailyCurrentlyAddingTd = null;
+}
+function makeDailyCellEditable(td, entryId, timestamp, action, employeeId, date) {
+    closeDailyEditMode();
+    closeDailyAddMode();
+
+    const timeStr = timestamp.slice(11, 16);
+    const colorCycle = ['start', 'break_start', 'break_end', 'end'];
+    let colorIndex = colorCycle.indexOf(action);
+    if (colorIndex === -1) colorIndex = 0;
+    let currentEditColor = colorCycle[colorIndex];
+
+    td.dataset.originalHtml = td.innerHTML;
+    td.dataset.originalClasses = td.className;
+
+    // Сбрасываем классы и инлайн-стили, оставляем editing
+    td.className = 'editing';
+    td.style.cssText = '';
+
+    const colorClassMap = {
+        'start': 'start',
+        'break_start': 'break_start',
+        'break_end': 'break_end',
+        'end': 'end'
+    };
+
+    td.innerHTML = `
+        <div class="edit-controls">
+            <input type="text" class="edit-time-input" value="${timeStr}" maxlength="5" autofocus>
+            <div class="edit-color-btn ${colorClassMap[currentEditColor]}"></div>
+            <button class="edit-save-btn" title="Сохранить">✔️</button>
+            <button class="edit-delete-btn" title="Удалить">✖️</button>
+        </div>
+    `;
+
+    const input = td.querySelector('.edit-time-input');
+    const colorBtn = td.querySelector('.edit-color-btn');
+    const saveBtn = td.querySelector('.edit-save-btn');
+    const deleteBtn = td.querySelector('.edit-delete-btn');
+
+    if (!input || !colorBtn || !saveBtn || !deleteBtn) {
+        console.error('Не удалось найти элементы управления');
+        return;
+    }
+
+    // Автоформат времени
+    input.addEventListener('input', function() {
+        let val = this.value.replace(/\D/g, '');
+        if (val.length > 4) val = val.slice(0, 4);
+        if (val.length === 0) { this.value = ''; return; }
+        let formatted = '';
+        if (val.length <= 2) formatted = val;
+        else if (val.length === 3) formatted = val[0] + ':' + val.slice(1);
+        else if (val.length === 4) formatted = val.slice(0, 2) + ':' + val.slice(2);
+        this.value = formatted;
+    });
+
+    // Переключение цвета
+    colorBtn.addEventListener('click', function() {
+        colorIndex = (colorIndex + 1) % colorCycle.length;
+        currentEditColor = colorCycle[colorIndex];
+        this.className = `edit-color-btn ${colorClassMap[currentEditColor]}`;
+    });
+
+    // Сохранение изменений
+    saveBtn.addEventListener('click', async function(e) {
+        e.stopPropagation();
+        const timeStr = input.value.trim();
+        if (!timeStr || !timeStr.includes(':')) {
+            showToast('Введите корректное время (ЧЧ:ММ)', true);
+            return;
+        }
+        let [hours, minutes] = timeStr.split(':');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        if (parseInt(hours) > 23 || parseInt(minutes) > 59) {
+            showToast('Некорректное время', true);
+            return;
+        }
+        const newAction = currentEditColor;
+        const isoDateTime = `${date}T${hours}:${minutes}:00`;
+
+        saveBtn.disabled = true;
+        deleteBtn.disabled = true;
+
+        try {
+            const resp = await fetch(`/api/admin/timelog/${entryId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ timestamp: isoDateTime, action: newAction })
+            });
+            if (resp.ok) {
+                showToast(`✅ Отметка обновлена на ${hours}:${minutes}`);
+                closeDailyEditMode();
+                loadDailyTraffic(date);
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка обновления', true);
+                saveBtn.disabled = false;
+                deleteBtn.disabled = false;
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+            saveBtn.disabled = false;
+            deleteBtn.disabled = false;
+        }
+    });
+
+    // Удаление отметки
+    deleteBtn.addEventListener('click', async function(e) {
+        e.stopPropagation();
+        if (!confirm('Удалить эту отметку?')) return;
+        deleteBtn.disabled = true;
+        saveBtn.disabled = true;
+        try {
+            const resp = await fetch(`/api/admin/timelog/${entryId}`, { method: 'DELETE' });
+            if (resp.ok) {
+                showToast('🗑️ Отметка удалена');
+                closeDailyEditMode();
+                loadDailyTraffic(date);
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка удаления', true);
+                deleteBtn.disabled = false;
+                saveBtn.disabled = false;
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+            deleteBtn.disabled = false;
+            saveBtn.disabled = false;
+        }
+    });
+
+    // Фокус и клавиши
+    setTimeout(() => input.focus(), 50);
+    input.select();
+
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
+        if (e.key === 'Escape') { e.preventDefault(); closeDailyEditMode(); }
+    });
+
+    dailyCurrentlyEditingId = entryId;
+}
+function makeDailyCellAddable(td, employeeId, date) {
+    // Закрываем другие режимы
+    closeDailyEditMode();
+    closeDailyAddMode();
+
+    // Сохраняем оригинал
+    td.dataset.originalHtml = td.innerHTML;
+    td.dataset.originalClasses = td.className;
+    td.dataset.adding = 'true';
+
+    // Сбрасываем все классы и инлайн-стили, оставляем только editing
+    td.className = 'editing';
+    td.style.cssText = ''; // удаляем всё лишнее
+
+    const colorCycle = ['start', 'break_start', 'break_end', 'end'];
+    let colorIndex = 0;
+    let currentColor = colorCycle[colorIndex];
+    const colorClassMap = {
+        'start': 'start',
+        'break_start': 'break_start',
+        'break_end': 'break_end',
+        'end': 'end'
+    };
+
+    // Вставляем элементы управления
+    td.innerHTML = `
+        <div class="edit-controls">
+            <input type="text" class="edit-time-input" placeholder="ЧЧ:ММ" maxlength="5" autofocus>
+            <div class="edit-color-btn ${colorClassMap[currentColor]}"></div>
+            <button class="edit-save-btn" title="Добавить">✔️</button>
+            <button class="edit-delete-btn" title="Отмена">✖️</button>
+        </div>
+    `;
+
+    const input = td.querySelector('.edit-time-input');
+    const colorBtn = td.querySelector('.edit-color-btn');
+    const saveBtn = td.querySelector('.edit-save-btn');
+    const cancelBtn = td.querySelector('.edit-delete-btn');
+
+    if (!input || !colorBtn || !saveBtn || !cancelBtn) {
+        console.error('Не удалось найти элементы управления');
+        return;
+    }
+
+    // Автоформат времени
+    input.addEventListener('input', function() {
+        let val = this.value.replace(/\D/g, '');
+        if (val.length > 4) val = val.slice(0, 4);
+        if (val.length === 0) { this.value = ''; return; }
+        let formatted = '';
+        if (val.length <= 2) formatted = val;
+        else if (val.length === 3) formatted = val[0] + ':' + val.slice(1);
+        else if (val.length === 4) formatted = val.slice(0, 2) + ':' + val.slice(2);
+        this.value = formatted;
+    });
+
+    // Переключение цвета
+    colorBtn.addEventListener('click', function() {
+        colorIndex = (colorIndex + 1) % colorCycle.length;
+        currentColor = colorCycle[colorIndex];
+        this.className = `edit-color-btn ${colorClassMap[currentColor]}`;
+    });
+
+    // Сохранение (добавление)
+    saveBtn.addEventListener('click', async function(e) {
+        e.stopPropagation();
+        const timeStr = input.value.trim();
+        if (!timeStr || !timeStr.includes(':')) {
+            showToast('Введите корректное время (ЧЧ:ММ)', true);
+            return;
+        }
+        let [hours, minutes] = timeStr.split(':');
+        hours = hours.padStart(2, '0');
+        minutes = minutes.padStart(2, '0');
+        if (parseInt(hours) > 23 || parseInt(minutes) > 59) {
+            showToast('Некорректное время', true);
+            return;
+        }
+        const action = currentColor;
+        const isoDateTime = `${date}T${hours}:${minutes}:00`;
+
+        saveBtn.disabled = true;
+        cancelBtn.disabled = true;
+
+        try {
+            const resp = await fetch('/api/admin/timelog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    employee_id: employeeId,
+                    action: action,
+                    timestamp: isoDateTime
+                })
+            });
+            if (resp.ok) {
+                showToast(`✅ Отметка "${colorLabels[action]}" добавлена в ${hours}:${minutes}`);
+                closeDailyAddMode(td);
+                loadDailyTraffic(date);
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка сохранения', true);
+                saveBtn.disabled = false;
+                cancelBtn.disabled = false;
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+            saveBtn.disabled = false;
+            cancelBtn.disabled = false;
+        }
+    });
+
+    // Отмена (закрыть без сохранения)
+    cancelBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        closeDailyAddMode(td);
+    });
+
+    // Фокус и клавиши
+    setTimeout(() => input.focus(), 50);
+    input.select();
+
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); }
+    });
+
+    dailyCurrentlyAddingTd = td;
 }
 </script>
 </body>
