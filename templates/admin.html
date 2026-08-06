@@ -3802,11 +3802,6 @@ async function loadWeeklyTraffic(employeeId) {
     };
     document.addEventListener('click', window._trafficClickOutsideHandler);
 
-    const select = document.getElementById('weeklyTrafficEmployeeSelect');
-    const selectedName = select.options[select.selectedIndex]?.text || '';
-    const title = document.createElement('div');
-    title.style.cssText = 'font-weight:500; margin-bottom:12px;';
-    container.prepend(title);
 }
 // --- Обработчик изменения выбора сотрудника ---
 document.getElementById('weeklyTrafficEmployeeSelect').addEventListener('change', function() {
