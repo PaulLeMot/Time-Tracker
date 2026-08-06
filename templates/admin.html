@@ -171,6 +171,7 @@
                 display: inline-block;
                 flex-shrink: 0;
                 margin-right: 4px;
+                font-size: 0.85rem;
             }
         }
 
@@ -191,7 +192,7 @@
             background: transparent;
             border: none;
             padding: 8px 20px;
-            font-size: 1rem;
+            font-size: 0.85rem;
             font-weight: 500;
             color: #64748b;
             cursor: pointer;
@@ -883,6 +884,7 @@
             <button class="tab-btn" data-tab="notifications">
     🔔 Уведомления <span id="draftBadge" style="background:#ef4444; color:white; border-radius:20px; padding:2px 6px; font-size:0.7rem; margin-left:5px; display:none;">0</span>
 </button>
+            <button class="tab-btn" data-tab="monthly">📅 Отчёт за месяц</button>
         </div>
         <div class="tab-content" id="daily-tab">
             <div class="date-picker">
@@ -1005,6 +1007,7 @@
             </div>
             <div id="notificationsContainer">Загрузка...</div>
         </div>
+        <div class="tab-content" id="monthly-tab" style="display: none;"></div>
     </div>
 </div>
 
@@ -1806,21 +1809,24 @@
 
     function renderEntriesList(entries) {
         const modalBody = document.getElementById('modalBody');
+        if (!modalBody) return;
         if (!entries.length) {
             modalBody.innerHTML = '<p>Нет отметок за этот день</p>';
             return;
         }
-    function formatSource(source) {
-        if (source === 'barcode') return 'Сотрудник';
-        if (source === 'auto') return 'Авто';
-        if (source && source.startsWith('admin(')) {
-            const match = source.match(/^admin\((.*)\)$/);
-            if (match) return `Админ(${match[1]})`;
-            return 'Админ';
+
+        function formatSource(source) {
+            if (source === 'barcode') return 'Сотрудник';
+            if (source === 'auto') return 'Авто';
+            if (source && source.startsWith('admin(')) {
+                const match = source.match(/^admin\((.*)\)$/);
+                if (match) return `Админ(${match[1]})`;
+                return 'Админ';
+            }
+            if (source === 'admin') return 'Админ';
+            return source || '—';
         }
-        if (source === 'admin') return 'Админ';
-        return source || '—';
-    }
+
         let html = '<table style="width:100%;"><thead><tr><th>Время</th><th>Действие</th><th>Источник</th><th>Действия</th></tr></thead><tbody>';
         for (const entry of entries) {
             const isoDate = entry.timestamp.slice(0, 10);
@@ -1853,10 +1859,13 @@
         }
         html += '</tbody></table>';
         modalBody.innerHTML = html;
-        
-        document.querySelectorAll('.edit-btn').forEach(btn => {
+
+        // --- ИСПРАВЛЕНИЯ: все обработчики теперь ищут внутри modalBody и проверяют row ---
+
+        modalBody.querySelectorAll('.edit-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const row = btn.closest('tr');
+                if (!row) return;
                 const timeSpan = row.querySelector('.entry-time');
                 const editDiv = row.querySelector('.edit-controls');
                 const editBtn = row.querySelector('.edit-btn');
@@ -1869,10 +1878,11 @@
                 cancelBtn.style.display = 'inline-block';
             });
         });
-        
-        document.querySelectorAll('.save-btn').forEach(btn => {
+
+        modalBody.querySelectorAll('.save-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const row = btn.closest('tr');
+                if (!row) return;
                 const entryId = row.dataset.id;
                 const dateInput = row.querySelector('.edit-date');
                 const timeInput = row.querySelector('.edit-time');
@@ -1902,10 +1912,11 @@
                 }
             });
         });
-        
-        document.querySelectorAll('.cancel-btn').forEach(btn => {
+
+        modalBody.querySelectorAll('.cancel-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const row = btn.closest('tr');
+                if (!row) return;
                 const timeSpan = row.querySelector('.entry-time');
                 const editDiv = row.querySelector('.edit-controls');
                 const editBtn = row.querySelector('.edit-btn');
@@ -1927,11 +1938,12 @@
                 }
             });
         });
-        
-        document.querySelectorAll('.delete-btn').forEach(btn => {
+
+        modalBody.querySelectorAll('.delete-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
-                if (!confirm('Удалить эту отметку?')) return;
                 const row = btn.closest('tr');
+                if (!row) return;
+                if (!confirm('Удалить эту отметку?')) return;
                 const entryId = row.dataset.id;
                 try {
                     const resp = await fetch(`/api/admin/timelog/${entryId}`, { method: 'DELETE' });
@@ -1948,7 +1960,7 @@
             });
         });
     }
-    
+
     document.getElementById('addEntryBtn').addEventListener('click', async () => {
         const action = document.getElementById('newAction').value;
         const newDate = document.getElementById('newDate').value;
@@ -2062,9 +2074,10 @@
         const recentTab = document.getElementById('recent-tab');
         const employeesTab = document.getElementById('employees-tab');
         const notificationsTab = document.getElementById('notifications-tab');
+        const monthlyTab = document.getElementById('monthly-tab');
 
         tabs.forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const tabId = btn.dataset.tab;
                 tabs.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -2073,6 +2086,7 @@
                 if (recentTab) recentTab.style.display = 'none';
                 if (employeesTab) employeesTab.style.display = 'none';
                 if (notificationsTab) notificationsTab.style.display = 'none';
+                if (monthlyTab) monthlyTab.style.display = 'none';
 
                 if (tabId === 'daily') {
                     dailyTab.style.display = 'block';
@@ -2115,6 +2129,54 @@
                 } else if (tabId === 'notifications') {
                     notificationsTab.style.display = 'block';
                     loadNotifications();
+                } else if (tabId === 'monthly') {
+                    if (!monthlyTab) {
+                        console.error('monthlyTab не найден');
+                        return;
+                    }
+                    console.log('Переключение на monthly');
+                    monthlyTab.style.display = 'block';
+
+                    console.log('monthlyTab.dataset.loaded =', monthlyTab.dataset.loaded);
+                    if (!monthlyTab.dataset.loaded) {
+                        console.log('Загружаем monthly.html...');
+                        try {
+                            const resp = await fetch('/static/monthly.html');
+                            console.log('Статус ответа:', resp.status);
+                            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                            const html = await resp.text();
+                            console.log('Получен HTML, длина:', html.length);
+                            monthlyTab.innerHTML = html;
+                            monthlyTab.dataset.loaded = 'true';
+                            console.log('HTML вставлен, вызываем initMonthlyTab()');
+                            initMonthlyTab();
+                        } catch (err) {
+                            console.error('Ошибка загрузки monthly:', err);
+                            monthlyTab.innerHTML = `<p style="color:red;">Ошибка загрузки вкладки: ${err.message}</p>`;
+                        }
+                    } else {
+                        console.log('monthly уже загружен (dataset.loaded = true), содержимое innerHTML:');
+                        console.log(monthlyTab.innerHTML.substring(0, 200) + '...');
+                    }
+
+                    // Поиск элементов внутри вкладки
+                    const monthPicker = document.getElementById('monthPicker');
+                    console.log('monthPicker найден?', monthPicker);
+                    if (monthPicker && monthPicker.value) {
+                        console.log('Загружаем отчёт для месяца:', monthPicker.value);
+                        loadMonthlyReport(monthPicker.value);
+                    } else {
+                        const now = new Date();
+                        const year = now.getFullYear();
+                        const month = String(now.getMonth() + 1).padStart(2, '0');
+                        if (monthPicker) {
+                            monthPicker.value = `${year}-${month}`;
+                            console.log('Установлен месяц:', monthPicker.value);
+                            loadMonthlyReport(monthPicker.value);
+                        } else {
+                            console.warn('monthPicker не найден, возможно, HTML не загружен');
+                        }
+                    }
                 }
                 saveTabState(tabId);
             });
@@ -4946,6 +5008,110 @@ function updateFilterVisibility() {
         toggleBtn.style.display = '';
         settingsDiv.style.display = isFilterEnabled ? 'block' : 'none';
     }
+}
+function initMonthlyTab() {
+    const loadBtn = document.getElementById('loadMonthlyReportBtn');
+    if (loadBtn) {
+        loadBtn.addEventListener('click', function() {
+            const month = document.getElementById('monthPicker').value;
+            if (month) loadMonthlyReport(month);
+        });
+    }
+}
+async function loadMonthlyReport(monthValue) {
+    const container = document.getElementById('monthlyReportContainer');
+    if (!container) {
+        console.error('Контейнер monthlyReportContainer не найден');
+        return;
+    }
+    if (!monthValue) {
+        container.innerHTML = '<p>Выберите месяц</p>';
+        return;
+    }
+
+    container.innerHTML = '<p>Загрузка...</p>';
+
+    const [year, month] = monthValue.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    const dates = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        dates.push(dateStr);
+    }
+
+    const dailyReports = [];
+    for (const date of dates) {
+        try {
+            const resp = await fetch(`/api/reports/daily?date=${date}`, { credentials: 'include' });
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            dailyReports.push({ date, data });
+        } catch (err) {
+            console.warn(`Не удалось загрузить ${date}`, err);
+        }
+    }
+
+    const employeesMap = new Map();
+
+    for (const day of dailyReports) {
+        for (const row of day.data) {
+            const id = row.employee_id;
+            if (!employeesMap.has(id)) {
+                employeesMap.set(id, {
+                    full_name: row.full_name,
+                    total_worked: 0,
+                    total_break: 0,
+                    days: {}
+                });
+            }
+            const emp = employeesMap.get(id);
+            emp.total_worked += row.worked_hours_current || 0;
+            emp.total_break += row.break_minutes_current || 0;
+            emp.days[day.date] = {
+                worked: row.worked_hours_current || 0,
+                break: row.break_minutes_current || 0
+            };
+        }
+    }
+
+    if (employeesMap.size === 0) {
+        container.innerHTML = '<p>Нет данных за этот месяц</p>';
+        return;
+    }
+
+    let html = `<div class="recent-table"><table class="report-table"><thead><tr>`;
+    html += `<th>Сотрудник</th>`;
+    for (const date of dates) {
+        const d = new Date(date);
+        const dayName = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][d.getDay()];
+        html += `<th>${date.slice(8,10)}<br><span style="font-size:0.7rem;color:#64748b;">${dayName}</span></th>`;
+    }
+    html += `<th>Всего часов</th><th>Всего перерывов (мин)</th></tr></thead><tbody>`;
+
+    const sortedEmployees = Array.from(employeesMap.values())
+        .sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+
+    for (const emp of sortedEmployees) {
+        html += `<tr><td style="font-weight:500;">${escapeHtml(emp.full_name)}</td>`;
+        for (const date of dates) {
+            const dayData = emp.days[date];
+            if (dayData) {
+                html += `<td style="text-align:center;">
+                            <div style="color:green;">${formatHoursToHHMM(dayData.worked)}</div>
+                            <div style="font-size:0.7rem;color:darkorange;">${formatMinutesToHHMM(dayData.break)}</div>
+                        </td>`;
+            } else {
+                html += `<td style="text-align:center;color:#cbd5e1;">—</td>`;
+            }
+        }
+        html += `<td style="text-align:center;font-weight:bold;color:green;">${formatHoursToHHMM(emp.total_worked)}</td>`;
+        html += `<td style="text-align:center;font-weight:bold;color:darkorange;">${formatMinutesToHHMM(emp.total_break)}</td>`;
+        html += `</tr>`;
+    }
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
 }
 </script>
 </body>
