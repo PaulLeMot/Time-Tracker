@@ -1,147 +1,18 @@
 <!-- tabs/monthly.html -->
 <div class="monthly-tab-content">
     <h2>📅 Отчёт за месяц</h2>
-    <div class="date-picker">
+    <div class="date-picker" style="flex-wrap: wrap; gap: 12px;">
         <input type="month" id="monthPicker">
         <button id="loadMonthlyReportBtn" class="btn">Показать</button>
+        <label style="margin-left: 8px;">Сотрудник:
+            <select id="monthlyEmployeeFilter" style="padding: 6px 12px; border-radius: 20px; border: 1px solid #cbd5e1;">
+                <option value="">Все</option>
+            </select>
+        </label>
     </div>
     <div id="monthlyReportContainer">Выберите месяц и нажмите «Показать»</div>
+    <div id="monthlyNotificationsContainer" style="margin-top: 24px; display: none;">
+        <h3>📋 Уведомления сотрудника за месяц</h3>
+        <div id="monthlyNotificationsList">Загрузка...</div>
+    </div>
 </div>
-
-<script>
-    (function() {
-        // Используем глобальные функции, если они есть, иначе определяем свои
-        const _escapeHtml = window.escapeHtml || function(str) {
-            if (!str) return '';
-            return str.replace(/[&<>]/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            });
-        };
-
-        const _formatMinutes = function(minutes) {
-            if (minutes === undefined || minutes === null) return '—';
-            const hh = Math.floor(minutes / 60);
-            const mm = Math.round(minutes % 60);
-            return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-        };
-
-        const _showToast = window.showToast || function(msg, isError) {
-            const toast = document.getElementById('toast');
-            if (toast) {
-                toast.textContent = msg;
-                toast.style.background = isError ? '#dc2626' : '#10b981';
-                toast.classList.add('show');
-                setTimeout(() => toast.classList.remove('show'), 2500);
-            } else {
-                alert(msg);
-            }
-        };
-
-        async function loadMonthlyReport(monthValue) {
-            const container = document.getElementById('monthlyReportContainer');
-            if (!container) {
-                console.error('Контейнер monthlyReportContainer не найден');
-                return;
-            }
-            if (!monthValue) {
-                container.innerHTML = '<p>Выберите месяц</p>';
-                return;
-            }
-
-            container.innerHTML = '<p>Загрузка...</p>';
-
-            try {
-                const resp = await fetch(`/api/reports/monthly?month=${monthValue}`, {
-                    credentials: 'include'
-                });
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    throw new Error(err.detail || `HTTP ${resp.status}`);
-                }
-                const data = await resp.json();
-
-                if (!data || data.length === 0) {
-                    container.innerHTML = '<p>Нет данных за этот месяц</p>';
-                    return;
-                }
-
-                // Сортируем по ФИО (русский алфавит)
-                data.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
-
-                // Формируем таблицу
-                let html = `<div class="recent-table"><table class="report-table"><thead><tr>
-                    <th>Сотрудник</th>
-                    <th>Рабочих дней</th>
-                    <th>Выходных</th>
-                    <th>Отработано<br><span style="font-size:0.7rem;color:#64748b;">округл.</span></th>
-                    <th>Среднее в день</th>
-                    <th>Перерывы (мин)</th>
-                    <th>Кол-во перерывов</th>
-                    <th>Среднее время перерыва</th>
-                    <th>Среднее кол-во перерывов</th>
-                </tr></thead><tbody>`;
-
-                for (const emp of data) {
-                    html += `<tr>
-                        <td style="font-weight:500; white-space:nowrap;">${_escapeHtml(emp.full_name)}</td>
-                        <td>${emp.work_days}</td>
-                        <td>${emp.weekend_days}</td>
-                        <td>${_escapeHtml(emp.total_worked_display)}</td>
-                        <td>${_escapeHtml(emp.average_worked_per_day)}</td>
-                        <td>${_escapeHtml(emp.total_break_display)}</td>
-                        <td>${emp.total_break_count}</td>
-                        <td>${_escapeHtml(emp.average_break_duration)}</td>
-                        <td>${emp.average_break_count_per_day}</td>
-                    </tr>`;
-                }
-
-                html += '</tbody></table></div>';
-                container.innerHTML = html;
-
-            } catch (err) {
-                container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
-                _showToast(err.message, true);
-            }
-        }
-
-        // Инициализация при загрузке вкладки
-        function initMonthlyTab() {
-            const monthPicker = document.getElementById('monthPicker');
-            const loadBtn = document.getElementById('loadMonthlyReportBtn');
-
-            if (!monthPicker || !loadBtn) {
-                console.warn('Элементы monthPicker или loadMonthlyReportBtn не найдены');
-                return;
-            }
-
-            // Установить текущий месяц по умолчанию
-            if (!monthPicker.value) {
-                const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                monthPicker.value = `${year}-${month}`;
-            }
-
-            // Обработчик кнопки «Показать»
-            loadBtn.addEventListener('click', function() {
-                const month = monthPicker.value;
-                if (month) loadMonthlyReport(month);
-            });
-
-            // Автоматически загружаем при первом открытии
-            if (monthPicker.value) {
-                loadMonthlyReport(monthPicker.value);
-            }
-        }
-
-        // Запускаем инициализацию, когда DOM готов
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initMonthlyTab);
-        } else {
-            initMonthlyTab();
-        }
-    })();
-</script>

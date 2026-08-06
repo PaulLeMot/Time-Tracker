@@ -1269,12 +1269,14 @@ async def reject_proposed_time(
 @public_router.get("/api/reports/monthly")
 async def monthly_report(
     month: str,
+    employee_id: Optional[int] = None,  # <-- новый параметр
     admin: Optional[models.Employee] = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Возвращает агрегированный отчёт за месяц.
     Параметр month: YYYY-MM
+    Если передан employee_id, возвращаются данные только для этого сотрудника.
     """
     # Парсим месяц
     try:
@@ -1290,17 +1292,29 @@ async def monthly_report(
         next_month = date(year, month_num + 1, 1)
     last_day = next_month - timedelta(days=1)
 
-    employees = await crud.get_employees(db, active_only=True)
+    # Получаем список сотрудников
+    if employee_id is not None:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if not employee:
+            raise HTTPException(404, "Employee not found")
+        employees = [employee]
+    else:
+        employees = await crud.get_employees(db, active_only=True)
+
+    if not employees:
+        return []
+
     interval = await crud.get_rounding_interval(db)
 
     # Временные границы для всех записей: с 5:00 первого дня до 5:00 первого дня следующего месяца
     start_dt = datetime.combine(first_day, time(5, 0, 0))
     end_dt = datetime.combine(next_month, time(5, 0, 0))
 
-    # Загружаем все записи за месяц
+    # Загружаем все записи за месяц для выбранных сотрудников
     stmt = select(models.TimeEntry).where(
         models.TimeEntry.timestamp >= start_dt,
-        models.TimeEntry.timestamp < end_dt
+        models.TimeEntry.timestamp < end_dt,
+        models.TimeEntry.employee_id.in_([emp.id for emp in employees])
     ).order_by(models.TimeEntry.employee_id, models.TimeEntry.timestamp)
     result = await db.execute(stmt)
     all_entries = result.scalars().all()
@@ -1374,7 +1388,7 @@ async def monthly_report(
             "worked_raw": raw_minutes,
             "break_minutes": break_minutes,
             "break_count": break_count,
-            "has_work": rounded_minutes > 0  # рабочий день, если есть отработанное время
+            "has_work": rounded_minutes > 0
         }
 
     result_list = []
