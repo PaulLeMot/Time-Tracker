@@ -695,9 +695,9 @@
             cursor: not-allowed;
             transform: none;
         }
-        /* Дневной светофор — гибкая таблица */
+        /* Дневной светофор — таблица по содержимому */
         .daily-traffic-table {
-            width: 100%;
+            width: auto;              /* не растягиваем */
             border-collapse: collapse;
             margin: 0;
         }
@@ -708,7 +708,7 @@
             padding: 4px 4px;
         }
 
-        /* Колонка ФИО — фиксированная ширина 200px */
+        /* Колонка ФИО — фиксированная ширина */
         .daily-traffic-table td.fio-cell {
             width: 200px;
             max-width: 200px;
@@ -720,29 +720,20 @@
             vertical-align: middle;
         }
 
-        /* Все колонки отметок (кроме последней) — минимум 75px, по содержимому */
-        .daily-traffic-table td:not(.fio-cell):not(.last-cell) {
+        /* Все колонки с отметками (включая последнюю) — одинаковой ширины */
+        .daily-traffic-table td:not(.fio-cell) {
             min-width: 75px;
+            width: auto;
             white-space: nowrap;
             padding: 4px 2px;
             text-align: center;
             vertical-align: middle;
         }
 
-        /* Последняя колонка (end) — занимает всё оставшееся место, содержимое справа */
-        .daily-traffic-table td.last-cell {
-            width: 100%;              /* растягивается */
-            min-width: 75px;
-            text-align: right;        /* прижимаем содержимое вправо */
-            padding: 4px 2px;
-            vertical-align: middle;
-        }
-
-        /* Блоки самих отметок — фиксированная ширина 75px */
+        /* Блоки самих отметок */
         .daily-cell {
             display: inline-block;
-            width: 75px;
-            min-width: 75px;
+            width: 75px;                /* фиксированная ширина */
             padding: 8px 6px;
             border-radius: 8px;
             font-weight: 500;
@@ -752,7 +743,7 @@
             color: #1e293b;
         }
 
-        /* Цвета (полупрозрачные) */
+        /* Цвета */
         .daily-cell.start { background-color: rgba(34, 197, 94, 0.15); }
         .daily-cell.break_start { background-color: rgba(250, 204, 21, 0.2); }
         .daily-cell.break_end { background-color: rgba(249, 115, 22, 0.2); }
@@ -768,7 +759,7 @@
             max-width: 200px;
         }
 
-        /* Стили для элементов управления в редактируемой ячейке */
+        /* Стили элементов управления в режиме редактирования — без изменений */
         .daily-traffic-table td.editing .edit-controls {
             display: flex !important;
             align-items: center;
@@ -777,7 +768,6 @@
             flex-wrap: wrap;
             padding: 4px;
         }
-
         .daily-traffic-table td.editing .edit-time-input {
             width: 60px;
             padding: 2px 4px;
@@ -788,7 +778,6 @@
             font-family: monospace;
             outline: none;
         }
-
         .daily-traffic-table td.editing .edit-color-btn {
             width: 24px;
             height: 24px;
@@ -797,12 +786,10 @@
             cursor: pointer;
             flex-shrink: 0;
         }
-
         .daily-traffic-table td.editing .edit-color-btn.start { background: #22c55e; border-color: #16a34a; }
         .daily-traffic-table td.editing .edit-color-btn.break_start { background: #facc15; border-color: #eab308; }
         .daily-traffic-table td.editing .edit-color-btn.break_end { background: #f97316; border-color: #ea580c; }
         .daily-traffic-table td.editing .edit-color-btn.end { background: #ef4444; border-color: #dc2626; }
-
         .daily-traffic-table td.editing .edit-save-btn,
         .daily-traffic-table td.editing .edit-delete-btn {
             background: none;
@@ -812,12 +799,66 @@
             padding: 0 2px;
             transition: 0.2s;
         }
-
         .daily-traffic-table td.editing .edit-save-btn { color: #3b82f6; }
         .daily-traffic-table td.editing .edit-save-btn:hover { transform: scale(1.1); color: #2563eb; }
         .daily-traffic-table td.editing .edit-delete-btn { color: #ef4444; }
         .daily-traffic-table td.editing .edit-delete-btn:hover { transform: scale(1.1); color: #dc2626; }
+    
+    
+    
+    
+    
+
+
+        /* Стили для блока сводки в ежедневном светофоре (одна колонка) */
+        #weeklyTrafficSummary {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: flex-start;
+        }
+
+        .summary-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .summary-label {
+            font-weight: 500;
+            color: #0f172a;
+            font-size: 0.95rem;
+        }
+
+        .summary-value {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #0f172a;
+        }
+
+        .summary-raw {
+            color: #64748b;
+            font-weight: 400;
+            font-size: 0.9rem;
+            margin-left: 4px;
+        }
+
+        /* Цвета: рабочее время – зелёный, перерывы – оранжевый */
+        #trafficWorked {
+            color: #008000;      /* ярко-зелёный */
+        }
+
+        #trafficBreak {
+            color: #ff8c00;      /* оранжевый (как в оригинале) */
+        }
+
+
+    
+    
+    
+
     </style>
+
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
@@ -870,20 +911,20 @@
                 <span id="weeklyTrafficBtn" style="cursor:pointer; font-size:1.2rem; margin-left: 8px;">🚦</span>
             </div>
             <div id="weeklyReportContainer"></div>
-            <div id="weeklyTrafficContainer" style="display: none; margin-top: 16px;">
-                <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+            <div id="weeklyTrafficContainer" style="display: none; margin-top: 0px;">
+                <div style="display: flex; gap: 0px; align-items: center; margin-bottom: 0px;">
                     <label for="weeklyTrafficEmployeeSelect" style="font-weight: 500;">👤 Сотрудник:</label>
                     <select id="weeklyTrafficEmployeeSelect" style="width: 300px; padding: 8px; border-radius: 20px; border: 1px solid #cbd5e1;">
                         <option value="">Выберите сотрудника</option>
                     </select>
-                    <div id="weeklyTrafficSummary" style="display: none; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 12px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
-                        <span style="color: green; font-weight: 500;">
-                            ✅ Отработано: <span id="trafficWorked">00:00</span>
-                            <span id="trafficWorkedRaw" style="color: #64748b; font-weight: 400; font-size: 0.9rem; margin-left: 4px;">(00:00)</span>
-                        </span>
-                        <span style="color: darkorange; font-weight: 500;">
-                            ☕ Перерывы: <span id="trafficBreak">00:00</span>
-                        </span>
+                    <div id="weeklyTrafficSummary" style="display: none; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 12px;">
+                        <div class="summary-item">
+                            <span class="summary-value" id="trafficWorked">00:00</span>
+                            <span class="summary-raw" id="trafficWorkedRaw">(00:00)</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-value" id="trafficBreak">00:00</span>
+                        </div>
                     </div>
                 </div>
                 <div id="weeklyTrafficTableContainer">
@@ -3761,7 +3802,6 @@ async function loadWeeklyTraffic(employeeId) {
     const selectedName = select.options[select.selectedIndex]?.text || '';
     const title = document.createElement('div');
     title.style.cssText = 'font-weight:500; margin-bottom:12px;';
-    title.textContent = `📊 Отметки сотрудника: ${selectedName}`;
     container.prepend(title);
 }
 
