@@ -4428,6 +4428,27 @@ async function loadDailyTraffic(date) {
             }
         }
 
+        // --- СОРТИРОВКА СОТРУДНИКОВ ---
+        employeesWithEntries.sort((a, b) => {
+            const aHasEntries = a.otherEntries.length > 0 || a.endEntry !== null;
+            const bHasEntries = b.otherEntries.length > 0 || b.endEntry !== null;
+
+            // Сначала те, у кого есть отметки
+            if (aHasEntries && !bHasEntries) return -1;
+            if (!aHasEntries && bHasEntries) return 1;
+
+            // Если оба имеют или оба не имеют, сортируем по ФИО (русский алфавит)
+            return a.full_name.localeCompare(b.full_name, 'ru');
+        });
+
+        // Пересчитываем maxOtherEntries (хотя он не изменился, но на всякий случай)
+        maxOtherEntries = 0;
+        employeesWithEntries.forEach(emp => {
+            if (emp.otherEntries.length > maxOtherEntries) {
+                maxOtherEntries = emp.otherEntries.length;
+            }
+        });
+
         if (maxOtherEntries === 0 && employeesWithEntries.every(e => !e.endEntry)) {
             container.innerHTML = '<p>Нет отметок за этот день</p>';
             return;
@@ -4440,7 +4461,7 @@ async function loadDailyTraffic(date) {
             'end': 'end'
         };
 
-        // Обёртка с горизонтальной прокруткой (уже есть в коде)
+        // Обёртка с горизонтальной прокруткой
         let html = `<div style="overflow-x: auto;">
             <table class="daily-traffic-table">
                 <tbody>`;
