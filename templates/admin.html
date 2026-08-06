@@ -5031,87 +5031,58 @@ async function loadMonthlyReport(monthValue) {
 
     container.innerHTML = '<p>Загрузка...</p>';
 
-    const [year, month] = monthValue.split('-').map(Number);
-    const daysInMonth = new Date(year, month, 0).getDate();
-
-    const dates = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        dates.push(dateStr);
-    }
-
-    const dailyReports = [];
-    for (const date of dates) {
-        try {
-            const resp = await fetch(`/api/reports/daily?date=${date}`, { credentials: 'include' });
-            if (!resp.ok) continue;
-            const data = await resp.json();
-            dailyReports.push({ date, data });
-        } catch (err) {
-            console.warn(`Не удалось загрузить ${date}`, err);
+    try {
+        const resp = await fetch(`/api/reports/monthly?month=${monthValue}`, {
+            credentials: 'include'
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || `HTTP ${resp.status}`);
         }
-    }
+        const data = await resp.json();
 
-    const employeesMap = new Map();
-
-    for (const day of dailyReports) {
-        for (const row of day.data) {
-            const id = row.employee_id;
-            if (!employeesMap.has(id)) {
-                employeesMap.set(id, {
-                    full_name: row.full_name,
-                    total_worked: 0,
-                    total_break: 0,
-                    days: {}
-                });
-            }
-            const emp = employeesMap.get(id);
-            emp.total_worked += row.worked_hours_current || 0;
-            emp.total_break += row.break_minutes_current || 0;
-            emp.days[day.date] = {
-                worked: row.worked_hours_current || 0,
-                break: row.break_minutes_current || 0
-            };
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p>Нет данных за этот месяц</p>';
+            return;
         }
-    }
 
-    if (employeesMap.size === 0) {
-        container.innerHTML = '<p>Нет данных за этот месяц</p>';
-        return;
-    }
+        // Сортируем по ФИО (русский алфавит)
+        data.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
 
-    let html = `<div class="recent-table"><table class="report-table"><thead><tr>`;
-    html += `<th>Сотрудник</th>`;
-    for (const date of dates) {
-        const d = new Date(date);
-        const dayName = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][d.getDay()];
-        html += `<th>${date.slice(8,10)}<br><span style="font-size:0.7rem;color:#64748b;">${dayName}</span></th>`;
-    }
-    html += `<th>Всего часов</th><th>Всего перерывов (мин)</th></tr></thead><tbody>`;
+        // Формируем компактную таблицу
+        let html = `<div class="recent-table"><table class="report-table"><thead><tr>
+            <th>Сотрудник</th>
+            <th>Рабочих дней</th>
+            <th>Выходных</th>
+            <th>Отработано<br><span style="font-size:0.7rem;color:#64748b;">округл.</span></th>
+            <th>Среднее в день</th>
+            <th>Перерывы (мин)</th>
+            <th>Кол-во перерывов</th>
+            <th>Среднее время перерыва</th>
+            <th>Среднее кол-во перерывов</th>
+        </tr></thead><tbody>`;
 
-    const sortedEmployees = Array.from(employeesMap.values())
-        .sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
-
-    for (const emp of sortedEmployees) {
-        html += `<tr><td style="font-weight:500;">${escapeHtml(emp.full_name)}</td>`;
-        for (const date of dates) {
-            const dayData = emp.days[date];
-            if (dayData) {
-                html += `<td style="text-align:center;">
-                            <div style="color:green;">${formatHoursToHHMM(dayData.worked)}</div>
-                            <div style="font-size:0.7rem;color:darkorange;">${formatMinutesToHHMM(dayData.break)}</div>
-                        </td>`;
-            } else {
-                html += `<td style="text-align:center;color:#cbd5e1;">—</td>`;
-            }
+        for (const emp of data) {
+            html += `<tr>
+                <td style="font-weight:500; white-space:nowrap;">${escapeHtml(emp.full_name)}</td>
+                <td>${emp.work_days}</td>
+                <td>${emp.weekend_days}</td>
+                <td>${escapeHtml(emp.total_worked_display)}</td>
+                <td>${escapeHtml(emp.average_worked_per_day)}</td>
+                <td>${escapeHtml(emp.total_break_display)}</td>
+                <td>${emp.total_break_count}</td>
+                <td>${escapeHtml(emp.average_break_duration)}</td>
+                <td>${emp.average_break_count_per_day}</td>
+            </tr>`;
         }
-        html += `<td style="text-align:center;font-weight:bold;color:green;">${formatHoursToHHMM(emp.total_worked)}</td>`;
-        html += `<td style="text-align:center;font-weight:bold;color:darkorange;">${formatMinutesToHHMM(emp.total_break)}</td>`;
-        html += `</tr>`;
-    }
 
-    html += `</tbody></table></div>`;
-    container.innerHTML = html;
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+    } catch (err) {
+        container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
+        showToast(err.message, true);
+    }
 }
 </script>
 </body>
