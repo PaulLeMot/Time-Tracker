@@ -695,21 +695,20 @@
             cursor: not-allowed;
             transform: none;
         }
-        /* Дневной светофор — компактная таблица */
+        /* Дневной светофор — гибкая таблица */
         .daily-traffic-table {
-            width: auto;              /* таблица только по содержимому, не растягивается */
+            width: 100%;
             border-collapse: collapse;
-            margin: 0;                /* прижимаем к левому краю */
+            margin: 0;
         }
 
-        /* Убираем все линии и лишние отступы */
         .daily-traffic-table td,
         .daily-traffic-table th {
             border: none;
             padding: 4px 4px;
         }
 
-        /* Колонка ФИО — ровно 80px, текст слева, перенос */
+        /* Колонка ФИО — фиксированная ширина 200px */
         .daily-traffic-table td.fio-cell {
             width: 200px;
             max-width: 200px;
@@ -717,23 +716,33 @@
             text-align: left;
             white-space: normal;
             word-break: break-word;
-            padding-right: 8px;       /* небольшой отступ от отметок */
+            padding-right: 8px;
             vertical-align: middle;
         }
 
-        /* Ячейки отметок — ширина по содержимому, не растягиваются */
-        .daily-traffic-table td:not(.fio-cell) {
-            width: auto;              /* не фиксируем ширину, только по содержимому */
+        /* Все колонки отметок (кроме последней) — минимум 75px, по содержимому */
+        .daily-traffic-table td:not(.fio-cell):not(.last-cell) {
+            min-width: 75px;
             white-space: nowrap;
             padding: 4px 2px;
             text-align: center;
             vertical-align: middle;
         }
 
-        /* Блоки самих отметок — как в недельном трафике */
+        /* Последняя колонка (end) — занимает всё оставшееся место, содержимое справа */
+        .daily-traffic-table td.last-cell {
+            width: 100%;              /* растягивается */
+            min-width: 75px;
+            text-align: right;        /* прижимаем содержимое вправо */
+            padding: 4px 2px;
+            vertical-align: middle;
+        }
+
+        /* Блоки самих отметок — фиксированная ширина 75px */
         .daily-cell {
             display: inline-block;
-            min-width: 200px;
+            width: 75px;
+            min-width: 75px;
             padding: 8px 6px;
             border-radius: 8px;
             font-weight: 500;
@@ -749,16 +758,17 @@
         .daily-cell.break_end { background-color: rgba(249, 115, 22, 0.2); }
         .daily-cell.end { background-color: rgba(239, 68, 68, 0.15); }
         .daily-cell.unknown { background-color: #f1f5f9; color: #94a3b8; }
-        /* Подсветка редактируемой ячейки в дневном светофоре */
+
+        /* Подсветка редактируемой ячейки */
         .daily-traffic-table td.editing {
-            max-width: 200px;
             border: 2px solid #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
             outline: none;
             background-color: #f8fafc !important;
+            max-width: 200px;
         }
 
-        /* Стили для элементов управления в редактируемой ячейке дневного светофора */
+        /* Стили для элементов управления в редактируемой ячейке */
         .daily-traffic-table td.editing .edit-controls {
             display: flex !important;
             align-items: center;
@@ -785,7 +795,6 @@
             border-radius: 50%;
             border: 2px solid #cbd5e1;
             cursor: pointer;
-            transition: 0.2s;
             flex-shrink: 0;
         }
 
@@ -806,10 +815,8 @@
 
         .daily-traffic-table td.editing .edit-save-btn { color: #3b82f6; }
         .daily-traffic-table td.editing .edit-save-btn:hover { transform: scale(1.1); color: #2563eb; }
-
         .daily-traffic-table td.editing .edit-delete-btn { color: #ef4444; }
         .daily-traffic-table td.editing .edit-delete-btn:hover { transform: scale(1.1); color: #dc2626; }
-
     </style>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -1131,7 +1138,16 @@
         const day = String(now.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     }
-
+    function loadReportForDate(date) {
+        if (!date) return;
+        if (dailyTrafficModeActive) {
+            loadDailyTraffic(date);
+        } else {
+            loadDailyReport(date);
+        }
+        // Синхронизируем видимость фильтра после загрузки
+        updateFilterVisibility();
+    }
     async function loadAdminName() {
         try {
             const resp = await fetch('/api/auth/profile', { credentials: 'include' });
@@ -1464,8 +1480,8 @@
         if (dailyTrafficModeActive) {
             dailyTrafficModeActive = false;
             const btn = document.getElementById('dailyTrafficBtn');
-            btn.textContent = '🚦 Светофор (день)';
-            btn.style.background = '#8b5cf6';
+            btn.textContent = '🚦';
+            updateFilterVisibility();
         }
         container.innerHTML = '<p>Загрузка...</p>';
         try {
@@ -2191,6 +2207,7 @@
                 }
             }
         }
+        updateFilterVisibility();
     });
     async function loadRecentEntries(limit = 100) {
         const container = document.getElementById('recentContainer');
@@ -2571,11 +2588,15 @@
 
 const dailyDateInput = document.getElementById('reportDate');
 if (dailyDateInput) {
-    dailyDateInput.addEventListener('change', () => {
-        const date = dailyDateInput.value;
-        if (date) loadDailyReport(date);
+    dailyDateInput.addEventListener('change', function() {
+        const date = this.value;
+        if (date) loadReportForDate(date);
     });
 }
+document.getElementById('loadReportBtn').onclick = function() {
+    const date = document.getElementById('reportDate').value;
+    if (date) loadReportForDate(date);
+};
 
 const weekPickerInput = document.getElementById('weekPicker');
 if (weekPickerInput) {
@@ -4382,7 +4403,6 @@ async function loadDailyTraffic(date) {
     const container = document.getElementById('reportContainer');
     container.innerHTML = '<p>Загрузка...</p>';
     try {
-        // Всегда загружаем свежие данные за указанную дату
         const resp = await fetch(`/api/reports/daily?date=${date}`);
         if (!resp.ok) throw new Error('Ошибка загрузки отчёта');
         const report = await resp.json();
@@ -4392,8 +4412,8 @@ async function loadDailyTraffic(date) {
             return;
         }
 
-        // Загружаем отметки для каждого сотрудника
         const employeesWithEntries = [];
+        let maxOtherEntries = 0;
         for (const emp of report) {
             const id = emp.employee_id;
             try {
@@ -4402,18 +4422,18 @@ async function loadDailyTraffic(date) {
                 const data = await resp.json();
                 const entries = data.entries || [];
                 entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                employeesWithEntries.push({ ...emp, entries });
+                // Разделяем: все кроме 'end' и отдельно 'end'
+                const otherEntries = entries.filter(e => e.action !== 'end');
+                const endEntry = entries.find(e => e.action === 'end') || null;
+                employeesWithEntries.push({ ...emp, otherEntries, endEntry });
+                if (otherEntries.length > maxOtherEntries) maxOtherEntries = otherEntries.length;
             } catch (err) {
                 console.warn(`Не удалось загрузить отметки для ${emp.full_name}`, err);
-                employeesWithEntries.push({ ...emp, entries: [] });
+                employeesWithEntries.push({ ...emp, otherEntries: [], endEntry: null });
             }
         }
 
-        let maxEntries = 0;
-        employeesWithEntries.forEach(emp => {
-            if (emp.entries.length > maxEntries) maxEntries = emp.entries.length;
-        });
-        if (maxEntries === 0) {
+        if (maxOtherEntries === 0 && employeesWithEntries.every(e => !e.endEntry)) {
             container.innerHTML = '<p>Нет отметок за этот день</p>';
             return;
         }
@@ -4425,7 +4445,7 @@ async function loadDailyTraffic(date) {
             'end': 'end'
         };
 
-        // Строим таблицу с атрибутами данных
+        // Обёртка с горизонтальной прокруткой (уже есть в коде)
         let html = `<div style="overflow-x: auto;">
             <table class="daily-traffic-table">
                 <tbody>`;
@@ -4433,10 +4453,10 @@ async function loadDailyTraffic(date) {
         for (const emp of employeesWithEntries) {
             const empId = emp.employee_id;
             html += `<tr><td class="fio-cell">${escapeHtml(emp.full_name)}</td>`;
-            const entries = emp.entries;
-            for (let i = 0; i < maxEntries; i++) {
-                if (i < entries.length) {
-                    const entry = entries[i];
+            // Колонки для остальных отметок (кроме end)
+            for (let i = 0; i < maxOtherEntries; i++) {
+                if (i < emp.otherEntries.length) {
+                    const entry = emp.otherEntries[i];
                     const time = entry.timestamp.slice(11, 16);
                     const action = entry.action;
                     const cellClass = colorClassMap[action] || 'unknown';
@@ -4449,55 +4469,52 @@ async function loadDailyTraffic(date) {
                             </td>`;
                 }
             }
-            // Дополнительная ячейка с прочерком
-            html += `<td data-employee-id="${empId}">
-                        <span class="daily-cell unknown">—</span>
-                    </td>`;
+            // Последняя колонка для end
+            if (emp.endEntry) {
+                const entry = emp.endEntry;
+                const time = entry.timestamp.slice(11, 16);
+                html += `<td class="last-cell" data-entry-id="${entry.id}" data-timestamp="${entry.timestamp}" data-action="end" data-employee-id="${empId}">
+                            <span class="daily-cell end">${escapeHtml(time)}</span>
+                        </td>`;
+            } else {
+                html += `<td class="last-cell" data-employee-id="${empId}">
+                            <span class="daily-cell unknown">—</span>
+                        </td>`;
+            }
             html += `</tr>`;
         }
         html += `</tbody></table></div>`;
         container.innerHTML = html;
 
-        // --- ЕДИНЫЙ ОБРАБОТЧИК КЛИКОВ ---
-        // Удаляем старый обработчик, если был
+        // --- Обработчик кликов (без изменений) ---
         if (window._dailyTrafficClickHandler) {
             document.removeEventListener('click', window._dailyTrafficClickHandler);
         }
-
         window._dailyTrafficClickHandler = function(e) {
-            // Проверяем, был ли клик внутри контейнера (до любых мутаций)
             const insideContainer = container.contains(e.target);
-
-            // Если клик снаружи – закрываем редакторы и выходим
             if (!insideContainer) {
                 closeDailyEditMode();
                 closeDailyAddMode();
                 return;
             }
-
-            // Если клик по элементам управления внутри редактируемой ячейки – игнорируем
-            if (e.target.closest('.edit-controls')) {
-                return;
-            }
-
-            // !!! ВАЖНО: Закрываем все старые редакторы перед открытием нового !!!
+            if (e.target.closest('.edit-controls')) return;
             closeDailyEditMode();
             closeDailyAddMode();
 
-            // Теперь обрабатываем ячейку, по которой кликнули
             const td = e.target.closest('td');
             if (!td) return;
-
             const span = td.querySelector('.daily-cell');
             if (!span) return;
 
+            if (!span.contains(e.target) && e.target !== span) {
+                // Клик по пустому месту внутри td — игнорируем
+                return;
+            }
+
             const empId = parseInt(td.dataset.employeeId);
             if (!empId) return;
-
-            // Если ячейка уже в режиме редактирования (не должно быть, но на всякий случай)
             if (td.classList.contains('editing')) return;
 
-            // Если есть отметка (не unknown)
             if (!span.classList.contains('unknown')) {
                 const entryId = td.dataset.entryId;
                 const timestamp = td.dataset.timestamp;
@@ -4506,11 +4523,10 @@ async function loadDailyTraffic(date) {
                     makeDailyCellEditable(td, parseInt(entryId), timestamp, action, empId, date);
                 }
             } else {
-                // Прочерк – добавление
+                // Прочерк – разрешаем добавление, только если клик был по самому span
                 makeDailyCellAddable(td, empId, date);
             }
         };
-
         document.addEventListener('click', window._dailyTrafficClickHandler);
 
     } catch (err) {
@@ -4527,6 +4543,7 @@ document.getElementById('dailyTrafficBtn').addEventListener('click', function(e)
         return;
     }
     dailyTrafficModeActive = !dailyTrafficModeActive;
+    updateFilterVisibility();
     if (dailyTrafficModeActive) {
         this.textContent = '🚦';
         // Загружаем светофор
@@ -4564,6 +4581,7 @@ function closeDailyAddMode(td) {
         const originalHtml = td.dataset.originalHtml || '';
         td.className = td.dataset.originalClasses || '';
         td.innerHTML = originalHtml;
+        td.style.cssText = '';
         td.style.padding = '';
         td.style.textAlign = '';
         td.style.borderRadius = '';
@@ -4845,6 +4863,19 @@ function makeDailyCellAddable(td, employeeId, date) {
     });
 
     dailyCurrentlyAddingTd = td;
+}
+function updateFilterVisibility() {
+    const toggleBtn = document.getElementById('toggleFilterBtn');
+    const settingsDiv = document.getElementById('statusOrderSettings');
+    if (dailyTrafficModeActive) {
+        // Светофор активен – скрываем фильтр
+        toggleBtn.style.display = 'none';
+        settingsDiv.style.display = 'none';
+    } else {
+        // Обычный отчёт – показываем согласно сохранённому состоянию
+        toggleBtn.style.display = '';
+        settingsDiv.style.display = isFilterEnabled ? 'block' : 'none';
+    }
 }
 </script>
 </body>
