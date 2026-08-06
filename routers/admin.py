@@ -1467,3 +1467,197 @@ async def monthly_report(
         })
 
     return result_list
+
+@public_router.get("/api/reports/period")
+async def period_report(
+    start_date: str,
+    end_date: str,
+    employee_id: Optional[int] = None,
+    admin: Optional[models.Employee] = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Возвращает агрегированный отчёт за произвольный период.
+    start_date и end_date в формате YYYY-MM-DD.
+    Если employee_id передан, возвращаются данные только для этого сотрудника.
+    """
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "Invalid date format, use YYYY-MM-DD")
+
+    if start > end:
+        raise HTTPException(400, "start_date must be before end_date")
+
+    # Получаем сотрудников
+    if employee_id is not None:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if not employee:
+            raise HTTPException(404, "Employee not found")
+        employees = [employee]
+    else:
+        employees = await crud.get_employees(db, active_only=True)
+
+    if not employees:
+        return []
+
+    interval = await crud.get_rounding_interval(db)
+
+    # Временные границы: с 5:00 start_date до 5:00 (end_date + 1 день)
+    start_dt = datetime.combine(start, time(5, 0, 0))
+    end_dt = datetime.combine(end + timedelta(days=1), time(5, 0, 0))
+
+    # Загружаем все записи за период для выбранных сотрудников
+    stmt = select(models.TimeEntry).where(
+        models.TimeEntry.timestamp >= start_dt,
+        models.TimeEntry.timestamp < end_dt,
+        models.TimeEntry.employee_id.in_([emp.id for emp in employees])
+    ).order_by(models.TimeEntry.employee_id, models.TimeEntry.timestamp)
+    result = await db.execute(stmt)
+    all_entries = result.scalars().all()
+
+    # Группируем по сотруднику
+    entries_by_employee = {}
+    for entry in all_entries:
+        entries_by_employee.setdefault(entry.employee_id, []).append(entry)
+
+    # Вспомогательная функция для расчёта статистики одного дня (оставляем без изменений)
+    def calculate_day_stats(day_entries, day_date, interval):
+        workday_start = datetime.combine(day_date, time(5, 0, 0))
+        workday_end = workday_start + timedelta(days=1)
+        now = datetime.now()
+
+        total_work_sec = 0
+        total_break_sec = 0
+        break_count = 0
+        last_start_time = None
+        last_break_start = None
+        in_shift = False
+        in_break = False
+
+        if day_date == now.date():
+            day_cutoff = now if now < workday_end else workday_end
+        else:
+            day_cutoff = workday_end
+
+        for entry in day_entries:
+            ts = entry.timestamp
+            action = entry.action
+            if action == "start":
+                if not in_shift:
+                    in_shift = True
+                    last_start_time = ts
+            elif action == "end":
+                if in_shift:
+                    in_shift = False
+                    if last_start_time and not in_break:
+                        total_work_sec += (ts - last_start_time).total_seconds()
+                    last_start_time = None
+            elif action == "break_start":
+                if in_shift and not in_break:
+                    in_break = True
+                    last_break_start = ts
+                    break_count += 1
+                    if last_start_time:
+                        total_work_sec += (ts - last_start_time).total_seconds()
+                        last_start_time = None
+            elif action == "break_end":
+                if in_break:
+                    in_break = False
+                    if last_break_start:
+                        total_break_sec += (ts - last_break_start).total_seconds()
+                        last_break_start = None
+                    last_start_time = ts
+
+        if in_shift and not in_break and last_start_time:
+            total_work_sec += (day_cutoff - last_start_time).total_seconds()
+        if in_break and last_break_start:
+            total_break_sec += (day_cutoff - last_break_start).total_seconds()
+
+        raw_minutes = int(total_work_sec // 60)
+        rounded_minutes = crud.floor_round_minutes(raw_minutes, interval)
+        break_minutes = int(total_break_sec // 60)
+
+        return {
+            "worked_rounded": rounded_minutes,
+            "worked_raw": raw_minutes,
+            "break_minutes": break_minutes,
+            "break_count": break_count,
+            "has_work": rounded_minutes > 0
+        }
+
+    result_list = []
+
+    for emp in employees:
+        emp_entries = entries_by_employee.get(emp.id, [])
+
+        # Группируем записи по рабочему дню
+        day_map = {}
+        for entry in emp_entries:
+            ts = entry.timestamp
+            if ts.time() >= time(5, 0, 0):
+                day_date = ts.date()
+            else:
+                day_date = ts.date() - timedelta(days=1)
+            day_map.setdefault(day_date, []).append(entry)
+
+        total_worked_rounded = 0
+        total_break_minutes = 0
+        total_break_count = 0
+        work_days = 0
+        weekend_days = 0
+
+        # Проходим по всем дням периода
+        current_day = start
+        while current_day <= end:
+            day_entries = day_map.get(current_day, [])
+            stats = calculate_day_stats(day_entries, current_day, interval)
+
+            if stats["has_work"]:
+                work_days += 1
+                total_worked_rounded += stats["worked_rounded"]
+                total_break_minutes += stats["break_minutes"]
+                total_break_count += stats["break_count"]
+            else:
+                weekend_days += 1
+
+            current_day += timedelta(days=1)
+
+        # Вычисляем средние
+        average_worked_per_day = 0
+        if work_days > 0:
+            average_worked_per_day = total_worked_rounded / work_days
+
+        average_break_count_per_day = 0
+        if work_days > 0:
+            average_break_count_per_day = total_break_count / work_days
+
+        average_break_duration = 0
+        if total_break_count > 0:
+            average_break_duration = total_break_minutes / total_break_count
+
+        def format_minutes(minutes):
+            h = int(minutes // 60)
+            m = int(minutes % 60)
+            return f"{h:02d}:{m:02d}"
+
+        total_worked_display = format_minutes(total_worked_rounded)
+        total_break_display = format_minutes(total_break_minutes)
+        average_worked_display = format_minutes(average_worked_per_day) if work_days > 0 else "00:00"
+        average_break_duration_display = format_minutes(average_break_duration) if total_break_count > 0 else "00:00"
+
+        result_list.append({
+            "employee_id": emp.id,
+            "full_name": emp.full_name,
+            "work_days": work_days,
+            "weekend_days": weekend_days,
+            "total_worked_display": total_worked_display,
+            "total_break_display": total_break_display,
+            "total_break_count": total_break_count,
+            "average_worked_per_day": average_worked_display,
+            "average_break_count_per_day": round(average_break_count_per_day, 2),
+            "average_break_duration": average_break_duration_display
+        })
+
+    return result_list

@@ -1,18 +1,20 @@
 <!-- tabs/monthly.html -->
 <div class="monthly-tab-content">
-    <h2>📅 Отчёт за месяц</h2>
+    <h2>📅 Отчёт за период</h2>
     <div class="date-picker" style="flex-wrap: wrap; gap: 12px;">
-        <input type="month" id="monthPicker">
-        <button id="loadMonthlyReportBtn" class="btn">Показать</button>
+        <label>Период:
+            <input type="text" id="periodDateRange" placeholder="Выберите период" style="width: 240px;">
+        </label>
+        <button id="loadPeriodReportBtn" class="btn">Показать</button>
         <label style="margin-left: 8px;">Сотрудник:
-            <select id="monthlyEmployeeFilter" style="padding: 6px 12px; border-radius: 20px; border: 1px solid #cbd5e1;">
+            <select id="periodEmployeeFilter" style="padding: 6px 12px; border-radius: 20px; border: 1px solid #cbd5e1;">
                 <option value="">Все</option>
             </select>
         </label>
     </div>
-    <div id="monthlyReportContainer">Выберите месяц и нажмите «Показать»</div>
-    <div id="monthlyNotificationsContainer" style="margin-top: 24px; display: none;">
-        <h3>📋 Уведомления сотрудника за месяц</h3>
-        <div id="monthlyNotificationsList">Загрузка...</div>
+    <div id="periodReportContainer">Выберите период и нажмите «Показать»</div>
+    <div id="periodNotificationsContainer" style="margin-top: 24px; display: none;">
+        <h3>📋 Уведомления сотрудника за период</h3>
+        <div id="periodNotificationsList">Загрузка...</div>
     </div>
 </div>

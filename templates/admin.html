@@ -5010,11 +5010,30 @@ function updateFilterVisibility() {
     }
 }
 function initMonthlyTab() {
-    const monthPicker = document.getElementById('monthPicker');
-    const loadBtn = document.getElementById('loadMonthlyReportBtn');
-    const employeeFilter = document.getElementById('monthlyEmployeeFilter');
+    const container = document.getElementById('periodReportContainer');
+    const notifContainer = document.getElementById('periodNotificationsContainer');
+    const notifList = document.getElementById('periodNotificationsList');
+    const loadBtn = document.getElementById('loadPeriodReportBtn');
+    const employeeFilter = document.getElementById('periodEmployeeFilter');
+    const dateRangeInput = document.getElementById('periodDateRange');
 
-    // Загружаем список сотрудников в селект (аналогично уведомлениям)
+    // Инициализация flatpickr с диапазоном
+    if (dateRangeInput && !dateRangeInput._flatpickr) {
+        flatpickr(dateRangeInput, {
+            mode: "range",
+            dateFormat: "Y-m-d",
+            defaultDate: [new Date(new Date().getFullYear(), new Date().getMonth(), 1), new Date()],
+            onChange: function(selectedDates, dateStr, instance) {
+                // При изменении дат автоматически перезагружаем, если есть обе даты
+                if (selectedDates.length === 2) {
+                    const employeeId = employeeFilter ? employeeFilter.value : '';
+                    loadPeriodReport(selectedDates[0], selectedDates[1], employeeId);
+                }
+            }
+        });
+    }
+
+    // Загрузка списка сотрудников
     if (employeeFilter) {
         fetch('/api/employees?active_only=true', { credentials: 'include' })
             .then(res => res.json())
@@ -5031,53 +5050,60 @@ function initMonthlyTab() {
             .catch(err => console.error('Ошибка загрузки сотрудников:', err));
     }
 
-    // Установить текущий месяц по умолчанию
-    if (!monthPicker.value) {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        monthPicker.value = `${year}-${month}`;
-    }
-
     // Обработчик кнопки «Показать»
-    loadBtn.addEventListener('click', function() {
-        const month = monthPicker.value;
-        const employeeId = employeeFilter ? employeeFilter.value : '';
-        if (month) loadMonthlyReport(month, employeeId);
-    });
-
-    // Обработчик изменения селекта сотрудника – автоматически перезагружаем
-    if (employeeFilter) {
-        employeeFilter.addEventListener('change', function() {
-            const month = monthPicker.value;
-            const employeeId = this.value;
-            if (month) loadMonthlyReport(month, employeeId);
+    if (loadBtn) {
+        loadBtn.addEventListener('click', function() {
+            const picker = dateRangeInput._flatpickr;
+            if (picker && picker.selectedDates.length === 2) {
+                const start = picker.selectedDates[0];
+                const end = picker.selectedDates[1];
+                const employeeId = employeeFilter ? employeeFilter.value : '';
+                loadPeriodReport(start, end, employeeId);
+            } else {
+                showToast('Выберите обе даты периода', true);
+            }
         });
     }
 
-    // Автоматическая загрузка при первом открытии
-    if (monthPicker.value) {
+    // Обработчик изменения селекта сотрудника – перезагружаем
+    if (employeeFilter) {
+        employeeFilter.addEventListener('change', function() {
+            const picker = dateRangeInput._flatpickr;
+            if (picker && picker.selectedDates.length === 2) {
+                const start = picker.selectedDates[0];
+                const end = picker.selectedDates[1];
+                loadPeriodReport(start, end, this.value);
+            }
+        });
+    }
+
+    // Автозагрузка при первом открытии (если есть даты)
+    if (dateRangeInput && dateRangeInput._flatpickr && dateRangeInput._flatpickr.selectedDates.length === 2) {
+        const [start, end] = dateRangeInput._flatpickr.selectedDates;
         const employeeId = employeeFilter ? employeeFilter.value : '';
-        loadMonthlyReport(monthPicker.value, employeeId);
+        loadPeriodReport(start, end, employeeId);
     }
 }
-async function loadMonthlyReport(monthValue, employeeId = '') {
-    const container = document.getElementById('monthlyReportContainer');
-    const notifContainer = document.getElementById('monthlyNotificationsContainer');
-    const notifList = document.getElementById('monthlyNotificationsList');
-    
+async function loadPeriodReport(startDate, endDate, employeeId = '') {
+    const container = document.getElementById('periodReportContainer');
+    const notifContainer = document.getElementById('periodNotificationsContainer');
+    const notifList = document.getElementById('periodNotificationsList');
+
     if (!container) return;
-    if (!monthValue) {
-        container.innerHTML = '<p>Выберите месяц</p>';
+    if (!startDate || !endDate) {
+        container.innerHTML = '<p>Выберите период</p>';
         return;
     }
+
+    // Форматируем даты в YYYY-MM-DD
+    const startStr = startDate.toISOString().slice(0,10);
+    const endStr = endDate.toISOString().slice(0,10);
 
     container.innerHTML = '<p>Загрузка...</p>';
     if (notifContainer) notifContainer.style.display = 'none';
 
     try {
-        // Формируем URL с параметрами
-        let url = `/api/reports/monthly?month=${monthValue}`;
+        let url = `/api/reports/period?start_date=${startStr}&end_date=${endStr}`;
         if (employeeId) {
             url += `&employee_id=${employeeId}`;
         }
@@ -5089,7 +5115,7 @@ async function loadMonthlyReport(monthValue, employeeId = '') {
         const data = await resp.json();
 
         if (!data || data.length === 0) {
-            container.innerHTML = '<p>Нет данных за этот месяц</p>';
+            container.innerHTML = '<p>Нет данных за этот период</p>';
             if (notifContainer) notifContainer.style.display = 'none';
             return;
         }
@@ -5097,7 +5123,7 @@ async function loadMonthlyReport(monthValue, employeeId = '') {
         // Сортируем по ФИО
         data.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
 
-        // Строим таблицу (оставляем ту же, что и раньше)
+        // Таблица – та же, что и раньше
         let html = `<div class="recent-table"><table class="report-table"><thead><tr>
             <th>Сотрудник</th>
             <th>Рабочих дней</th>
@@ -5127,29 +5153,22 @@ async function loadMonthlyReport(monthValue, employeeId = '') {
         html += '</tbody></table></div>';
         container.innerHTML = html;
 
-        // Если выбран конкретный сотрудник – загружаем его уведомления
+        // Если выбран сотрудник – загружаем уведомления
         if (employeeId && notifContainer && notifList) {
-            // Определяем границы месяца для фильтрации уведомлений
-            const [year, month] = monthValue.split('-').map(Number);
-            const firstDay = `${year}-${String(month).padStart(2, '0')}-01`;
-            const lastDay = new Date(year, month, 0);
-            const lastDayStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
-            
             notifContainer.style.display = 'block';
             notifList.innerHTML = 'Загрузка уведомлений...';
 
             try {
                 const notifResp = await fetch(
-                    `/api/admin/notifications?employee_id=${employeeId}&start_date=${firstDay}&end_date=${lastDayStr}`,
+                    `/api/admin/notifications?employee_id=${employeeId}&start_date=${startStr}&end_date=${endStr}`,
                     { credentials: 'include' }
                 );
                 if (!notifResp.ok) throw new Error('Ошибка загрузки уведомлений');
                 const notifications = await notifResp.json();
 
                 if (!notifications || notifications.length === 0) {
-                    notifList.innerHTML = '<p style="color: #94a3b8;">Нет уведомлений за этот месяц</p>';
+                    notifList.innerHTML = '<p style="color: #94a3b8;">Нет уведомлений за этот период</p>';
                 } else {
-                    // Отображаем уведомления в виде таблицы (можно упрощённо)
                     let notifHtml = `<div class="recent-table"><table class="report-table"><thead><tr>
                         <th>Дата</th>
                         <th>Тип</th>
