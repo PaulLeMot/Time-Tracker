@@ -2248,6 +2248,60 @@
                 }
             }
         }
+        document.getElementById('weeklyTrafficBtn').addEventListener('click', function(e) {
+            e.stopPropagation();
+            const weekPicker = document.getElementById('weekPicker');
+            const weekValue = weekPicker.value;
+            if (!weekValue) {
+                showToast('Сначала выберите неделю', true);
+                return;
+            }
+
+            // Переключаем режим
+            trafficModeActive = !trafficModeActive;
+
+            const trafficContainer = document.getElementById('weeklyTrafficContainer');
+            const reportContainer = document.getElementById('weeklyReportContainer');
+
+            if (trafficModeActive) {
+                // Показываем светофор, скрываем обычный отчёт
+                trafficContainer.style.display = 'block';
+                reportContainer.style.display = 'none';
+
+                // Загружаем список сотрудников (если ещё не загружен)
+                loadTrafficEmployees();
+
+                // Если выбран сотрудник, загружаем его отметки
+                const select = document.getElementById('weeklyTrafficEmployeeSelect');
+                if (select.value) {
+                    loadWeeklyTraffic(select.value);
+                } else {
+                    // Можно автоматически выбрать первого сотрудника (опционально)
+                    // или оставить выбор пользователю
+                }
+            } else {
+                // Возвращаем обычный недельный отчёт
+                trafficContainer.style.display = 'none';
+                reportContainer.style.display = 'block';
+
+                // Перезагружаем недельный отчёт
+                const [year, week] = weekValue.split('-W');
+                const monday = getMondayOfWeek(parseInt(year), parseInt(week));
+                const y = monday.getFullYear();
+                const m = String(monday.getMonth() + 1).padStart(2, '0');
+                const d = String(monday.getDate()).padStart(2, '0');
+                loadWeeklyReport(`${y}-${m}-${d}`);
+            }
+
+            // Сохраняем состояние (для восстановления после перезагрузки)
+            const select = document.getElementById('weeklyTrafficEmployeeSelect');
+            const employeeId = select ? select.value : '';
+            saveTrafficState(trafficModeActive, employeeId, weekValue);
+
+            // (Опционально) меняем иконку кнопки, чтобы показать активный режим
+            this.textContent = '🚦';
+        });
+
         updateFilterVisibility();
     });
     async function loadRecentEntries(limit = 100) {
