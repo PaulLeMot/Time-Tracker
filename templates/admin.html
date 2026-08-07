@@ -957,7 +957,9 @@
         </div>
         <div class="tab-content" id="weekly-tab" style="display: none;">
             <div class="date-picker">
+                <button id="prevWeekBtn" class="btn" title="Предыдущая неделя">◀</button>
                 <input type="week" id="weekPicker">
+                <button id="nextWeekBtn" class="btn" title="Следующая неделя">▶</button>
                 <button id="loadWeeklyReportBtn">Показать отчёт</button>
                 <span id="weeklyRoundingBtn" style="cursor:pointer; font-size:1.2rem; margin-left: 8px;">⚙️</span>
                 <span id="weeklyTrafficBtn" style="cursor:pointer; font-size:1.2rem; margin-left: 8px;">🚦</span>
@@ -2414,7 +2416,62 @@
             // (Опционально) меняем иконку кнопки, чтобы показать активный режим
             this.textContent = '🚦';
         });
+        // Функция для изменения недели на +/- delta
+        function changeWeek(delta) {
+            const weekPicker = document.getElementById('weekPicker');
+            if (!weekPicker) return;
+            const value = weekPicker.value;
+            if (!value) {
+                // Если не выбрана неделя, установим текущую
+                const now = new Date();
+                const year = now.getFullYear();
+                const week = getWeekNumber(now);
+                weekPicker.value = `${year}-W${week.toString().padStart(2, '0')}`;
+                // После установки загрузим отчёт
+                document.getElementById('loadWeeklyReportBtn').click();
+                return;
+            }
+            // Парсим год и номер недели
+            const parts = value.split('-W');
+            if (parts.length !== 2) return;
+            let year = parseInt(parts[0]);
+            let week = parseInt(parts[1]);
 
+            // Прибавляем дельту
+            week += delta;
+            // Если неделя стала 0, переходим на прошлый год, неделя 52
+            if (week < 1) {
+                year--;
+                // Находим количество недель в прошлом году
+                const lastDayOfYear = new Date(year, 11, 31);
+                const weekCount = getWeekNumber(lastDayOfYear);
+                week = weekCount;
+            }
+            // Если неделя больше 53 (или 52), переходим на следующий год, неделя 1
+            const lastDayOfYear = new Date(year, 11, 31);
+            const maxWeek = getWeekNumber(lastDayOfYear);
+            if (week > maxWeek) {
+                year++;
+                week = 1;
+            }
+
+            const newValue = `${year}-W${week.toString().padStart(2, '0')}`;
+            weekPicker.value = newValue;
+
+            // Загружаем отчёт
+            document.getElementById('loadWeeklyReportBtn').click();
+        }
+
+        // Обработчики кнопок
+        document.getElementById('prevWeekBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            changeWeek(-1);
+        });
+
+        document.getElementById('nextWeekBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            changeWeek(1);
+        });
         updateFilterVisibility();
     });
     async function loadRecentEntries(limit = 100) {
