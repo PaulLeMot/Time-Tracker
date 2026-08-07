@@ -915,6 +915,34 @@
             margin-right: 10px;
             border: 1px solid #e2e8f0;
         }
+        /* Цвета для среднего времени (пастельные) */
+        .avg-time-red { background-color: #fecaca !important; }    /* пастельно-красный */
+        .avg-time-yellow { background-color: #fef08a !important; } /* пастельно-жёлтый */
+        .avg-time-blue { background-color: #bfdbfe !important; }   /* пастельно-синий */
+        .avg-time-green { background-color: #bbf7d0 !important; }  /* пастельно-зелёный */
+
+        /* Цвета как в #trafficWorked и #trafficBreak */
+        .daily-cell.worked {
+            background-color: #f1f5f9;   /* серый фон */
+            color: #008000;              /* зелёный */
+            font-weight: 600;
+        }
+        .daily-cell.break {
+            background-color: #f1f5f9;   /* серый фон */
+            color: #ff8c00;              /* оранжевый */
+            font-weight: 600;
+        }
+        /* Увеличиваем ширину только двух последних ячеек (статистика) */
+        .daily-traffic-table td.stat-cell {
+            min-width: 12px !important;  /* принудительно переопределяем */
+            white-space: nowrap;
+        }
+
+        /* Внутренний спан растягиваем по ширине родителя */
+        .daily-traffic-table td.stat-cell .daily-cell {
+            width: auto;
+            min-width: 100px;  /* чтобы не сжимались слишком */
+        }
     </style>
 
 
@@ -945,7 +973,9 @@
         </div>
         <div class="tab-content" id="daily-tab">
             <div class="date-picker">
+                <button id="prevDayBtn" class="btn btn-sm" title="Предыдущий день">◀</button>
                 <input type="date" id="reportDate">
+                <button id="nextDayBtn" class="btn btn-sm" title="Следующий день">▶</button>
                 <button id="loadReportBtn">Обновить</button>
             </div>
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
@@ -2479,6 +2509,43 @@
             e.preventDefault();
             changeWeek(1);
         });
+        // Функция для изменения даты на +/- 1 день
+        function changeDay(delta) {
+            const dateInput = document.getElementById('reportDate');
+            if (!dateInput) return;
+            let currentDate = dateInput.value;
+            if (!currentDate) {
+                // Если нет даты, установим сегодняшнюю
+                const today = getLocalDate();  // у вас есть функция getLocalDate()
+                dateInput.value = today;
+                document.getElementById('loadReportBtn').click();
+                return;
+            }
+            // Парсим дату в объект Date (локальное время)
+            const parts = currentDate.split('-').map(Number);
+            if (parts.length !== 3) return;
+            const newDate = new Date(parts[0], parts[1] - 1, parts[2]);
+            newDate.setDate(newDate.getDate() + delta);
+            // Форматируем обратно в YYYY-MM-DD
+            const year = newDate.getFullYear();
+            const month = String(newDate.getMonth() + 1).padStart(2, '0');
+            const day = String(newDate.getDate()).padStart(2, '0');
+            const newDateStr = `${year}-${month}-${day}`;
+            dateInput.value = newDateStr;
+            // Загружаем отчёт (вызываем обработчик кнопки)
+            document.getElementById('loadReportBtn').click();
+        }
+
+        // Обработчики кнопок
+        document.getElementById('prevDayBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            changeDay(-1);
+        });
+
+        document.getElementById('nextDayBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+            changeDay(1);
+        });
         updateFilterVisibility();
     });
     async function loadRecentEntries(limit = 100) {
@@ -3814,8 +3881,8 @@ async function loadWeeklyTraffic(employeeId) {
     window._endEntriesByDay = endEntriesByDay;
 
     if (maxOtherEntries === 0 && Object.values(endEntriesByDay).every(e => e === null)) {
-        container.innerHTML = '<p style="color: #94a3b8;">Нет отметок за выбранную неделю</p>';
-        return;
+        // Нет записей — всё равно показываем таблицу с пустыми ячейками
+        maxOtherEntries = 1; // как минимум одна строка для прочих отметок
     }
 
     const colorClassMap = {
@@ -4645,7 +4712,6 @@ async function loadDailyTraffic(date) {
                 const data = await resp.json();
                 const entries = data.entries || [];
                 entries.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                // Разделяем: все кроме 'end' и отдельно 'end'
                 const otherEntries = entries.filter(e => e.action !== 'end');
                 const endEntry = entries.find(e => e.action === 'end') || null;
                 employeesWithEntries.push({ ...emp, otherEntries, endEntry });
@@ -4656,31 +4722,20 @@ async function loadDailyTraffic(date) {
             }
         }
 
-        // --- СОРТИРОВКА СОТРУДНИКОВ ---
         employeesWithEntries.sort((a, b) => {
             const aHasEntries = a.otherEntries.length > 0 || a.endEntry !== null;
             const bHasEntries = b.otherEntries.length > 0 || b.endEntry !== null;
-
-            // Сначала те, у кого есть отметки
             if (aHasEntries && !bHasEntries) return -1;
             if (!aHasEntries && bHasEntries) return 1;
-
-            // Если оба имеют или оба не имеют, сортируем по ФИО (русский алфавит)
             return a.full_name.localeCompare(b.full_name, 'ru');
         });
 
-        // Пересчитываем maxOtherEntries (хотя он не изменился, но на всякий случай)
         maxOtherEntries = 0;
         employeesWithEntries.forEach(emp => {
             if (emp.otherEntries.length > maxOtherEntries) {
                 maxOtherEntries = emp.otherEntries.length;
             }
         });
-
-        if (maxOtherEntries === 0 && employeesWithEntries.every(e => !e.endEntry)) {
-            container.innerHTML = '<p>Нет отметок за этот день</p>';
-            return;
-        }
 
         const colorClassMap = {
             'start': 'start',
@@ -4689,7 +4744,6 @@ async function loadDailyTraffic(date) {
             'end': 'end'
         };
 
-        // Обёртка с горизонтальной прокруткой
         let html = `<div style="overflow-x: auto;">
             <table class="daily-traffic-table">
                 <tbody>`;
@@ -4697,7 +4751,6 @@ async function loadDailyTraffic(date) {
         for (const emp of employeesWithEntries) {
             const empId = emp.employee_id;
             html += `<tr><td class="fio-cell">${escapeHtml(emp.full_name)}</td>`;
-            // Колонки для остальных отметок (кроме end)
             for (let i = 0; i < maxOtherEntries; i++) {
                 if (i < emp.otherEntries.length) {
                     const entry = emp.otherEntries[i];
@@ -4713,7 +4766,7 @@ async function loadDailyTraffic(date) {
                             </td>`;
                 }
             }
-            // Последняя колонка для end
+            // end
             if (emp.endEntry) {
                 const entry = emp.endEntry;
                 const time = entry.timestamp.slice(11, 16);
@@ -4725,12 +4778,23 @@ async function loadDailyTraffic(date) {
                             <span class="daily-cell unknown">—</span>
                         </td>`;
             }
+
+            // Новые ячейки статистики
+            const workedDisplay = emp.worked_display || formatHoursToHHMM(emp.worked_hours_current) || '—';
+            const breakMinutes = emp.break_minutes_current || 0;
+            const breakCount = emp.break_count || 0;
+            const breakDisplay = formatMinutesToHHMM(breakMinutes);
+            const breakText = `${breakDisplay} (${breakCount})`;
+
+            html += `<td class="stat-cell"><span class="daily-cell worked">${escapeHtml(workedDisplay)}</span></td>
+                     <td class="stat-cell"><span class="daily-cell break">${escapeHtml(breakText)}</span></td>`;
+
             html += `</tr>`;
         }
         html += `</tbody></table></div>`;
         container.innerHTML = html;
 
-        // --- Обработчик кликов (без изменений) ---
+        // Обработчик кликов (игнорируем stat-cell)
         if (window._dailyTrafficClickHandler) {
             document.removeEventListener('click', window._dailyTrafficClickHandler);
         }
@@ -4747,13 +4811,11 @@ async function loadDailyTraffic(date) {
 
             const td = e.target.closest('td');
             if (!td) return;
+            if (td.classList.contains('stat-cell')) return;
+
             const span = td.querySelector('.daily-cell');
             if (!span) return;
-
-            if (!span.contains(e.target) && e.target !== span) {
-                // Клик по пустому месту внутри td — игнорируем
-                return;
-            }
+            if (!span.contains(e.target) && e.target !== span) return;
 
             const empId = parseInt(td.dataset.employeeId);
             if (!empId) return;
@@ -4767,7 +4829,6 @@ async function loadDailyTraffic(date) {
                     makeDailyCellEditable(td, parseInt(entryId), timestamp, action, empId, date);
                 }
             } else {
-                // Прочерк – разрешаем добавление, только если клик был по самому span
                 makeDailyCellAddable(td, empId, date);
             }
         };
@@ -5296,12 +5357,13 @@ async function loadPeriodReport(startDate, endDate, employeeId = '') {
         </tr></thead><tbody>`;
 
         for (const emp of data) {
+            const avgClass = getAverageTimeColor(emp.average_worked_per_day);
             html += `<tr>
                 <td style="font-weight:500; white-space:nowrap;">${escapeHtml(emp.full_name)}</td>
                 <td>${emp.work_days}</td>
                 <td>${emp.weekend_days}</td>
                 <td>${escapeHtml(emp.total_worked_display)}</td>
-                <td>${escapeHtml(emp.average_worked_per_day)}</td>
+                <td class="${avgClass}">${escapeHtml(emp.average_worked_per_day)}</td>
                 <td>${escapeHtml(emp.total_break_display)}</td>
                 <td>${emp.total_break_count}</td>
                 <td>${escapeHtml(emp.average_break_duration)}</td>
@@ -5725,6 +5787,33 @@ async function saveDayStatusUpdates(updates) {
         const err = await resp.json();
         throw new Error(err.detail || 'Ошибка сохранения');
     }
+}
+
+function parseTimeToMinutes(timeStr) {
+    if (!timeStr || timeStr === '—' || timeStr.trim() === '') return null;
+    const parts = timeStr.split(':');
+    if (parts.length !== 2) return null;
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    if (isNaN(hours) || isNaN(minutes)) return null;
+    return hours * 60 + minutes;
+}
+
+function getAverageTimeColor(timeStr) {
+    const minutes = parseTimeToMinutes(timeStr);
+    if (minutes === null) return ''; // нет данных — без цвета
+
+    // Пороги в минутах
+    const low = 7 * 60 + 45;   // 7:45
+    const midLow = 7 * 60 + 46; // 7:46
+    const midHigh = 7 * 60 + 55; // 7:55
+    const high = 8 * 60 + 15;   // 8:15
+
+    if (minutes < low) return 'avg-time-red';
+    if (minutes >= midLow && minutes <= midHigh) return 'avg-time-yellow';
+    if (minutes >= (7*60+56) && minutes <= high) return 'avg-time-blue';
+    if (minutes > high) return 'avg-time-green';
+    return '';
 }
 </script>
 </body>
