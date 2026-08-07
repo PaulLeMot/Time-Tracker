@@ -5551,6 +5551,12 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
         container.addEventListener('contextmenu', function(e) {
             const cell = e.target.closest('td[data-day-index]');
             if (!cell) return;
+            // Проверяем тип дня
+            const dayType = cell.dataset.dayType;
+            if (dayType === 'work') {
+                // Рабочие дни редактировать нельзя
+                return;
+            }
             e.preventDefault();
 
             // Если ячейка не выделена – делаем её единственной выделенной
