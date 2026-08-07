@@ -15,7 +15,7 @@ from routers.auth import get_current_employee, get_current_admin, get_current_mo
 import models
 from sse import notify_admin_clients, notify_monitor_clients, notify_employee
 from fastapi.responses import RedirectResponse
-from models import Notification, NotificationType, NotificationStatus, Explanation, Employee
+from models import Notification, NotificationType, NotificationStatus, Explanation, Employee, DayStatus, DayType
 from sqlalchemy.orm import aliased
 class EmployeeCreate(BaseModel):
     username: str
@@ -77,6 +77,11 @@ class NotificationResponse(BaseModel):
 
 class ExplanationUpdate(BaseModel):
     explanation_text: str
+
+class DayStatusUpdate(BaseModel):
+    employee_id: int
+    date: date
+    day_type: str
 
 page_router = APIRouter(tags=["pages"])
 router = APIRouter(prefix="/api/employees", tags=["employees"], dependencies=[Depends(get_current_admin)])
@@ -1694,6 +1699,7 @@ async def period_traffic_report(
     start_dt = datetime.combine(start, time(5, 0, 0))
     end_dt = datetime.combine(end + timedelta(days=1), time(5, 0, 0))
 
+    # Загружаем все записи за период
     stmt = select(models.TimeEntry).where(
         models.TimeEntry.timestamp >= start_dt,
         models.TimeEntry.timestamp < end_dt,
@@ -1706,7 +1712,22 @@ async def period_traffic_report(
     for entry in all_entries:
         entries_by_employee.setdefault(entry.employee_id, []).append(entry)
 
+    # Загружаем сохранённые статусы дней для всех сотрудников за период
+    employee_ids = [emp.id for emp in employees]
+    stmt_status = select(DayStatus).where(
+        DayStatus.employee_id.in_(employee_ids),
+        DayStatus.date >= start,
+        DayStatus.date <= end
+    )
+    status_result = await db.execute(stmt_status)
+    statuses = status_result.scalars().all()
+    # Собираем в словарь: (employee_id, date) -> day_type
+    status_dict = {}
+    for s in statuses:
+        status_dict[(s.employee_id, s.date)] = s.day_type.value  # или сам enum
+
     def day_has_work(day_entries, day_date, interval):
+        # ... функция без изменений ...
         workday_start = datetime.combine(day_date, time(5, 0, 0))
         workday_end = workday_start + timedelta(days=1)
         now = datetime.now()
@@ -1746,7 +1767,7 @@ async def period_traffic_report(
                 if in_break:
                     in_break = False
                     if last_break_start:
-                        total_break_sec = 0  # не нужен для has_work
+                        total_break_sec = 0
                         last_break_start = None
                     last_start_time = ts
 
@@ -1758,10 +1779,10 @@ async def period_traffic_report(
         return rounded_minutes > 0
 
     date_range = []
-    current = start
-    while current <= end:
-        date_range.append(current)
-        current += timedelta(days=1)
+    current_day = start
+    while current_day <= end:
+        date_range.append(current_day)
+        current_day += timedelta(days=1)
 
     result = []
     for emp in employees:
@@ -1777,9 +1798,23 @@ async def period_traffic_report(
 
         days_status = []
         for d in date_range:
-            day_entries = day_map.get(d, [])
-            is_working = day_has_work(day_entries, d, interval)
-            days_status.append(is_working)
+            # Получаем сохранённый статус
+            saved_type = status_dict.get((emp.id, d))
+            if saved_type:
+                day_type = saved_type
+            else:
+                # Вычисляем по умолчанию
+                day_entries = day_map.get(d, [])
+                is_working = day_has_work(day_entries, d, interval)
+                day_of_week = d.weekday()  # 0-6, где 0=понедельник
+                is_weekend = (day_of_week >= 5)  # суббота=5, воскресенье=6
+                if is_working:
+                    day_type = "work"
+                elif is_weekend:
+                    day_type = "off"
+                else:
+                    day_type = "off"  # по умолчанию выходной, если не работает
+            days_status.append(day_type)
 
         result.append({
             "employee_id": emp.id,
@@ -1788,3 +1823,37 @@ async def period_traffic_report(
         })
 
     return result
+
+@public_router.post("/api/admin/day-status", response_model=dict)
+async def update_day_status(
+    updates: List[DayStatusUpdate],
+    admin: models.Employee = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    for upd in updates:
+        try:
+            day_type_enum = DayType(upd.day_type)
+        except ValueError:
+            raise HTTPException(400, f"Invalid day_type: {upd.day_type}")
+        # Проверяем сотрудника
+        employee = await crud.get_employee_by_id(db, upd.employee_id)
+        if not employee:
+            raise HTTPException(404, f"Employee {upd.employee_id} not found")
+        # Ищем существующую запись
+        stmt = select(DayStatus).where(
+            DayStatus.employee_id == upd.employee_id,
+            DayStatus.date == upd.date
+        )
+        result = await db.execute(stmt)
+        day_status = result.scalar_one_or_none()
+        if day_status:
+            day_status.day_type = day_type_enum
+        else:
+            day_status = DayStatus(
+                employee_id=upd.employee_id,
+                date=upd.date,
+                day_type=day_type_enum
+            )
+            db.add(day_status)
+    await db.commit()
+    return {"status": "ok", "updated": len(updates)}

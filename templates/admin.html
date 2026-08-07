@@ -854,9 +854,60 @@
         }
 
     
-    
+            /* Выделенная ячейка */
+        .traffic-table td.selected-cell {
+            border: 2px solid #3b82f6 !important;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3) !important;
+            outline: none;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Подсветка строки и столбца при наведении (уже есть) */
+        .highlight-fio {
+            background-color: #e0f2fe !important;
+        }
+        .highlight-day-header {
+            background-color: #e0f2fe !important;
+        }
     
 
+        /* Типы дней */
+        .day-type-work { background-color: #bfdbfe !important; }
+        .day-type-off { background-color: #e2e8f0 !important; }
+        .day-type-vacation { background-color: #86efac !important; }
+        .day-type-sick { background-color: #fde047 !important; }
+
+        /* Контекстное меню */
+        .traffic-context-menu {
+            display: none;
+            position: fixed;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 8px;
+            z-index: 1000;
+            min-width: 120px;
+        }
+        .traffic-context-menu .menu-item {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 4px;
+            transition: background 0.1s;
+        }
+        .traffic-context-menu .menu-item:hover {
+            background: #f1f5f9;
+        }
+        .traffic-context-menu .color-circle {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 1px solid #e2e8f0;
+        }
     </style>
 
 
@@ -5258,10 +5309,8 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
             return;
         }
 
-        // Сортируем сотрудников по ФИО
         data.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
 
-        // Генерируем массив дат от start до end
         const dates = [];
         let current = new Date(startDate);
         while (current <= endDate) {
@@ -5269,8 +5318,7 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
             current.setDate(current.getDate() + 1);
         }
 
-        // Строим таблицу
-        let html = `<table class="traffic-table" style="border-collapse: collapse; width: 100%;">`;
+        let html = `<table class="traffic-table" style="border-collapse: collapse; width: 100%;" tabindex="0">`;
         html += `<thead><tr><th style="padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; position: sticky; left: 0; z-index: 2;">Сотрудник</th>`;
 
         for (let i = 0; i < dates.length; i++) {
@@ -5287,14 +5335,8 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
             html += `<tr><td class="fio-cell" style="padding: 8px; border: 1px solid #e2e8f0; background: white; position: sticky; left: 0; z-index: 1; font-weight: 500;">${escapeHtml(emp.full_name)}</td>`;
 
             for (let i = 0; i < dates.length; i++) {
-                const isWorking = emp.days[i] || false;
-                const dayOfWeek = dates[i].getDay();
-                const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-                let bgColor = '#e2e8f0';
-                if (!isWeekend) {
-                    bgColor = isWorking ? '#bfdbfe' : '#e2e8f0';
-                }
-                html += `<td data-day-index="${i}" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; background-color: ${bgColor};"></td>`;
+                const dayType = emp.days[i] || 'off'; // 'work', 'off', 'vacation', 'sick'
+                html += `<td data-day-index="${i}" data-employee-id="${emp.employee_id}" data-date="${dates[i].toISOString().slice(0,10)}" data-day-type="${dayType}" class="day-type-${dayType}" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;"></td>`;
             }
             html += `</tr>`;
         }
@@ -5302,8 +5344,10 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
         html += `</tbody></table>`;
         container.innerHTML = html;
 
-        // --- ДОБАВЛЯЕМ ПОДСВЕТКУ (как в недельном отчёте) ---
         const table = container.querySelector('table');
+        table.focus();
+
+        // --- ПОДСВЕТКА ПРИ НАВЕДЕНИИ ---
         const rows = table.querySelectorAll('tbody tr');
         rows.forEach(row => {
             const fioCell = row.querySelector('.fio-cell');
@@ -5328,9 +5372,252 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
             });
         });
 
+        // --- ЛОГИКА ВЫДЕЛЕНИЯ ---
+        let selectedCells = [];
+        let lastSelectedCell = null;
+
+        function clearSelection() {
+            table.querySelectorAll('.selected-cell').forEach(el => el.classList.remove('selected-cell'));
+            selectedCells = [];
+            lastSelectedCell = null;
+        }
+
+        function selectCell(cell, addToSelection = false) {
+            if (!cell) return;
+            if (!addToSelection) {
+                clearSelection();
+            }
+            cell.classList.add('selected-cell');
+            selectedCells.push(cell);
+            lastSelectedCell = cell;
+        }
+
+        function selectRange(from, to) {
+            const fromRow = from.closest('tr');
+            const toRow = to.closest('tr');
+            if (fromRow !== toRow) return;
+
+            const cells = Array.from(fromRow.querySelectorAll('td[data-day-index]'));
+            const fromIdx = cells.indexOf(from);
+            const toIdx = cells.indexOf(to);
+            if (fromIdx === -1 || toIdx === -1) return;
+
+            const start = Math.min(fromIdx, toIdx);
+            const end = Math.max(fromIdx, toIdx);
+
+            clearSelection();
+            for (let i = start; i <= end; i++) {
+                cells[i].classList.add('selected-cell');
+                selectedCells.push(cells[i]);
+            }
+            lastSelectedCell = to;
+        }
+
+        // --- ОБРАБОТЧИК КЛИКОВ ---
+        container.addEventListener('click', function(e) {
+            const cell = e.target.closest('td[data-day-index]');
+            if (!cell) {
+                clearSelection();
+                return;
+            }
+
+            if (e.shiftKey && lastSelectedCell) {
+                if (lastSelectedCell.closest('tr') === cell.closest('tr')) {
+                    selectRange(lastSelectedCell, cell);
+                } else {
+                    clearSelection();
+                    selectCell(cell, false);
+                }
+            } else if (e.ctrlKey) {
+                if (cell.classList.contains('selected-cell')) {
+                    cell.classList.remove('selected-cell');
+                    selectedCells = selectedCells.filter(c => c !== cell);
+                    if (lastSelectedCell === cell) {
+                        lastSelectedCell = selectedCells.length > 0 ? selectedCells[selectedCells.length-1] : null;
+                    }
+                } else {
+                    selectCell(cell, true);
+                }
+            } else {
+                clearSelection();
+                selectCell(cell, false);
+            }
+            table.focus();
+        });
+
+        // --- КЛАВИШИ СТРЕЛОК ---
+        function handleKeydown(e) {
+            const key = e.key;
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return;
+            if (e.target.closest('input, textarea, select, button')) return;
+
+            e.preventDefault();
+
+            const currentCell = lastSelectedCell || table.querySelector('tbody tr td[data-day-index]');
+            if (!currentCell) return;
+
+            const allRows = Array.from(table.querySelectorAll('tbody tr'));
+            const currentRow = currentCell.closest('tr');
+            const currentRowIndex = allRows.indexOf(currentRow);
+            const cellsInRow = Array.from(currentRow.querySelectorAll('td[data-day-index]'));
+            const currentCellIndex = cellsInRow.indexOf(currentCell);
+
+            let targetRowIndex = currentRowIndex;
+            let targetCellIndex = currentCellIndex;
+
+            switch (key) {
+                case 'ArrowUp': targetRowIndex = Math.max(0, currentRowIndex - 1); break;
+                case 'ArrowDown': targetRowIndex = Math.min(allRows.length - 1, currentRowIndex + 1); break;
+                case 'ArrowLeft': targetCellIndex = Math.max(0, currentCellIndex - 1); break;
+                case 'ArrowRight': targetCellIndex = Math.min(cellsInRow.length - 1, currentCellIndex + 1); break;
+            }
+
+            if (targetRowIndex === currentRowIndex && targetCellIndex === currentCellIndex) return;
+
+            const targetRow = allRows[targetRowIndex];
+            const targetCells = Array.from(targetRow.querySelectorAll('td[data-day-index]'));
+            const targetCell = targetCells[targetCellIndex] || cellsInRow[targetCellIndex];
+            if (!targetCell) return;
+
+            const ctrlPressed = e.ctrlKey || e.metaKey;
+            if (ctrlPressed) {
+                if (!targetCell.classList.contains('selected-cell')) {
+                    targetCell.classList.add('selected-cell');
+                    selectedCells.push(targetCell);
+                }
+                lastSelectedCell = targetCell;
+            } else {
+                clearSelection();
+                targetCell.classList.add('selected-cell');
+                selectedCells = [targetCell];
+                lastSelectedCell = targetCell;
+            }
+            targetCell.scrollIntoView({ block: 'nearest' });
+        }
+        container.addEventListener('keydown', handleKeydown);
+
+        // --- КОНТЕКСТНОЕ МЕНЮ ---
+        // Создаём меню
+        const menuHTML = `
+            <div class="traffic-context-menu" id="trafficContextMenu">
+                <div class="menu-item" data-type="work">
+                    <span class="color-circle" style="background:#bfdbfe;"></span>
+                    <span>Рабочий</span>
+                </div>
+                <div class="menu-item" data-type="off">
+                    <span class="color-circle" style="background:#e2e8f0;"></span>
+                    <span>Выходной</span>
+                </div>
+                <div class="menu-item" data-type="vacation">
+                    <span class="color-circle" style="background:#86efac;"></span>
+                    <span>Отпуск</span>
+                </div>
+                <div class="menu-item" data-type="sick">
+                    <span class="color-circle" style="background:#fde047;"></span>
+                    <span>Больничный</span>
+                </div>
+            </div>
+        `;
+        // Добавляем меню в container (или в body)
+        const existingMenu = document.getElementById('trafficContextMenu');
+        if (existingMenu) existingMenu.remove();
+        container.insertAdjacentHTML('beforeend', menuHTML);
+        const menu = document.getElementById('trafficContextMenu');
+
+        function hideMenu() {
+            menu.style.display = 'none';
+        }
+
+        container.addEventListener('contextmenu', function(e) {
+            const cell = e.target.closest('td[data-day-index]');
+            if (!cell) return;
+            e.preventDefault();
+
+            // Если ячейка не выделена – делаем её единственной выделенной
+            if (!cell.classList.contains('selected-cell')) {
+                clearSelection();
+                cell.classList.add('selected-cell');
+                selectedCells = [cell];
+                lastSelectedCell = cell;
+            }
+
+            menu.style.display = 'block';
+            const x = Math.min(e.clientX, window.innerWidth - 150);
+            const y = Math.min(e.clientY, window.innerHeight - 150);
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+        });
+
+        // Клик по пункту меню – меняем тип у выделенных ячеек
+        menu.addEventListener('click', async function(e) {
+            const item = e.target.closest('.menu-item');
+            if (!item) return;
+            const newType = item.dataset.type;
+            if (!newType) return;
+
+            const cellsToUpdate = selectedCells.length ? selectedCells : [lastSelectedCell];
+            const updates = [];
+            cellsToUpdate.forEach(cell => {
+                if (!cell) return;
+                const employeeId = parseInt(cell.dataset.employeeId);
+                const dateStr = cell.dataset.date;
+                updates.push({
+                    employee_id: employeeId,
+                    date: dateStr,
+                    day_type: newType
+                });
+            });
+
+            if (updates.length === 0) return;
+
+            try {
+                await saveDayStatusUpdates(updates);
+                // Обновляем классы локально
+                cellsToUpdate.forEach(cell => {
+                    cell.className = cell.className.split(' ').filter(cls => !cls.startsWith('day-type-')).join(' ');
+                    cell.classList.add('day-type-' + newType);
+                    cell.dataset.dayType = newType;
+                });
+                hideMenu();
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        });
+
+        // Клик вне меню – скрываем
+        document.addEventListener('click', function(e) {
+            if (!menu.contains(e.target)) {
+                hideMenu();
+            }
+        });
+
+        // Сброс выделения при клике вне контейнера
+        function outsideClickHandler(e) {
+            if (!container.contains(e.target)) {
+                clearSelection();
+                hideMenu();
+            }
+        }
+        document.addEventListener('click', outsideClickHandler);
+        container._removeOutsideHandler = () => document.removeEventListener('click', outsideClickHandler);
+
     } catch (err) {
         container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
         showToast(err.message, true);
+    }
+}
+
+async function saveDayStatusUpdates(updates) {
+    // updates: [{employee_id, date, day_type}]
+    const resp = await fetch('/api/admin/day-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+        credentials: 'include'
+    });
+    if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || 'Ошибка сохранения');
     }
 }
 </script>

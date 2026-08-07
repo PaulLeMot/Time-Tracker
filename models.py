@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Time, JSON, Enum, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, Time, JSON, Enum, ForeignKey, Text, UniqueConstraint, Date
 from database import Base
 from datetime import datetime
 import enum
@@ -65,3 +65,18 @@ class Product(Base):
     product_type = Column(String, nullable=False)
     fandom = Column(String, nullable=True)
     name = Column(String, nullable=False)
+
+class DayType(enum.Enum):
+    WORK = "work"
+    OFF = "off"
+    VACATION = "vacation"
+    SICK = "sick"
+
+class DayStatus(Base):
+    __tablename__ = "day_status"
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    date = Column(Date, nullable=False)  # дата дня
+    day_type = Column(Enum(DayType), nullable=False, default=DayType.OFF)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    __table_args__ = (UniqueConstraint('employee_id', 'date', name='uix_employee_date'),)
