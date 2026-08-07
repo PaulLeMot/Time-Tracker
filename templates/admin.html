@@ -1237,6 +1237,14 @@
         const day = String(now.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     }
+
+    function formatDateLocal(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     function loadReportForDate(date) {
         if (!date) return;
         if (dailyTrafficModeActive) {
@@ -5171,8 +5179,8 @@ async function loadPeriodReport(startDate, endDate, employeeId = '') {
     }
 
     // Форматируем даты в YYYY-MM-DD
-    const startStr = startDate.toISOString().slice(0,10);
-    const endStr = endDate.toISOString().slice(0,10);
+    const startStr = formatDateLocal(startDate);
+    const endStr = formatDateLocal(endDate);
 
     container.innerHTML = '<p>Загрузка...</p>';
     if (notifContainer) notifContainer.style.display = 'none';
@@ -5287,8 +5295,8 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
         return;
     }
 
-    const startStr = startDate.toISOString().slice(0,10);
-    const endStr = endDate.toISOString().slice(0,10);
+    const startStr = formatDateLocal(startDate);
+    const endStr = formatDateLocal(endDate);
 
     container.innerHTML = '<p>Загрузка...</p>';
 
@@ -5336,7 +5344,7 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
 
             for (let i = 0; i < dates.length; i++) {
                 const dayType = emp.days[i] || 'off'; // 'work', 'off', 'vacation', 'sick'
-                html += `<td data-day-index="${i}" data-employee-id="${emp.employee_id}" data-date="${dates[i].toISOString().slice(0,10)}" data-day-type="${dayType}" class="day-type-${dayType}" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;"></td>`;
+                html += `<td data-day-index="${i}" data-employee-id="${emp.employee_id}"data-date="${formatDateLocal(dates[i])}"" data-day-type="${dayType}" class="day-type-${dayType}" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;"></td>`;
             }
             html += `</tr>`;
         }
