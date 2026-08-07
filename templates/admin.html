@@ -338,12 +338,19 @@
             background-color: #ededed !important;
             color: #c8c8c8 !important;
         }
-        .report-table td:first-child,
-        .report-table th:first-child,
-        .report-table td:nth-child(5),
-        .report-table th:nth-child(5) {
+
+        /* Таблица статистики за период — центрирование заголовков и ячеек */
+        .period-stat-table th,
+        .period-stat-table td {
+            text-align: center;
+        }
+
+        /* Исключение: первый столбец (ФИО) выравниваем влево */
+        .period-stat-table th:first-child,
+        .period-stat-table td:first-child {
             text-align: left;
         }
+
         .close-rounding,
         .close-edit,
         .close-username,
@@ -5276,7 +5283,7 @@ async function loadPeriodReport(startDate, endDate, employeeId = '') {
         data.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
 
         // Таблица – та же, что и раньше
-        let html = `<div class="recent-table"><table class="report-table"><thead><tr>
+        let html = `<div class="recent-table"><table class="report-table period-stat-table"><thead><tr>
             <th>Сотрудник</th>
             <th>Рабочих дней</th>
             <th>Выходных</th>
