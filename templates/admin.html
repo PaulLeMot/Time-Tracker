@@ -5551,12 +5551,21 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
         container.addEventListener('contextmenu', function(e) {
             const cell = e.target.closest('td[data-day-index]');
             if (!cell) return;
-            // Проверяем тип дня
-            const dayType = cell.dataset.dayType;
-            if (dayType === 'work') {
-                // Рабочие дни редактировать нельзя
-                return;
+
+            // Проверяем: если есть выделенные ячейки, проверяем их все
+            if (selectedCells.length) {
+                const hasWork = selectedCells.some(c => c.dataset.dayType === 'work');
+                if (hasWork) {
+                    showToast('Нельзя редактировать рабочие дни', true);
+                    return;
+                }
+            } else {
+                // Если ничего не выделено, проверяем только текущую ячейку
+                if (cell.dataset.dayType === 'work') {
+                    return;
+                }
             }
+
             e.preventDefault();
 
             // Если ячейка не выделена – делаем её единственной выделенной
@@ -5582,6 +5591,13 @@ async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
             if (!newType) return;
 
             const cellsToUpdate = selectedCells.length ? selectedCells : [lastSelectedCell];
+            // Проверка: есть ли среди выделенных рабочие дни
+            const hasWork = cellsToUpdate.some(cell => cell && cell.dataset.dayType === 'work');
+            if (hasWork) {
+                showToast('Нельзя изменять тип рабочих дней', true);
+                hideMenu();
+                return;
+            }
             const updates = [];
             cellsToUpdate.forEach(cell => {
                 if (!cell) return;
