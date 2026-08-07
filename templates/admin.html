@@ -2242,6 +2242,9 @@
             mode: "range",
             dateFormat: "Y-m-d",
             firstDayOfWeek: 1,
+            locale: {
+                firstDayOfWeek: 1
+            },
             onChange: function(selectedDates, dateStr, instance) {
                 if (selectedDates.length === 2) {
                     startDate = instance.formatDate(selectedDates[0], "Y-m-d");
@@ -2264,6 +2267,9 @@
             mode: "range",
             dateFormat: "Y-m-d",
             firstDayOfWeek: 1,
+            locale: {
+                firstDayOfWeek: 1
+            },
             onChange: function(selectedDates, dateStr, instance) {
                 if (selectedDates.length === 2) {
                     recentStartDate = instance.formatDate(selectedDates[0], "Y-m-d");
@@ -5063,6 +5069,9 @@ function initMonthlyTab() {
             mode: "range",
             dateFormat: "Y-m-d",
             firstDayOfWeek: 1,
+            locale: {
+                firstDayOfWeek: 1
+            },
             defaultDate: [new Date(new Date().getFullYear(), new Date().getMonth(), 1), new Date()],
             onChange: function(selectedDates, dateStr, instance) {
                 if (selectedDates.length === 2) {
