@@ -853,7 +853,6 @@
             color: #ff8c00;      /* оранжевый (как в оригинале) */
         }
 
-
     
     
     
@@ -1164,10 +1163,15 @@
     const STORAGE_KEY_EMPLOYEE = 'admin_traffic_employee';
     const STORAGE_KEY_WEEK = 'admin_traffic_week';
     const colorCycle = ['start', 'break_start', 'break_end', 'end'];
-    let dailyTrafficModeActive = false;
+    let trafficModeActive = false;
     let dailyReportData = null;
     let dailyCurrentlyEditingId = null;
     let dailyCurrentlyAddingTd = null;
+    let currentStartDate = null;
+    let currentEndDate = null;
+    let selectedEmployeeId = '';
+    let periodTrafficModeActive = false;
+    let dailyTrafficModeActive = false;
     
     const colorLabels = {
         'start': 'Начало дня',
@@ -2137,7 +2141,6 @@
                     console.log('Переключение на monthly');
                     monthlyTab.style.display = 'block';
 
-                    console.log('monthlyTab.dataset.loaded =', monthlyTab.dataset.loaded);
                     if (!monthlyTab.dataset.loaded) {
                         console.log('Загружаем monthly.html...');
                         try {
@@ -2155,27 +2158,8 @@
                             monthlyTab.innerHTML = `<p style="color:red;">Ошибка загрузки вкладки: ${err.message}</p>`;
                         }
                     } else {
-                        console.log('monthly уже загружен (dataset.loaded = true), содержимое innerHTML:');
-                        console.log(monthlyTab.innerHTML.substring(0, 200) + '...');
-                    }
-
-                    // Поиск элементов внутри вкладки
-                    const monthPicker = document.getElementById('monthPicker');
-                    console.log('monthPicker найден?', monthPicker);
-                    if (monthPicker && monthPicker.value) {
-                        console.log('Загружаем отчёт для месяца:', monthPicker.value);
-                        loadMonthlyReport(monthPicker.value);
-                    } else {
-                        const now = new Date();
-                        const year = now.getFullYear();
-                        const month = String(now.getMonth() + 1).padStart(2, '0');
-                        if (monthPicker) {
-                            monthPicker.value = `${year}-${month}`;
-                            console.log('Установлен месяц:', monthPicker.value);
-                            loadMonthlyReport(monthPicker.value);
-                        } else {
-                            console.warn('monthPicker не найден, возможно, HTML не загружен');
-                        }
+                        console.log('monthly уже загружен, вызываем initMonthlyTab()');
+                        initMonthlyTab();
                     }
                 }
                 saveTabState(tabId);
@@ -3558,9 +3542,6 @@ document.getElementById('importProductsBtn')?.addEventListener('click', async ()
         showToast('Ошибка сети', true);
     }
 });
-// --- Переменные для режима "Трафик" ---
-let trafficModeActive = false;
-let currentTrafficEmployeeId = null;
 
 // --- Функция загрузки списка сотрудников для выпадающего списка ---
 async function loadTrafficEmployees() {
@@ -5010,12 +4991,10 @@ function updateFilterVisibility() {
     }
 }
 function initMonthlyTab() {
-    const container = document.getElementById('periodReportContainer');
-    const notifContainer = document.getElementById('periodNotificationsContainer');
-    const notifList = document.getElementById('periodNotificationsList');
+    const dateRangeInput = document.getElementById('periodDateRange');
     const loadBtn = document.getElementById('loadPeriodReportBtn');
     const employeeFilter = document.getElementById('periodEmployeeFilter');
-    const dateRangeInput = document.getElementById('periodDateRange');
+    const trafficBtn = document.getElementById('trafficPeriodBtn');
 
     // Инициализация flatpickr с диапазоном
     if (dateRangeInput && !dateRangeInput._flatpickr) {
@@ -5024,16 +5003,22 @@ function initMonthlyTab() {
             dateFormat: "Y-m-d",
             defaultDate: [new Date(new Date().getFullYear(), new Date().getMonth(), 1), new Date()],
             onChange: function(selectedDates, dateStr, instance) {
-                // При изменении дат автоматически перезагружаем, если есть обе даты
                 if (selectedDates.length === 2) {
+                    currentStartDate = selectedDates[0];
+                    currentEndDate = selectedDates[1];
                     const employeeId = employeeFilter ? employeeFilter.value : '';
-                    loadPeriodReport(selectedDates[0], selectedDates[1], employeeId);
+                    selectedEmployeeId = employeeId;
+                    if (periodTrafficModeActive) {
+                        loadTrafficPeriod(currentStartDate, currentEndDate, employeeId);
+                    } else {
+                        loadPeriodReport(currentStartDate, currentEndDate, employeeId);
+                    }
                 }
             }
         });
     }
 
-    // Загрузка списка сотрудников
+    // Загрузка списка сотрудников в селект
     if (employeeFilter) {
         fetch('/api/employees?active_only=true', { credentials: 'include' })
             .then(res => res.json())
@@ -5055,35 +5040,74 @@ function initMonthlyTab() {
         loadBtn.addEventListener('click', function() {
             const picker = dateRangeInput._flatpickr;
             if (picker && picker.selectedDates.length === 2) {
-                const start = picker.selectedDates[0];
-                const end = picker.selectedDates[1];
+                currentStartDate = picker.selectedDates[0];
+                currentEndDate = picker.selectedDates[1];
                 const employeeId = employeeFilter ? employeeFilter.value : '';
-                loadPeriodReport(start, end, employeeId);
+                selectedEmployeeId = employeeId;
+                if (periodTrafficModeActive) {
+                    loadTrafficPeriod(currentStartDate, currentEndDate, employeeId);
+                } else {
+                    loadPeriodReport(currentStartDate, currentEndDate, employeeId);
+                }
             } else {
                 showToast('Выберите обе даты периода', true);
             }
         });
     }
 
-    // Обработчик изменения селекта сотрудника – перезагружаем
+    // Обработчик изменения сотрудника
     if (employeeFilter) {
         employeeFilter.addEventListener('change', function() {
-            const picker = dateRangeInput._flatpickr;
-            if (picker && picker.selectedDates.length === 2) {
-                const start = picker.selectedDates[0];
-                const end = picker.selectedDates[1];
-                loadPeriodReport(start, end, this.value);
+            const employeeId = this.value;
+            selectedEmployeeId = employeeId;
+            if (currentStartDate && currentEndDate) {
+                if (periodTrafficModeActive) {
+                    loadTrafficPeriod(currentStartDate, currentEndDate, employeeId);
+                } else {
+                    loadPeriodReport(currentStartDate, currentEndDate, employeeId);
+                }
             }
         });
     }
 
-    // Автозагрузка при первом открытии (если есть даты)
+    // Обработчик кнопки светофора
+    if (trafficBtn) {
+        trafficBtn.addEventListener('click', function() {
+            periodTrafficModeActive = !periodTrafficModeActive;
+            const container = document.getElementById('periodReportContainer');
+            const trafficContainer = document.getElementById('trafficPeriodContainer');
+            const notifContainer = document.getElementById('periodNotificationsContainer');
+
+            if (periodTrafficModeActive) {
+                container.style.display = 'none';
+                trafficContainer.style.display = 'block';
+                if (notifContainer) notifContainer.style.display = 'none';
+                if (currentStartDate && currentEndDate) {
+                    loadTrafficPeriod(currentStartDate, currentEndDate, selectedEmployeeId);
+                } else {
+                    trafficContainer.innerHTML = '<p>Сначала выберите период</p>';
+                }
+            } else {
+                container.style.display = 'block';
+                trafficContainer.style.display = 'none';
+                if (currentStartDate && currentEndDate) {
+                    loadPeriodReport(currentStartDate, currentEndDate, selectedEmployeeId);
+                }
+            }
+        });
+    }
+
+    // Автозагрузка при первом открытии (если даты уже выбраны)
     if (dateRangeInput && dateRangeInput._flatpickr && dateRangeInput._flatpickr.selectedDates.length === 2) {
         const [start, end] = dateRangeInput._flatpickr.selectedDates;
+        currentStartDate = start;
+        currentEndDate = end;
         const employeeId = employeeFilter ? employeeFilter.value : '';
+        selectedEmployeeId = employeeId;
         loadPeriodReport(start, end, employeeId);
     }
 }
+
 async function loadPeriodReport(startDate, endDate, employeeId = '') {
     const container = document.getElementById('periodReportContainer');
     const notifContainer = document.getElementById('periodNotificationsContainer');
@@ -5201,6 +5225,111 @@ async function loadPeriodReport(startDate, endDate, employeeId = '') {
     } catch (err) {
         container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
         if (notifContainer) notifContainer.style.display = 'none';
+        showToast(err.message, true);
+    }
+}
+async function loadTrafficPeriod(startDate, endDate, employeeId = '') {
+    const container = document.getElementById('trafficPeriodContainer');
+    if (!container) return;
+    if (!startDate || !endDate) {
+        container.innerHTML = '<p>Выберите период</p>';
+        return;
+    }
+
+    const startStr = startDate.toISOString().slice(0,10);
+    const endStr = endDate.toISOString().slice(0,10);
+
+    container.innerHTML = '<p>Загрузка...</p>';
+
+    try {
+        let url = `/api/reports/period/traffic?start_date=${startStr}&end_date=${endStr}`;
+        if (employeeId) {
+            url += `&employee_id=${employeeId}`;
+        }
+        const resp = await fetch(url, { credentials: 'include' });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+
+        if (!data || data.length === 0) {
+            container.innerHTML = '<p>Нет данных за этот период</p>';
+            return;
+        }
+
+        // Сортируем сотрудников по ФИО
+        data.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+
+        // Генерируем массив дат от start до end
+        const dates = [];
+        let current = new Date(startDate);
+        while (current <= endDate) {
+            dates.push(new Date(current));
+            current.setDate(current.getDate() + 1);
+        }
+
+        // Строим таблицу
+        let html = `<table class="traffic-table" style="border-collapse: collapse; width: 100%;">`;
+        html += `<thead><tr><th style="padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; position: sticky; left: 0; z-index: 2;">Сотрудник</th>`;
+
+        for (let i = 0; i < dates.length; i++) {
+            const d = dates[i];
+            const day = d.getDate().toString().padStart(2, '0');
+            const month = (d.getMonth()+1).toString().padStart(2, '0');
+            const dayOfWeek = d.toLocaleDateString('ru-RU', { weekday: 'short' });
+            html += `<th data-day-header-index="${i}" style="padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; text-align: center; font-weight: normal; font-size: 0.8rem;">${dayOfWeek}<br>${day}.${month}</th>`;
+        }
+
+        html += `</tr></thead><tbody>`;
+
+        for (const emp of data) {
+            html += `<tr><td class="fio-cell" style="padding: 8px; border: 1px solid #e2e8f0; background: white; position: sticky; left: 0; z-index: 1; font-weight: 500;">${escapeHtml(emp.full_name)}</td>`;
+
+            for (let i = 0; i < dates.length; i++) {
+                const isWorking = emp.days[i] || false;
+                const dayOfWeek = dates[i].getDay();
+                const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+                let bgColor = '#e2e8f0';
+                if (!isWeekend) {
+                    bgColor = isWorking ? '#bfdbfe' : '#e2e8f0';
+                }
+                html += `<td data-day-index="${i}" style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; background-color: ${bgColor};"></td>`;
+            }
+            html += `</tr>`;
+        }
+
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+
+        // --- ДОБАВЛЯЕМ ПОДСВЕТКУ (как в недельном отчёте) ---
+        const table = container.querySelector('table');
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const fioCell = row.querySelector('.fio-cell');
+            const cells = row.querySelectorAll('td[data-day-index]');
+            cells.forEach(cell => {
+                cell.addEventListener('mouseenter', () => {
+                    if (fioCell) fioCell.classList.add('highlight-fio');
+                    const dayIndex = cell.dataset.dayIndex;
+                    if (dayIndex !== undefined) {
+                        const dayHeader = table.querySelector(`th[data-day-header-index="${dayIndex}"]`);
+                        if (dayHeader) dayHeader.classList.add('highlight-day-header');
+                    }
+                });
+                cell.addEventListener('mouseleave', () => {
+                    if (fioCell) fioCell.classList.remove('highlight-fio');
+                    const dayIndex = cell.dataset.dayIndex;
+                    if (dayIndex !== undefined) {
+                        const dayHeader = table.querySelector(`th[data-day-header-index="${dayIndex}"]`);
+                        if (dayHeader) dayHeader.classList.remove('highlight-day-header');
+                    }
+                });
+            });
+        });
+
+    } catch (err) {
+        container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
         showToast(err.message, true);
     }
 }

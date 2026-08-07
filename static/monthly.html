@@ -1,6 +1,7 @@
 <!-- tabs/monthly.html -->
 <div class="monthly-tab-content">
-    <div class="date-picker" style="flex-wrap: wrap; gap: 12px;">
+    <h2>📅 Отчёт за период</h2>
+    <div class="date-picker" style="flex-wrap: wrap; gap: 12px; align-items: center;">
         <label>Период:
             <input type="text" id="periodDateRange" placeholder="Выберите период" style="width: 240px;">
         </label>
@@ -10,8 +11,10 @@
                 <option value="">Все</option>
             </select>
         </label>
+        <span id="trafficPeriodBtn" style="cursor:pointer; font-size:1.2rem; margin-left:8px;" title="Переключить режим светофора">🚦</span>
     </div>
     <div id="periodReportContainer">Выберите период и нажмите «Показать»</div>
+    <div id="trafficPeriodContainer" style="display: none; margin-top: 16px; overflow-x: auto;"></div>
     <div id="periodNotificationsContainer" style="margin-top: 24px; display: none;">
         <h3>📋 Уведомления сотрудника за период</h3>
         <div id="periodNotificationsList">Загрузка...</div>

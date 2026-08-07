@@ -1661,3 +1661,130 @@ async def period_report(
         })
 
     return result_list
+
+@public_router.get("/api/reports/period/traffic")
+async def period_traffic_report(
+    start_date: str,
+    end_date: str,
+    employee_id: Optional[int] = None,
+    admin: Optional[models.Employee] = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "Invalid date format")
+
+    if start > end:
+        raise HTTPException(400, "start_date must be before end_date")
+
+    if employee_id:
+        employee = await crud.get_employee_by_id(db, employee_id)
+        if not employee:
+            raise HTTPException(404, "Employee not found")
+        employees = [employee]
+    else:
+        employees = await crud.get_employees(db, active_only=True)
+
+    if not employees:
+        return []
+
+    interval = await crud.get_rounding_interval(db)
+    start_dt = datetime.combine(start, time(5, 0, 0))
+    end_dt = datetime.combine(end + timedelta(days=1), time(5, 0, 0))
+
+    stmt = select(models.TimeEntry).where(
+        models.TimeEntry.timestamp >= start_dt,
+        models.TimeEntry.timestamp < end_dt,
+        models.TimeEntry.employee_id.in_([emp.id for emp in employees])
+    ).order_by(models.TimeEntry.employee_id, models.TimeEntry.timestamp)
+    result = await db.execute(stmt)
+    all_entries = result.scalars().all()
+
+    entries_by_employee = {}
+    for entry in all_entries:
+        entries_by_employee.setdefault(entry.employee_id, []).append(entry)
+
+    def day_has_work(day_entries, day_date, interval):
+        workday_start = datetime.combine(day_date, time(5, 0, 0))
+        workday_end = workday_start + timedelta(days=1)
+        now = datetime.now()
+
+        total_work_sec = 0
+        last_start_time = None
+        last_break_start = None
+        in_shift = False
+        in_break = False
+
+        if day_date == now.date():
+            day_cutoff = now if now < workday_end else workday_end
+        else:
+            day_cutoff = workday_end
+
+        for entry in day_entries:
+            ts = entry.timestamp
+            action = entry.action
+            if action == "start":
+                if not in_shift:
+                    in_shift = True
+                    last_start_time = ts
+            elif action == "end":
+                if in_shift:
+                    in_shift = False
+                    if last_start_time and not in_break:
+                        total_work_sec += (ts - last_start_time).total_seconds()
+                    last_start_time = None
+            elif action == "break_start":
+                if in_shift and not in_break:
+                    in_break = True
+                    last_break_start = ts
+                    if last_start_time:
+                        total_work_sec += (ts - last_start_time).total_seconds()
+                        last_start_time = None
+            elif action == "break_end":
+                if in_break:
+                    in_break = False
+                    if last_break_start:
+                        total_break_sec = 0  # не нужен для has_work
+                        last_break_start = None
+                    last_start_time = ts
+
+        if in_shift and not in_break and last_start_time:
+            total_work_sec += (day_cutoff - last_start_time).total_seconds()
+
+        raw_minutes = int(total_work_sec // 60)
+        rounded_minutes = crud.floor_round_minutes(raw_minutes, interval)
+        return rounded_minutes > 0
+
+    date_range = []
+    current = start
+    while current <= end:
+        date_range.append(current)
+        current += timedelta(days=1)
+
+    result = []
+    for emp in employees:
+        emp_entries = entries_by_employee.get(emp.id, [])
+        day_map = {}
+        for entry in emp_entries:
+            ts = entry.timestamp
+            if ts.time() >= time(5, 0, 0):
+                day_date = ts.date()
+            else:
+                day_date = ts.date() - timedelta(days=1)
+            day_map.setdefault(day_date, []).append(entry)
+
+        days_status = []
+        for d in date_range:
+            day_entries = day_map.get(d, [])
+            is_working = day_has_work(day_entries, d, interval)
+            days_status.append(is_working)
+
+        result.append({
+            "employee_id": emp.id,
+            "full_name": emp.full_name,
+            "days": days_status
+        })
+
+    return result
