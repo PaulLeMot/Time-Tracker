@@ -982,19 +982,18 @@
                 <input type="date" id="reportDate">
                 <button id="nextDayBtn" class="btn btn-sm" title="Следующий день">▶</button>
                 <button id="loadReportBtn">Обновить</button>
+                <button id="dailyTrafficBtn" class="btn">🚦</button>
+                <button id="toggleFilterBtn" class="btn">🎛️ Фильтр по статусам</button>
+                <div id="statusOrderSettings" style="display: none;">
+                    <ul id="statusOrderList" class="sortable-list">
+                        <li data-status="working">✅</li>
+                        <li data-status="onbreak">☕</li>
+                        <li data-status="notstarted">❌</li>
+                        <li data-status="ended">🏁</li>
+                    </ul>
+                </div>
             </div>
-        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
-            <button id="toggleFilterBtn" class="btn">🎛️ Фильтр по статусам</button>
-            <div id="statusOrderSettings" style="display: none;">
-                <ul id="statusOrderList" class="sortable-list">
-                    <li data-status="working">✅ Работает</li>
-                    <li data-status="onbreak">☕ В перерыве</li>
-                    <li data-status="notstarted">❌ Не начал</li>
-                    <li data-status="ended">🏁 Завершил</li>
-                </ul>
-            </div>
-            <button id="dailyTrafficBtn" class="btn">🚦</button>
-        </div>
+            
             <div id="reportContainer"></div>
         </div>
         <div class="tab-content" id="weekly-tab" style="display: none;">
@@ -1445,7 +1444,10 @@
                 };
 
                 const expandCell = row.insertCell(9);
-                expandCell.innerHTML = `<button class="expand-schedule-btn" data-id="${emp.id}" style="background:none; border:none; cursor:pointer; font-size:1.2rem;">▼</button>`;
+                // Определяем, есть ли расписание
+                const hasSchedule = emp.schedule_data && Object.keys(emp.schedule_data).length > 0;
+                const arrowColor = hasSchedule ? '#166534' : '#991b1b';
+                expandCell.innerHTML = `<button class="expand-schedule-btn" data-id="${emp.id}" style="background:none; border:none; cursor:pointer; font-size:1.2rem; color: ${arrowColor};">▼</button>`;
                 const expandBtn = expandCell.querySelector('.expand-schedule-btn');
                 if (expandBtn) {
                     expandBtn.addEventListener('click', (e) => {
@@ -1467,6 +1469,7 @@
                 actionsCell.appendChild(delBtn);
             }
 
+            // обработчики для кнопок редактирования и т.д. (остаются без изменений)
             document.querySelectorAll('.edit-username-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const id = btn.dataset.id;
@@ -1518,7 +1521,6 @@
                     } else showToast('Ошибка', true);
                 });
             });
-
             document.querySelectorAll('.edit-barcode-secret-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const id = btn.dataset.id;
@@ -1549,7 +1551,6 @@
             showToast(err.message, true);
         }
     }
-
     document.getElementById('addEmployeeForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value.trim();
@@ -3040,7 +3041,6 @@ async function insertScheduleRow(row, empId, expandBtn) {
                   <table style="width: 100%; border-collapse: collapse; text-align: center;">
                     <thead><tr>`;
     for (let i = 0; i < weekdays.length; i++) {
-        // Получаем дату для i-го дня недели (понедельник + i дней)
         const dateObj = new Date(monday);
         dateObj.setDate(monday.getDate() + i);
         const dayStr = String(dateObj.getDate()).padStart(2, '0');
@@ -3134,6 +3134,13 @@ async function insertScheduleRow(row, empId, expandBtn) {
                 Object.assign(scheduleData, newSchedule);
                 for (let i = 0; i < allInputs.length; i++) {
                     originalValues[i] = allInputs[i].value;
+                }
+                // Обновляем цвет стрелки в зависимости от наличия расписания
+                const hasAnySchedule = Object.keys(newSchedule).length > 0;
+                const newColor = hasAnySchedule ? '#166534' : '#991b1b';
+                const btn = document.querySelector(`.expand-schedule-btn[data-id="${empId}"]`);
+                if (btn) {
+                    btn.style.color = newColor;
                 }
             } else {
                 showToast('Ошибка сохранения', true);
