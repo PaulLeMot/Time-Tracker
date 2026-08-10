@@ -426,134 +426,80 @@ async def mark_barcode(barcode: str):
 
     found_via_qr = False
     found_via_fsk = False
-    qr_art_markings = {}  # art -> set(markings)
+    qr_art_markings = {}  # art -> set(markings) – будет использоваться для маркировок, если нужно
 
     # Определяем, был ли введён FSK-штрихкод (начинается с 2400000 и длина 13)
     if barcode.startswith("2400000") and len(barcode) == 13:
         found_via_fsk = True
 
     if normalized in index:
+        # Если это FSK или обычный артикул, ищем по нему
         barcodes_to_search = [normalized]
-    else:
-        qr_index_all = {}
-        for mk in MARKING_KEYS:
-            qr_idx = get_oz_qr_index(mk, today_str)
-            for qr, items in qr_idx.items():
-                qr_index_all.setdefault(qr, []).extend(items)
-
-        if barcode in qr_index_all:
-            found_via_qr = True
-            qr_items = qr_index_all[barcode]
-            barcodes_to_search = []
-            for item in qr_items:
-                art = item["art"]
-                marking = item["marking"]
-                if art not in barcodes_to_search:
-                    barcodes_to_search.append(art)
-                qr_art_markings.setdefault(art, set()).add(marking)
-        else:
+        # Для этого случая мы не будем использовать QR-логику, но чтобы сохранить единообразие,
+        # мы можем просто искать по normalized
+        all_positions = []
+        for bcode in barcodes_to_search:
+            if bcode in index:
+                for pos in index[bcode]:
+                    all_positions.append((pos[0], pos[1], bcode))
+        all_positions = list(set(all_positions))
+        if not all_positions:
             raise HTTPException(status_code=404, detail="Товар не найден")
-
-    all_positions = []
-    for bcode in barcodes_to_search:
-        if bcode in index:
-            all_positions.extend(index[bcode])
-    all_positions = list(set(all_positions))
-    if not all_positions:
-        raise HTTPException(status_code=404, detail="Товар не найден")
-
-    # ========== ИСПРАВЛЕННАЯ ГРУППИРОВКА ==========
-    # Группируем по полю "Код", а не по кортежу (Код, Вид, Фандом, Название)
-    products = {}  # ключ = код товара (строка)
-    for row_idx, col_idx in all_positions:
-        row = data[row_idx]
-        code = row.get("Код", "").strip()
-        if not code:
-            continue
-
-        if code not in products:
-            # Создаём новый продукт для этого кода
-            products[code] = {
-                "Код": code,
-                "Вид": row.get("Вид товара", "").strip(),
-                "Фандом": (row.get("Фандом", "") or row.get("Фандом 4ek", "")).strip(),
-                "Название": row.get("Название", "").strip(),
-                "Маркировки": set(),
-                "entries": [],
-                "skip_stickers": False,
-                "qr_markings": set(),
-                "row": row,  # сохраняем первую строку для таблицы
-            }
-        else:
-            # Если код уже есть, обновляем поля, только если они пустые (берём первое непустое)
-            prod = products[code]
-            if not prod["Вид"] and row.get("Вид товара"):
-                prod["Вид"] = row.get("Вид товара", "").strip()
-            if not prod["Фандом"] and (row.get("Фандом") or row.get("Фандом 4ek")):
-                prod["Фандом"] = (row.get("Фандом") or row.get("Фандом 4ek", "")).strip()
-            if not prod["Название"] and row.get("Название"):
-                prod["Название"] = row.get("Название", "").strip()
-            # Если строка не сохранена, сохраняем текущую (но предпочтительнее первую)
-            if "row" not in prod:
-                prod["row"] = row
-
-        # Добавляем маркировки из QR, если артикул совпадает
-        if found_via_qr and code in qr_art_markings:
-            products[code]["qr_markings"].update(qr_art_markings[code])
-
-        marking, is_id = get_marking_for_position(col_idx, col_names)
-        if marking:
-            if marking == "FSK" and found_via_fsk:
-                products[code]["skip_stickers"] = True
+        
+        # Группируем по артикулу (bcode)
+        products = {}
+        for row_idx, col_idx, art in all_positions:
+            row = data[row_idx]
+            # Используем артикул как ключ
+            if art not in products:
+                products[art] = {
+                    "Код": row.get("Код", "").strip(),
+                    "Вид": row.get("Вид товара", "").strip(),
+                    "Фандом": (row.get("Фандом", "") or row.get("Фандом 4ek", "")).strip(),
+                    "Название": row.get("Название", "").strip(),
+                    "Маркировки": set(),
+                    "entries": [],
+                    "skip_stickers": False,
+                    "qr_markings": set(),
+                    "row": row,
+                }
             else:
-                products[code]["Маркировки"].add(marking)
-                products[code]["entries"].append((marking, is_id))
-                if marking == "FSK" and not found_via_qr and not found_via_fsk:
-                    # Это артикул, но FSK-маркировку можно добавить, но skip_stickers не нужен
-                    pass
+                # Если артикул уже есть, обновляем поля, если они пустые
+                prod = products[art]
+                if not prod["Вид"] and row.get("Вид товара"):
+                    prod["Вид"] = row.get("Вид товара", "").strip()
+                if not prod["Фандом"] and (row.get("Фандом") or row.get("Фандом 4ek")):
+                    prod["Фандом"] = (row.get("Фандом") or row.get("Фандом 4ek", "")).strip()
+                if not prod["Название"] and row.get("Название"):
+                    prod["Название"] = row.get("Название", "").strip()
+                if "row" not in prod:
+                    prod["row"] = row
 
-    # Вычисляем sticker_markings для каждого продукта
-    for code, data_item in products.items():
-        if data_item["skip_stickers"]:
-            data_item["sticker_markings"] = set()
-            continue
+            marking, is_id = get_marking_for_position(col_idx, col_names)
+            if marking:
+                if marking == "FSK" and found_via_fsk:
+                    products[art]["skip_stickers"] = True
+                else:
+                    products[art]["Маркировки"].add(marking)
+                    products[art]["entries"].append((marking, is_id))
+                    if marking == "FSK" and not found_via_qr and not found_via_fsk:
+                        pass
 
-        qr_markings = {f"{mk}_OZ" for mk in data_item["qr_markings"]}
-        id_markings = {marking for marking, is_id in data_item["entries"] if is_id is True}
-        barcode_markings = {marking for marking, is_id in data_item["entries"] if is_id is False}
+        # Вычисляем sticker_markings
+        for art, data_item in products.items():
+            if data_item["skip_stickers"]:
+                data_item["sticker_markings"] = set()
+                continue
 
-        all_markings = set()
-        if id_markings:
-            all_markings.update(id_markings)
-        if barcode_markings:
-            all_markings.update(barcode_markings)
-        if qr_markings:
-            all_markings.update(qr_markings)
+            qr_markings = {f"{mk}_OZ" for mk in data_item["qr_markings"]}
+            id_markings = {marking for marking, is_id in data_item["entries"] if is_id is True}
+            barcode_markings = {marking for marking, is_id in data_item["entries"] if is_id is False}
+            all_markings = id_markings | barcode_markings | qr_markings
+            data_item["sticker_markings"] = all_markings
 
-        data_item["sticker_markings"] = all_markings
-
-    results = []
-    for code, data_item in products.items():
-        # Используем сохранённую строку для таблицы
-        row_for_table = data_item.get("row")
-        if row_for_table is not None:
-            oz_search_art = next(iter(qr_art_markings.keys())) if found_via_qr and qr_art_markings else None
-            table = get_row_data(
-                row_for_table,
-                col_names,
-                data_item["Код"],
-                sticker_indices,
-                oz_sticker_indices,
-                skip_stickers=data_item["skip_stickers"],
-                oz_search_art=oz_search_art
-            )
-        else:
-            # Если строка не сохранена (маловероятно), ищем по всем позициям
-            table = []
-            for row_idx, col_idx in all_positions:
-                if data_item["Код"] == data[row_idx].get("Код", ""):
-                    row_for_table = data[row_idx]
-                    break
+        results = []
+        for art, data_item in products.items():
+            row_for_table = data_item.get("row")
             if row_for_table is not None:
                 table = get_row_data(
                     row_for_table,
@@ -562,49 +508,184 @@ async def mark_barcode(barcode: str):
                     sticker_indices,
                     oz_sticker_indices,
                     skip_stickers=data_item["skip_stickers"],
-                    oz_search_art=oz_search_art
+                    oz_search_art=art  # передаём артикул для поиска стикеров OZ
                 )
+            else:
+                table = []
 
-        # Обогащение WB-стикеров номерами строк из list
-        if table:
-            for row in table:
-                if row.get("platform") == "WB" and row.get("stickers"):
-                    new_stickers = []
-                    for st in row["stickers"]:
-                        if isinstance(st, str):
-                            row_num = get_list_wb_row(
-                                row["marking"].split('_')[0] if '_' in row["marking"] else "",
-                                today_str,
-                                st
-                            )
-                            new_stickers.append({"sticker": st, "row": row_num if row_num is not None else None})
-                        else:
-                            new_stickers.append(st)
-                    row["stickers"] = new_stickers
+            # Обогащение WB-стикеров
+            if table:
+                for row in table:
+                    if row.get("platform") == "WB" and row.get("stickers"):
+                        new_stickers = []
+                        for st in row["stickers"]:
+                            if isinstance(st, str):
+                                row_num = get_list_wb_row(
+                                    row["marking"].split('_')[0] if '_' in row["marking"] else "",
+                                    today_str,
+                                    st
+                                )
+                                new_stickers.append({"sticker": st, "row": row_num if row_num is not None else None})
+                            else:
+                                new_stickers.append(st)
+                        row["stickers"] = new_stickers
 
-        found_markings = list(data_item["sticker_markings"])
-
-        # Определяем отображаемую "Маркировку":
-        if found_via_qr and data_item["qr_markings"]:
-            display_marking = ", ".join(sorted(f"{mk}_OZ" for mk in data_item["qr_markings"]))
-        else:
+            found_markings = list(data_item["sticker_markings"])
             display_marking = ", ".join(sorted(data_item["Маркировки"])) if data_item["Маркировки"] else None
 
-        item = {
-            "Код": data_item["Код"],
-            "Вид": data_item["Вид"],
-            "Фандом": data_item["Фандом"],
-            "Название": data_item["Название"],
-            "Маркировка": display_marking,
-            "found_markings": found_markings,
-            "table": table
-        }
-        results.append(item)
+            item = {
+                "Код": data_item["Код"],
+                "Вид": data_item["Вид"],
+                "Фандом": data_item["Фандом"],
+                "Название": data_item["Название"],
+                "Маркировка": display_marking,
+                "found_markings": found_markings,
+                "table": table
+            }
+            results.append(item)
 
-    if not results:
-        raise HTTPException(status_code=404, detail="Товар не найден")
-    
-    return results
+        if not results:
+            raise HTTPException(status_code=404, detail="Товар не найден")
+        return results
+
+    else:
+        # Поиск по QR-коду для OZ
+        qr_index_all = {}
+        for mk in MARKING_KEYS:
+            qr_idx = get_oz_qr_index(mk, today_str)
+            for qr, items in qr_idx.items():
+                qr_index_all.setdefault(qr, []).extend(items)
+
+        if barcode not in qr_index_all:
+            raise HTTPException(status_code=404, detail="Товар не найден")
+
+        found_via_qr = True
+        qr_items = qr_index_all[barcode]
+
+        # Дедуплицируем артикулы, чтобы избежать повторов
+        art_set = set()
+        for item in qr_items:
+            art_set.add(item["art"])
+        barcodes_to_search = list(art_set)
+
+        all_positions = []
+        for bcode in barcodes_to_search:
+            if bcode in index:
+                for pos in index[bcode]:
+                    all_positions.append((pos[0], pos[1], bcode))
+        all_positions = list(set(all_positions))
+        if not all_positions:
+            raise HTTPException(status_code=404, detail="Товар не найден")
+
+        # Группируем по артикулу (bcode)
+        products = {}
+        for row_idx, col_idx, art in all_positions:
+            row = data[row_idx]
+            if art not in products:
+                products[art] = {
+                    "Код": row.get("Код", "").strip(),
+                    "Вид": row.get("Вид товара", "").strip(),
+                    "Фандом": (row.get("Фандом", "") or row.get("Фандом 4ek", "")).strip(),
+                    "Название": row.get("Название", "").strip(),
+                    "Маркировки": set(),
+                    "entries": [],
+                    "skip_stickers": False,
+                    "qr_markings": set(),
+                    "row": row,
+                }
+            else:
+                prod = products[art]
+                if not prod["Вид"] and row.get("Вид товара"):
+                    prod["Вид"] = row.get("Вид товара", "").strip()
+                if not prod["Фандом"] and (row.get("Фандом") or row.get("Фандом 4ek")):
+                    prod["Фандом"] = (row.get("Фандом") or row.get("Фандом 4ek", "")).strip()
+                if not prod["Название"] and row.get("Название"):
+                    prod["Название"] = row.get("Название", "").strip()
+                if "row" not in prod:
+                    prod["row"] = row
+
+            # Добавляем маркировки из QR, если артикул совпадает
+            # Собираем маркировки для данного артикула
+            for item in qr_items:
+                if item["art"] == art:
+                    products[art]["qr_markings"].add(item["marking"])
+
+            marking, is_id = get_marking_for_position(col_idx, col_names)
+            if marking:
+                if marking == "FSK" and found_via_fsk:
+                    products[art]["skip_stickers"] = True
+                else:
+                    products[art]["Маркировки"].add(marking)
+                    products[art]["entries"].append((marking, is_id))
+                    if marking == "FSK" and not found_via_qr and not found_via_fsk:
+                        pass
+
+        # Вычисляем sticker_markings
+        for art, data_item in products.items():
+            if data_item["skip_stickers"]:
+                data_item["sticker_markings"] = set()
+                continue
+
+            qr_markings = {f"{mk}_OZ" for mk in data_item["qr_markings"]}
+            id_markings = {marking for marking, is_id in data_item["entries"] if is_id is True}
+            barcode_markings = {marking for marking, is_id in data_item["entries"] if is_id is False}
+            all_markings = id_markings | barcode_markings | qr_markings
+            data_item["sticker_markings"] = all_markings
+
+        results = []
+        for art, data_item in products.items():
+            row_for_table = data_item.get("row")
+            if row_for_table is not None:
+                table = get_row_data(
+                    row_for_table,
+                    col_names,
+                    data_item["Код"],
+                    sticker_indices,
+                    oz_sticker_indices,
+                    skip_stickers=data_item["skip_stickers"],
+                    oz_search_art=art
+                )
+            else:
+                table = []
+
+            # Обогащение WB-стикеров
+            if table:
+                for row in table:
+                    if row.get("platform") == "WB" and row.get("stickers"):
+                        new_stickers = []
+                        for st in row["stickers"]:
+                            if isinstance(st, str):
+                                row_num = get_list_wb_row(
+                                    row["marking"].split('_')[0] if '_' in row["marking"] else "",
+                                    today_str,
+                                    st
+                                )
+                                new_stickers.append({"sticker": st, "row": row_num if row_num is not None else None})
+                            else:
+                                new_stickers.append(st)
+                        row["stickers"] = new_stickers
+
+            found_markings = list(data_item["sticker_markings"])
+            # Отображаем маркировку: если есть QR-маркировки, показываем их, иначе все маркировки
+            if found_via_qr and data_item["qr_markings"]:
+                display_marking = ", ".join(sorted(f"{mk}_OZ" for mk in data_item["qr_markings"]))
+            else:
+                display_marking = ", ".join(sorted(data_item["Маркировки"])) if data_item["Маркировки"] else None
+
+            item = {
+                "Код": data_item["Код"],
+                "Вид": data_item["Вид"],
+                "Фандом": data_item["Фандом"],
+                "Название": data_item["Название"],
+                "Маркировка": display_marking,
+                "found_markings": found_markings,
+                "table": table
+            }
+            results.append(item)
+
+        if not results:
+            raise HTTPException(status_code=404, detail="Товар не найден")
+        return results
 
 @router.get("/mark")
 async def mark_page():
