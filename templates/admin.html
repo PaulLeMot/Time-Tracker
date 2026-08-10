@@ -1078,7 +1078,6 @@
             </div>
         </div>
         <div class="tab-content" id="notifications-tab" style="display: none;">
-            <h2>🔔 Управление уведомлениями</h2>
             <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                 <label>Фильтр по статусу:</label>
                 <select id="notifStatusFilter">
@@ -1217,14 +1216,37 @@
         <div id="notifyEmployeeInfo" style="margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px; font-weight: 500; color: #0f172a;">
             👤 Сотрудник: <span id="notifyEmployeeName">—</span>
         </div>
+        <!-- ↓↓↓ ВСТАВИТЬ НОВЫЙ БЛОК С ОЦЕНКАМИ СЮДА ↓↓↓ -->
         <div style="margin-bottom: 12px;">
             <label>Тип:</label>
             <select id="notifType">
                 <option value="reprimand">❌ Замечание</option>
                 <option value="warning">⚠️ Предупреждение</option>
                 <option value="commendation">✅ Похвала</option>
+                <!-- добавить option для оценки работы -->
+                <option value="performance_review">⭐ Оценка работы</option>
             </select>
         </div>
+
+        <!-- Блок с оценками (показывать только для performance_review) -->
+        <div id="gradeContainer" style="display: none; margin-bottom: 12px;">
+            <label>Оценка:</label>
+            <div style="display: flex; gap: 12px; margin-top: 4px; flex-wrap: nowrap; overflow-x: auto;">
+                <label style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                    <input type="radio" name="grade" value="red" style="accent-color: #ef4444;"> 🔴
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                    <input type="radio" name="grade" value="yellow" style="accent-color: #f59e0b;"> 🟡
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                    <input type="radio" name="grade" value="blue" style="accent-color: #3b82f6;"> 🔵
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                    <input type="radio" name="grade" value="green" style="accent-color: #22c55e;"> 🟢
+                </label>
+            </div>
+        </div>
+
         <div style="margin-bottom: 12px;">
             <label>Сообщение:</label>
             <textarea id="notifMessage" rows="4" style="width:100%;"></textarea>
@@ -3237,6 +3259,19 @@ function renderNotifications(notifications) {
             case 'reprimand': typeIcon = '❌'; break;
             case 'warning': typeIcon = '⚠️'; break;
             case 'commendation': typeIcon = '✅'; break;
+            case 'performance_review':
+                typeIcon = '⭐';
+                break;
+        }
+        let gradeHtml = '';
+        if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
+            const gradeMap = {
+                'red': '🔴 Неудовлетворительно',
+                'yellow': '🟡 Сойдёт, есть замечания',
+                'blue': '🔵 Всё ровно, так держать',
+                'green': '🟢 Молодец, ты супер!'
+            };
+            gradeHtml = `<div style="font-size:0.7rem; color:#64748b;">${gradeMap[n.extra_data.grade]}</div>`;
         }
         let statusText = '';
         if (n.status === 'draft') statusText = 'Черновик';
@@ -3273,7 +3308,7 @@ function renderNotifications(notifications) {
         }
         html += `<tr>
                     <td><a href="#" onclick="goToEmployeeRecentEntries(${n.employee_id}, '${escapeHtml(n.full_name)}'); return false;" style="color: #1e293b; text-decoration: none; cursor: pointer;">${escapeHtml(n.full_name)}</a></td>
-                    <td>${typeIcon}</td>
+                    <td>${typeIcon} ${gradeHtml}</td>
                     <td>${createdDate}</td>
                     <td>${escapeHtml(n.created_by || '—')}</td>
                     <td>${escapeHtml(n.message)}</td>
@@ -3526,10 +3561,20 @@ window.sendNotification = async function() {
     const type = document.getElementById('notifType').value;
     const message = document.getElementById('notifMessage').value.trim();
     if (!message) {
-        const errorDiv = document.getElementById('createNotifError');
-        if (errorDiv) errorDiv.innerText = 'Введите сообщение';
+        document.getElementById('createNotifError').innerText = 'Введите сообщение';
         return;
     }
+
+    let grade = null;
+    if (type === 'performance_review') {
+        const selected = document.querySelector('input[name="grade"]:checked');
+        if (!selected) {
+            document.getElementById('createNotifError').innerText = 'Выберите оценку';
+            return;
+        }
+        grade = selected.value;
+    }
+
     try {
         const resp = await fetch('/api/admin/notifications/', {
             method: 'POST',
@@ -3537,25 +3582,33 @@ window.sendNotification = async function() {
             body: JSON.stringify({
                 employee_id: currentNotifyEmployeeId,
                 type: type,
-                message: message
+                message: message,
+                grade: grade
             }),
             credentials: 'include'
         });
         if (resp.ok) {
             showToast('✅ Уведомление создано (черновик)', false);
-            const modal = document.getElementById('createNotificationModal');
-            if (modal) modal.style.display = 'none';
+            document.getElementById('createNotificationModal').style.display = 'none';
             updateDraftBadge();
         } else {
             const err = await resp.json();
-            const errorDiv = document.getElementById('createNotifError');
-            if (errorDiv) errorDiv.innerText = err.detail || 'Ошибка отправки';
+            document.getElementById('createNotifError').innerText = err.detail || 'Ошибка отправки';
         }
     } catch (err) {
-        const errorDiv = document.getElementById('createNotifError');
-        if (errorDiv) errorDiv.innerText = 'Ошибка сети';
+        document.getElementById('createNotifError').innerText = 'Ошибка сети';
     }
 };
+document.getElementById('notifType').addEventListener('change', function() {
+    const gradeContainer = document.getElementById('gradeContainer');
+    if (this.value === 'performance_review') {
+        gradeContainer.style.display = 'block';
+    } else {
+        gradeContainer.style.display = 'none';
+        const checked = document.querySelector('input[name="grade"]:checked');
+        if (checked) checked.checked = false;
+    }
+});
 document.getElementById('sendNotificationBtn')?.addEventListener('click', window.sendNotification);
 document.querySelector('.close-create-notif')?.addEventListener('click', () => {
     document.getElementById('createNotificationModal').style.display = 'none';

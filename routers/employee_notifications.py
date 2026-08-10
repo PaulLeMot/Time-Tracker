@@ -19,6 +19,7 @@ class NotificationResponse(BaseModel):
     created_at: datetime
     has_explanation: bool
     explanation_text: Optional[str] = None
+    extra_data: Optional[dict] = None
 
 class ExplanationCreate(BaseModel):
     explanation_text: str
@@ -55,7 +56,8 @@ async def get_employee_notifications(
             message=notif.message,
             created_at=notif.created_at,
             has_explanation=explanation_text is not None,
-            explanation_text=explanation_text
+            explanation_text=explanation_text,
+            extra_data=notif.extra_data
         ))
     return response
 

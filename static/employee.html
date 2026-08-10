@@ -1618,6 +1618,7 @@ function renderNotifications(notifications) {
         for (const n of notifications) {
             let typeIcon = '';
             let typeColor = '';
+            let gradeHtml = '';
             switch (n.type) {
                 case 'reprimand':
                     typeIcon = '❌';
@@ -1631,6 +1632,27 @@ function renderNotifications(notifications) {
                     typeIcon = '✅';
                     typeColor = 'green';
                     break;
+                case 'performance_review':
+                    typeIcon = '⭐';
+                    typeColor = '#3b82f6'; // синий цвет
+                    typeLabel = 'Оценка работы';
+                    break;
+            }
+            gradeHtml = '';
+            if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
+                const gradeMap = {
+                    'red': '🔴 Неудовлетворительно',
+                    'yellow': '🟡 Сойдёт, есть замечания',
+                    'blue': '🔵 Всё ровно, так держать',
+                    'green': '🟢 Молодец, ты супер!'
+                };
+                const colorMap = {
+                    'red': '#ef4444',
+                    'yellow': '#f59e0b',
+                    'blue': '#3b82f6',
+                    'green': '#22c55e'
+                };
+                gradeHtml = `<div style="font-size:0.8rem; color:${colorMap[n.extra_data.grade] || '#64748b'};">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>`;
             }
             const dateStr = new Date(n.created_at).toLocaleString();
             const hasExpl = n.has_explanation;
@@ -1640,7 +1662,7 @@ function renderNotifications(notifications) {
             if (hasExpl) {
                 actionCell = '—';
             } else {
-                if (n.type === 'reprimand') {
+                if (n.type === 'reprimand' || n.type === 'performance_review') {
                     actionCell = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
                 } else if (n.type === 'commendation') {
                     actionCell = `<button class="btn-sm mark-as-read" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>`;
@@ -1664,7 +1686,10 @@ function renderNotifications(notifications) {
                 fixAction = `<button class="btn-sm fix-end-time" data-id="${n.id}" data-workday-date="${workdayDate}">✏️ Исправить</button>`;
             }
             html += `<tr class="${rowClass}">
-                        <td style="color:${typeColor}; font-size:1.2rem;">${typeIcon}</td>
+                        <td style="color:${typeColor}; font-size:1.2rem;">
+                            ${typeIcon}
+                            ${gradeHtml}
+                        </td>
                         <td>${escapeHtml(n.message)}</td>
                         <td>${dateStr}</td>
                         <td>${hasExpl ? 'Отвечено' : 'Ожидает'}</td>
@@ -1709,6 +1734,22 @@ function renderNotifications(notifications) {
         let html = '<div class="notifications-accordion">';
         for (const n of notifications) {
             let typeIcon = '';
+            let gradeHtml = '';
+            if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
+                const gradeMap = {
+                    'red': '🔴 Неудовлетворительно',
+                    'yellow': '🟡 Сойдёт, есть замечания',
+                    'blue': '🔵 Всё ровно, так держать',
+                    'green': '🟢 Молодец, ты супер!'
+                };
+                const colorMap = {
+                    'red': '#ef4444',
+                    'yellow': '#f59e0b',
+                    'blue': '#3b82f6',
+                    'green': '#22c55e'
+                };
+                gradeHtml = `<div style="font-size:0.8rem; color:${colorMap[n.extra_data.grade] || '#64748b'};">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>`;
+            }
             let typeColor = '';
             let typeLabel = '';
             switch (n.type) {
@@ -1753,6 +1794,22 @@ function renderNotifications(notifications) {
                     <div class="notif-detail-value">${escapeHtml(n.message)}</div>
                 </div>
             `;
+
+            // Отображение оценки для performance_review
+            if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
+                const gradeMap = {
+                    'red': '🔴 Неудовлетворительно',
+                    'yellow': '🟡 Сойдёт, есть замечания',
+                    'blue': '🔵 Всё ровно, так держать',
+                    'green': '🟢 Молодец, ты супер!'
+                };
+                detailsHtml += `
+                    <div class="notif-detail-row">
+                        <div class="notif-detail-label">Оценка</div>
+                        <div class="notif-detail-value">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>
+                    </div>
+                `;
+            }
             
             if (hasExpl) {
                 detailsHtml += `
@@ -1764,7 +1821,7 @@ function renderNotifications(notifications) {
                     </div>
                 `;
             } else {
-                if (n.type === 'reprimand') {
+                if (n.type === 'reprimand' || n.type === 'performance_review') {
                     detailsHtml += `
                         <div class="notif-detail-row">
                             <div class="notif-detail-label">Действие</div>
@@ -2117,6 +2174,9 @@ function renderAllNotifications(notifications) {
                 case 'reprimand': typeIcon = '❌'; break;
                 case 'warning': typeIcon = '⚠️'; break;
                 case 'commendation': typeIcon = '✅'; break;
+                case 'performance_review':
+                    typeIcon = '⭐';
+                    break;
             }
             let statusText = '';
             if (n.status === 'draft') statusText = 'Черновик';
@@ -2151,7 +2211,18 @@ function renderAllNotifications(notifications) {
 
             html += `<tr>
                 <td>${escapeHtml(n.full_name)}</td>
-                <td>${typeIcon}</td>
+                <td>
+                    ${typeIcon}
+                    ${(n.type === 'performance_review' && n.extra_data && n.extra_data.grade) ? (() => {
+                        const gradeMap = {
+                            'red': '🔴 Неудовлетворительно',
+                            'yellow': '🟡 Сойдёт, есть замечания',
+                            'blue': '🔵 Всё ровно, так держать',
+                            'green': '🟢 Молодец, ты супер!'
+                        };
+                        return `<div style="font-size:0.7rem; color:#64748b;">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>`;
+                    })() : ''}
+                </td>
                 <td>${createdDate}</td>
                 <td>${escapeHtml(n.message)}</td>
                 <td>${explanationHtml}</td>
@@ -2186,6 +2257,11 @@ function renderAllNotifications(notifications) {
                 case 'reprimand': typeIcon = '❌'; typeColor = 'red'; typeLabel = 'Замечание'; break;
                 case 'warning': typeIcon = '⚠️'; typeColor = 'orange'; typeLabel = 'Предупреждение'; break;
                 case 'commendation': typeIcon = '✅'; typeColor = 'green'; typeLabel = 'Похвала'; break;
+                case 'performance_review':
+                    typeIcon = '⭐';
+                    typeColor = '#3b82f6';
+                    typeLabel = '⭐ Оценка работы';
+                    break;
             }
             let statusText = '';
             if (n.status === 'draft') statusText = 'Черновик';
@@ -2241,6 +2317,22 @@ function renderAllNotifications(notifications) {
                     <div class="notif-detail-row">
                         <div class="notif-detail-label">Объяснительная</div>
                         <div class="notif-detail-value">—</div>
+                    </div>
+                `;
+            }
+
+            // Отображение оценки для performance_review (добавляем в detailsHtml до использования)
+            if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
+                const gradeMap = {
+                    'red': '🔴 Неудовлетворительно',
+                    'yellow': '🟡 Сойдёт, есть замечания',
+                    'blue': '🔵 Всё ровно, так держать',
+                    'green': '🟢 Молодец, ты супер!'
+                };
+                detailsHtml += `
+                    <div class="notif-detail-row">
+                        <div class="notif-detail-label">Оценка</div>
+                        <div class="notif-detail-value">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>
                     </div>
                 `;
             }

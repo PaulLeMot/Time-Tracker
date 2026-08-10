@@ -1,7 +1,28 @@
-from sqlalchemy import Column, Integer, String, DateTime, Time, JSON, Enum, ForeignKey, Text, UniqueConstraint, Date
+import enum
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Text, UniqueConstraint, Date
 from database import Base
 from datetime import datetime
-import enum
+from sqlalchemy import Enum as SAEnum
+
+# ---- ОПРЕДЕЛЯЕМ ENUM BEFORE USING ----
+class NotificationType(str, enum.Enum):
+    REPRIMAND = "reprimand"
+    WARNING = "warning"
+    COMMENDATION = "commendation"
+    PERFORMANCE_REVIEW = "performance_review"
+
+class NotificationStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SENT = "sent"
+    REJECTED = "rejected"
+
+class DayType(str, enum.Enum):
+    WORK = "work"
+    OFF = "off"
+    VACATION = "vacation"
+    SICK = "sick"
+
+# ---- МОДЕЛИ ----
 class Employee(Base):
     __tablename__ = "employees"
     id = Column(Integer, primary_key=True, index=True)
@@ -13,7 +34,7 @@ class Employee(Base):
     is_admin = Column(Integer, default=0)
     is_monitor = Column(Integer, default=0)
     schedule_data = Column(JSON, nullable=True)
-    
+
 class TimeEntry(Base):
     __tablename__ = "time_entries"
     id = Column(Integer, primary_key=True, index=True)
@@ -21,30 +42,39 @@ class TimeEntry(Base):
     action = Column(String, nullable=False)
     timestamp = Column(DateTime, nullable=False)
     source = Column(String, default="barcode")
+
 class SystemSetting(Base):
     __tablename__ = "system_settings"
     key = Column(String(100), primary_key=True)
     value = Column(String, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
-class NotificationType(enum.Enum):
-    REPRIMAND = "reprimand"
-    WARNING = "warning"
-    COMMENDATION = "commendation"
-
-class NotificationStatus(enum.Enum):
-    DRAFT = "draft"
-    SENT = "sent"
-    REJECTED = "rejected"
-
 class Notification(Base):
     __tablename__ = "notifications"
     id = Column(Integer, primary_key=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     admin_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
-    type = Column(Enum(NotificationType), nullable=False)
+    
+    # Используем values_callable, чтобы SQLAlchemy использовал .value вместо .name
+    type = Column(
+        SAEnum(
+            NotificationType,
+            name="notificationtype",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+    )
     message = Column(Text, nullable=False)
-    status = Column(Enum(NotificationStatus), default=NotificationStatus.DRAFT)
+    
+    status = Column(
+        SAEnum(
+            NotificationStatus,
+            name="notificationstatus",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        default=NotificationStatus.DRAFT,
+    )
+    
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     source = Column(String(20), default="admin")
@@ -66,17 +96,21 @@ class Product(Base):
     fandom = Column(String, nullable=True)
     name = Column(String, nullable=False)
 
-class DayType(enum.Enum):
-    WORK = "work"
-    OFF = "off"
-    VACATION = "vacation"
-    SICK = "sick"
-
 class DayStatus(Base):
     __tablename__ = "day_status"
     id = Column(Integer, primary_key=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
-    date = Column(Date, nullable=False)  # дата дня
-    day_type = Column(Enum(DayType), nullable=False, default=DayType.OFF)
+    date = Column(Date, nullable=False)
+    
+    day_type = Column(
+        SAEnum(
+            DayType,
+            name="daytype",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        default=DayType.OFF,
+    )
+    
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     __table_args__ = (UniqueConstraint('employee_id', 'date', name='uix_employee_date'),)

@@ -55,6 +55,7 @@ class NotificationCreate(BaseModel):
     employee_id: int
     type: str
     message: str
+    grade: Optional[str] = None
 
 class NotificationUpdate(BaseModel):
     type: Optional[str] = None
@@ -74,6 +75,7 @@ class NotificationResponse(BaseModel):
     full_name: Optional[str] = None
     created_by: Optional[str] = None
     has_explanation: bool = False
+    extra_data: Optional[dict] = None
 
 class ExplanationUpdate(BaseModel):
     explanation_text: str
@@ -834,11 +836,17 @@ async def create_notification(
     current_user: models.Employee = Depends(get_current_monitor),
     db: AsyncSession = Depends(get_db)
 ):
+    data.type = data.type.lower()
     try:
         notif_type = NotificationType(data.type)
     except ValueError:
         raise HTTPException(400, "Invalid notification type")
-    
+
+    # Если тип performance_review – проверяем наличие grade
+    if notif_type == NotificationType.PERFORMANCE_REVIEW:
+        if not data.grade or data.grade not in ["red", "yellow", "blue", "green"]:
+            raise HTTPException(400, "For performance_review, grade must be one of: red, yellow, blue, green")
+
     employee = await crud.get_employee_by_id(db, data.employee_id)
     if not employee:
         raise HTTPException(404, "Employee not found")
@@ -849,7 +857,8 @@ async def create_notification(
         type=notif_type,
         message=data.message,
         status=NotificationStatus.DRAFT,
-        source="admin"
+        source="admin",
+        extra_data={"grade": data.grade} if data.grade else None
     )
     db.add(notification)
     await db.commit()
@@ -933,7 +942,8 @@ async def list_notifications(
             explanation=exp_text,
             full_name=emp_name,
             created_by=created_by,
-            has_explanation=is_answered  # 👈 Это поле управляет статусом "Отвечено/Ожидает" на фронтенде
+            has_explanation=is_answered,
+            extra_data=notif.extra_data
         ))
     return response
 
