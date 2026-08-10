@@ -221,6 +221,7 @@ def get_oz_qr_index(marking: str, date_str: str):
         _sticker_caches[cache_key] = {}
     _sticker_caches[cache_key]["qr_index"] = qr_index
     return qr_index
+
 def get_list_wb_row(marking: str, date_str: str, sticker: str) -> int | None:
     """
     Ищет стикер в Excel-файле из папки list (только WB).
@@ -461,44 +462,58 @@ async def mark_barcode(barcode: str):
     if not all_positions:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    products = {}
+    # ========== ИСПРАВЛЕННАЯ ГРУППИРОВКА ==========
+    # Группируем по полю "Код", а не по кортежу (Код, Вид, Фандом, Название)
+    products = {}  # ключ = код товара (строка)
     for row_idx, col_idx in all_positions:
         row = data[row_idx]
-        code = row.get("Код", "")
-        view = row.get("Вид товара", "")
-        fandom = row.get("Фандом", "") or row.get("Фандом 4ek", "")
-        name = row.get("Название", "")
-        key = (code, view, fandom, name)
+        code = row.get("Код", "").strip()
+        if not code:
+            continue
 
-        if key not in products:
-            products[key] = {
+        if code not in products:
+            # Создаём новый продукт для этого кода
+            products[code] = {
                 "Код": code,
-                "Вид": view,
-                "Фандом": fandom,
-                "Название": name,
+                "Вид": row.get("Вид товара", "").strip(),
+                "Фандом": (row.get("Фандом", "") or row.get("Фандом 4ek", "")).strip(),
+                "Название": row.get("Название", "").strip(),
                 "Маркировки": set(),
                 "entries": [],
                 "skip_stickers": False,
                 "qr_markings": set(),
+                "row": row,  # сохраняем первую строку для таблицы
             }
+        else:
+            # Если код уже есть, обновляем поля, только если они пустые (берём первое непустое)
+            prod = products[code]
+            if not prod["Вид"] and row.get("Вид товара"):
+                prod["Вид"] = row.get("Вид товара", "").strip()
+            if not prod["Фандом"] and (row.get("Фандом") or row.get("Фандом 4ek")):
+                prod["Фандом"] = (row.get("Фандом") or row.get("Фандом 4ek", "")).strip()
+            if not prod["Название"] and row.get("Название"):
+                prod["Название"] = row.get("Название", "").strip()
+            # Если строка не сохранена, сохраняем текущую (но предпочтительнее первую)
+            if "row" not in prod:
+                prod["row"] = row
 
         # Добавляем маркировки из QR, если артикул совпадает
         if found_via_qr and code in qr_art_markings:
-            products[key]["qr_markings"].update(qr_art_markings[code])
+            products[code]["qr_markings"].update(qr_art_markings[code])
 
         marking, is_id = get_marking_for_position(col_idx, col_names)
         if marking:
-            # При FSK-штрихкоде не добавляем FSK в маркировки, а выставляем skip_stickers
             if marking == "FSK" and found_via_fsk:
-                products[key]["skip_stickers"] = True
+                products[code]["skip_stickers"] = True
             else:
-                products[key]["Маркировки"].add(marking)
-                products[key]["entries"].append((marking, is_id))
+                products[code]["Маркировки"].add(marking)
+                products[code]["entries"].append((marking, is_id))
                 if marking == "FSK" and not found_via_qr and not found_via_fsk:
                     # Это артикул, но FSK-маркировку можно добавить, но skip_stickers не нужен
                     pass
 
-    for key, data_item in products.items():
+    # Вычисляем sticker_markings для каждого продукта
+    for code, data_item in products.items():
         if data_item["skip_stickers"]:
             data_item["sticker_markings"] = set()
             continue
@@ -518,12 +533,9 @@ async def mark_barcode(barcode: str):
         data_item["sticker_markings"] = all_markings
 
     results = []
-    for key, data_item in products.items():
-        row_for_table = None
-        for row_idx, col_idx in all_positions:
-            if data_item["Код"] == data[row_idx].get("Код", ""):
-                row_for_table = data[row_idx]
-                break
+    for code, data_item in products.items():
+        # Используем сохранённую строку для таблицы
+        row_for_table = data_item.get("row")
         if row_for_table is not None:
             oz_search_art = next(iter(qr_art_markings.keys())) if found_via_qr and qr_art_markings else None
             table = get_row_data(
@@ -536,13 +548,27 @@ async def mark_barcode(barcode: str):
                 oz_search_art=oz_search_art
             )
         else:
+            # Если строка не сохранена (маловероятно), ищем по всем позициям
             table = []
+            for row_idx, col_idx in all_positions:
+                if data_item["Код"] == data[row_idx].get("Код", ""):
+                    row_for_table = data[row_idx]
+                    break
+            if row_for_table is not None:
+                table = get_row_data(
+                    row_for_table,
+                    col_names,
+                    data_item["Код"],
+                    sticker_indices,
+                    oz_sticker_indices,
+                    skip_stickers=data_item["skip_stickers"],
+                    oz_search_art=oz_search_art
+                )
 
-        # === НОВАЯ ЛОГИКА: обогащение WB-стикеров номерами строк из list ===
+        # Обогащение WB-стикеров номерами строк из list
         if table:
             for row in table:
                 if row.get("platform") == "WB" and row.get("stickers"):
-                    # row["stickers"] – это список строк (стикеров)
                     new_stickers = []
                     for st in row["stickers"]:
                         if isinstance(st, str):
@@ -553,10 +579,8 @@ async def mark_barcode(barcode: str):
                             )
                             new_stickers.append({"sticker": st, "row": row_num if row_num is not None else None})
                         else:
-                            # Если вдруг уже словарь, оставляем как есть
                             new_stickers.append(st)
                     row["stickers"] = new_stickers
-        # === КОНЕЦ НОВОЙ ЛОГИКИ ===
 
         found_markings = list(data_item["sticker_markings"])
 
