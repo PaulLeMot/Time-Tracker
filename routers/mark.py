@@ -457,6 +457,7 @@ async def mark_barcode(barcode: str):
     for bcode in barcodes_to_search:
         if bcode in index:
             all_positions.extend(index[bcode])
+    all_positions = list(set(all_positions))
     if not all_positions:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
