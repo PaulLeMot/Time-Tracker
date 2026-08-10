@@ -291,10 +291,9 @@ def get_marking_for_position(col_idx, col_names):
     else:
         return None, None
 
-def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False, oz_search_art=None, oz_sticker_filter=None):
+def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False, oz_search_art=None, oz_sticker_art_pairs=None):
     """
-    oz_sticker_filter: список стикеров (номеров отправлений), которые должны быть показаны в OZ-строках.
-    Если передан, то для OZ-маркетплейсов показываем только эти стикеры.
+    oz_sticker_art_pairs: список кортежей (стикер, артикул) для фильтрации OZ-строк
     """
     table = []
     
@@ -337,17 +336,17 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         oz_bar_clean = oz_bar if oz_bar else '0'
         oz_pairs = []
         if not skip_stickers:
-            if oz_sticker_filter is not None:
-                # Используем только стикеры из фильтра
-                # Для каждого стикера ищем артикул (он нам нужен для отображения в колонке "Артикул")
-                for st in oz_sticker_filter:
-                    # Найти артикул для этого стикера (можно через обратный индекс)
-                    # Проще: у нас уже есть словарь стикер->артикул из OZ-файлов, но мы его не строим.
-                    # Поэтому мы можем передать в oz_sticker_filter список словарей {sticker, art},
-                    # но для простоты сейчас будем добавлять только стикер, а артикул оставим пустым.
-                    # В реальности нужно либо построить обратный индекс, либо передавать пары.
-                    # Чтобы не усложнять, оставим так, но в интерфейсе артикул будет пустым.
-                    oz_pairs.append({"sticker": st, "articul": None})
+            if oz_sticker_art_pairs is not None:
+                # Используем только те пары, которые есть в переданном списке
+                # Фильтруем по маркетплейсу? В OZ-файлах маркетплейс определён, но у нас пары уже привязаны к маркетплейсу?
+                # В qr_items у нас есть marking, но мы не сохраняем его в паре. Надо сохранять, чтобы фильтровать по mk.
+                # Но для упрощения будем считать, что все пары относятся к этому маркетплейсу (mk), потому что мы собирали из разных файлов.
+                # Лучше сохранять marking в паре.
+                # Переделаем структуру: oz_sticker_art_pairs будет список (sticker, art, marking)
+                # Тогда здесь фильтруем по mk.
+                for sticker, art, marking in oz_sticker_art_pairs:
+                    if marking == mk:
+                        oz_pairs.append({"sticker": sticker, "articul": art})
             else:
                 # Старая логика: ищем по артикулу
                 search_art = oz_search_art if oz_search_art is not None else code
@@ -447,6 +446,7 @@ async def mark_barcode(barcode: str):
             raise HTTPException(status_code=404, detail="Товар не найден")
         found_via_qr = False
         qr_art_markings = {}
+        sticker_art_pairs = []  # для этого случая не нужны
     else:
         # Поиск по QR-коду для OZ
         qr_to_sticker_art_all = {}
@@ -463,18 +463,19 @@ async def mark_barcode(barcode: str):
         found_via_qr = True
         qr_items = qr_to_sticker_art_all[barcode]  # список {sticker, art, marking}
 
-        # Собираем уникальные артикулы и стикеры
-        barcodes_to_search = []
-        qr_art_markings = {}  # art -> set(markings)
-        qr_stickers_by_art = {}  # art -> список стикеров
+        # Собираем уникальные пары (стикер, артикул, маркетплейс)
+        sticker_art_pairs = set()
         for item in qr_items:
-            art = item["art"]
-            sticker = item["sticker"]
-            marking = item["marking"]
-            if art not in barcodes_to_search:
-                barcodes_to_search.append(art)
-            qr_art_markings.setdefault(art, set()).add(marking)
-            qr_stickers_by_art.setdefault(art, []).append(sticker)
+            sticker_art_pairs.add((item["sticker"], item["art"], item["marking"]))
+        sticker_art_pairs = list(sticker_art_pairs)
+
+        # Строим словарь артикул -> множество маркировок
+        qr_art_markings = {}
+        for item in qr_items:
+            qr_art_markings.setdefault(item["art"], set()).add(item["marking"])
+        
+        # Собираем артикулы для поиска
+        barcodes_to_search = list(set(item["art"] for item in qr_items))
 
         # Ищем все позиции в основной таблице по этим артикулам
         all_positions = []
@@ -506,14 +507,16 @@ async def mark_barcode(barcode: str):
                 "entries": [],
                 "skip_stickers": False,
                 "qr_markings": set(),
-                "qr_stickers": [],  # сохраняем стикеры для этого продукта
+                "sticker_art_pairs": [],  # список пар (стикер, артикул, маркетплейс) для этого продукта
             }
 
         # Добавляем маркировки из QR, если артикул совпадает
         if found_via_qr and code in qr_art_markings:
             products[key]["qr_markings"].update(qr_art_markings[code])
-            if code in qr_stickers_by_art:
-                products[key]["qr_stickers"].extend(qr_stickers_by_art[code])
+            # Добавляем все пары, где артикул совпадает с code
+            for sticker, art, marking in sticker_art_pairs:
+                if art == code:
+                    products[key]["sticker_art_pairs"].append((sticker, art, marking))
 
         marking, is_id = get_marking_for_position(col_idx, col_names)
         if marking:
@@ -550,8 +553,8 @@ async def mark_barcode(barcode: str):
                 row_for_table = data[row_idx]
                 break
         if row_for_table is not None:
-            # Если есть стикеры для фильтрации OZ, передаём их
-            oz_filter = data_item["qr_stickers"] if found_via_qr and data_item["qr_stickers"] else None
+            # Если есть пары для фильтрации OZ, передаём их
+            oz_pairs = data_item["sticker_art_pairs"] if found_via_qr and data_item["sticker_art_pairs"] else None
             table = get_row_data(
                 row_for_table,
                 col_names,
@@ -559,8 +562,8 @@ async def mark_barcode(barcode: str):
                 sticker_indices,
                 oz_sticker_indices,
                 skip_stickers=data_item["skip_stickers"],
-                oz_search_art=None,  # не используем поиск по артикулу, только фильтр
-                oz_sticker_filter=oz_filter
+                oz_search_art=None,
+                oz_sticker_art_pairs=oz_pairs
             )
         else:
             table = []
