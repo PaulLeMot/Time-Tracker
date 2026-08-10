@@ -3292,9 +3292,7 @@ function renderNotifications(notifications) {
         // Дополнительные действия для предложения времени
         let proposedActions = '';
         if (n.extra_data && n.extra_data.proposed_end_time) {
-            const proposedTime = new Date(n.extra_data.proposed_end_time).toLocaleString('ru-RU');
             proposedActions = `
-                <div style="font-size:0.75rem; margin-top:4px;">Предложено: ${proposedTime}</div>
                 <button class="btn-sm approve-end" data-id="${n.id}" data-time="${n.extra_data.proposed_end_time}">✅ Утвердить</button>
                 <button class="btn-sm edit-end" data-id="${n.id}" data-time="${n.extra_data.proposed_end_time}">✏️ Ред.</button>
                 <button class="btn-sm reject-end" data-id="${n.id}">❌ Отклонить</button>
