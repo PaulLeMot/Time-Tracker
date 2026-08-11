@@ -372,6 +372,27 @@
         .add-entry-color.break_start td:last-child { color: #facc15; }
         .add-entry-color.break_end td:last-child { color: #f97316; }
         .add-entry-color.end td:last-child { color: #ef4444; }
+
+        /* На десктопе (ширина > 768px) игнорируем drawer-closed */
+        @media (min-width: 769px) {
+            /* Открываем панель, даже если класс есть */
+            .main-layout.drawer-closed {
+                gap: 24px !important;
+            }
+            .main-layout.drawer-closed .tabs {
+                max-width: 200px !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+
+            /* Скрываем кнопку-бургер на десктопе (она не нужна) */
+            #drawerToggle {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
