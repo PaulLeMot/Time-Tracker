@@ -359,6 +359,19 @@
             padding: 0 !important;
             overflow: hidden;
         }
+
+        /* Цвета текста для отметок (в колонке "Действие") */
+        .add-entry-color td:last-child {
+            color: inherit;   /* наследуем цвет от родителя, но можно переопределить ниже */
+            font-size: 0.85rem;   /* задаём меньший размер */
+            font-weight: 600;
+        }
+
+        /* Индивидуальные цвета */
+        .add-entry-color.start td:last-child { color: #22c55e; }
+        .add-entry-color.break_start td:last-child { color: #facc15; }
+        .add-entry-color.break_end td:last-child { color: #f97316; }
+        .add-entry-color.end td:last-child { color: #ef4444; }
     </style>
 </head>
 <body>
@@ -401,7 +414,7 @@
                     <strong>Количество перерывов:</strong> <span id="breakCountToday">—</span>
                 </div>
                 <div id="actionButtons" class="buttons"></div>
-                <h2>Мои отметки за сегодня</h2>
+                <h2 style="font-size: 1.0rem;">Мои отметки за сегодня</h2>
                 <div id="entriesContainer">Загрузка...</div>
             </div>
 
@@ -649,10 +662,24 @@
                 container.innerHTML = '<p>Нет отметок за сегодня</p>';
                 return [];
             }
+
+            // Словарь для перевода действий
+            const actionMap = {
+                'start': 'Начало рабочего дня',
+                'break_start': 'Начало перерыва',
+                'break_end': 'Конец перерыва',
+                'end': 'Конец рабочего дня'
+            };
+
             let html = '<table style="width:100%; border-collapse: collapse;"><thead><tr><th>Время</th><th>Действие</th></tr></thead><tbody>';
             for (const entry of data.entries) {
                 const formattedTime = formatDateTime(entry.timestamp);
-                html += `<tr><td>${formattedTime}</td><td>${escapeHtml(entry.action)}</td></tr>`;
+                const actionLabel = actionMap[entry.action] || entry.action; // fallback на случай неизвестного действия
+                // Добавляем классы для цвета: add-entry-color + имя действия
+                html += `<tr class="add-entry-color ${entry.action}">
+                            <td>${formattedTime}</td>
+                            <td>${escapeHtml(actionLabel)}</td>
+                        </tr>`;
             }
             html += '</tbody></table>';
             container.innerHTML = html;
