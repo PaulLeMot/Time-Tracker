@@ -671,7 +671,7 @@
                 'end': 'Конец рабочего дня'
             };
 
-            let html = '<table style="width:100%; border-collapse: collapse;"><thead><tr><th>Время</th><th>Действие</th></tr></thead><tbody>';
+            let html = '<table style="width:100%; font-size: 0.85rem; border-collapse: collapse;"><thead><tr><th>Время</th><th>Действие</th></tr></thead><tbody>';
             for (const entry of data.entries) {
                 const formattedTime = formatDateTime(entry.timestamp);
                 const actionLabel = actionMap[entry.action] || entry.action; // fallback на случай неизвестного действия
