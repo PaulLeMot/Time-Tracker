@@ -17,10 +17,10 @@ class NotificationStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 class DayType(str, enum.Enum):
-    WORK = "work"
-    OFF = "off"
-    VACATION = "vacation"
-    SICK = "sick"
+    WORK = "WORK"
+    OFF = "OFF"
+    VACATION = "VACATION"
+    SICK = "SICK"
 
 # ---- МОДЕЛИ ----
 class Employee(Base):
