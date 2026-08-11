@@ -8,7 +8,11 @@
     <meta http-equiv="Expires" content="0">
     <title>Личный кабинет сотрудника</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/rangePlugin.js"></script>
     <style>
+        /* ===== ГЛОБАЛЬНЫЕ СТИЛИ ===== */
         * { box-sizing: border-box; }
         body {
             font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -31,745 +35,446 @@
             border-radius: 20px;
             margin-bottom: 16px;
         }
-        .buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 32px;
-        }
+
+        /* ===== КНОПКИ И ЭЛЕМЕНТЫ УПРАВЛЕНИЯ ===== */
+        .buttons { display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px; }
         .action-btn {
-            background: #3b82f6;
-            border: none;
-            color: white;
-            padding: 14px;
-            border-radius: 60px;
-            font-size: 1rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            width: 100%;
-            text-align: center;
+            background: #3b82f6; border: none; color: white;
+            padding: 14px; border-radius: 60px; font-size: 1rem; font-weight: 500;
+            cursor: pointer; transition: all 0.2s; width: 100%; text-align: center;
         }
         .action-btn:active { transform: scale(0.98); }
         .action-btn.break { background: #f59e0b; }
         .action-btn.end { background: #ef4444; }
         .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
         .logout {
-            background: #ef4444;
-            color: white;
-            border: none;
-            padding: 4px 12px;
-            border-radius: 40px;
-            cursor: pointer;
-            float: right;
+            background: #ef4444; color: white; border: none;
+            padding: 4px 12px; border-radius: 40px; cursor: pointer;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 16px;
+
+        .btn {
+            background: #3b82f6; border: none; color: white;
+            padding: 6px 12px; border-radius: 20px; cursor: pointer;
+            font-size: 0.85rem; transition: all 0.2s; height: 38px; line-height: 1.2;
         }
-        th, td {
-            text-align: left;
-            padding: 8px;
-            border-bottom: 1px solid #e2e8f0;
+        .btn:hover { background: #2563eb; }
+        .btn-warning { background: #f59e0b; }
+        .btn-warning:hover { background: #d97706; }
+        .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+
+        .send-notif {
+            background: #3b82f6 !important; color: white !important;
+            border: none; font-size: 1rem; width: 32px; height: 32px;
+            padding: 0; border-radius: 50%; cursor: pointer; transition: 0.2s;
         }
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #0f172a;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 40px;
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
+        .send-notif:hover { background: #2563eb !important; transform: scale(1.05); }
+
+        /* ===== ВКЛАДКИ ===== */
+        .tabs {
+            display: flex; gap: 8px; margin-bottom: 24px;
+            border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .tab-btn {
+            background: transparent; border: none;
+            padding: 8px 20px; font-size: 1rem; font-weight: 500;
+            color: #64748b; cursor: pointer; border-radius: 40px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        .tab-btn:hover { background: #f1f5f9; color: #1e293b; }
+        .tab-btn.active { background: #3b82f6; color: white; }
+
+        /* ===== ТАБЛИЦЫ ===== */
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e2e8f0; }
+        .report-table th { position: sticky; top: 0; background: #f8fafc; z-index: 20; }
+        .row-not-started { background-color: #f1f5f9; }
+        .row-working { background-color: #dcfce7; }
+        .row-on-break { background-color: #fef9c3; }
+        .row-ended { background-color: #dbeafe; }
+
+        .recent-table { overflow-x: visible; overflow-y: visible; }
+        .recent-table table { border-collapse: separate; border-spacing: 0; margin-top: 0; }
+        .recent-table th { position: sticky; top: 0; background: #f8fafc; z-index: 10; }
+
+        .sortable-list {
+            list-style: none; padding: 0; margin: 0;
+            display: flex; flex-direction: row; gap: 8px;
+            background: #f8fafc; border-radius: 60px; padding: 0;
+            flex-wrap: wrap; align-items: center; height: 38px;
+        }
+        .sortable-list li {
+            background: white; border: 1px solid #e2e8f0; border-radius: 40px;
+            padding: 6px 16px; cursor: grab; user-select: none;
+            transition: background 0.2s; display: inline-block; line-height: 1.2; font-size: 0.85rem;
+        }
+        .sortable-list li:active { cursor: grabbing; }
+        .sortable-list li.dragging { opacity: 0.5; }
+
+        /* ===== МОДАЛЬНЫЕ ОКНА ===== */
+        .modal {
+            display: none; position: fixed; z-index: 1000;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background: white; margin: 20% auto; padding: 20px;
+            border-radius: 20px; width: 90%; max-width: 400px;
+        }
+        .modal-content input { width: 100%; margin: 8px 0; padding: 8px; }
+        .close, .close-explanation, .close-create-notif,
+        .close-explanation-view, .close-edit-notif, .close-fix-end {
+            color: #aaa; float: right; font-size: 28px; font-weight: bold;
+            cursor: pointer; transition: color 0.2s;
+        }
+        .close:hover, .close-explanation:hover, .close-create-notif:hover,
+        .close-explanation-view:hover, .close-edit-notif:hover, .close-fix-end:hover {
+            color: black;
+        }
+
+        /* ===== ВЫПАДАЮЩЕЕ МЕНЮ ШЕСТЕРЁНКИ ===== */
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            right: 0; top: 100%;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+            min-width: 200px;
             z-index: 1000;
+            margin-top: 6px;
+            overflow: hidden;
+            padding: 4px 0;
+        }
+        .dropdown-menu a {
+            display: block;
+            padding: 12px 18px;
+            text-decoration: none;
+            color: #0f172a;
+            font-size: 0.95rem;
+            border-bottom: 1px solid #f1f5f9;
+            transition: background 0.15s;
+        }
+        .dropdown-menu a:hover { background: #f1f5f9; }
+        .dropdown-menu a:last-child { border-bottom: none; }
+        .dropdown-menu a.logout-item { color: #ef4444; }
+
+        /* ===== ТОСТ ===== */
+        .toast {
+            position: fixed; bottom: 20px; right: 20px;
+            background: #0f172a; color: white; padding: 12px 24px;
+            border-radius: 40px; opacity: 0; transition: opacity 0.3s;
+            pointer-events: none; z-index: 1000;
         }
         .toast.show { opacity: 1; }
-        @media (max-width: 480px) {
-            .container { padding: 16px; }
+
+        /* ===== ЦВЕТОВЫЕ СТАТУСЫ УВЕДОМЛЕНИЙ ===== */
+        .notif-answered { background-color: rgba(34, 197, 94, 0.1) !important; }
+        .notif-pending { background-color: rgba(239, 68, 68, 0.1) !important; }
+
+        /* ===== ПРОЧЕЕ ===== */
+        .date-picker { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+        input, select { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 20px; font-size: 1rem; }
+        #notifBadge {
+            display: none; background: #ef4444; color: white; border-radius: 20px;
+            padding: 2px 8px; font-size: 0.7rem; margin-left: 5px;
         }
-        /* Стили для вкладок */
+
+        /* ===== АДАПТИВНОСТЬ ===== */
+        @media (max-width: 768px) {
+            .container { padding: 16px; }
+            .tabs { overflow-x: auto; white-space: nowrap; flex-wrap: nowrap; }
+            .tab-btn { font-size: 0.85rem; padding: 6px 16px; }
+
+            /* Мобильные таблицы отчётов */
+            .report-table, .report-table thead, .report-table tbody,
+            .report-table tr, .report-table th, .report-table td {
+                display: block;
+            }
+            .report-table thead { display: none; }
+            .report-table tr {
+                margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 12px;
+                background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .report-table td {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 10px 12px; border-bottom: 1px solid #e2e8f0;
+                text-align: left; gap: 8px;
+            }
+            .report-table td:last-child { border-bottom: none; }
+            .report-table td::before {
+                content: attr(data-label); font-weight: 600; width: 40%;
+                color: #0f172a; flex-shrink: 0;
+            }
+            .report-table td:first-child { background-color: #f8fafc; font-weight: 600; }
+            .report-table td:last-child { justify-content: flex-end; }
+            .report-table td:last-child::before { content: none; }
+
+            /* Аккордеон мониторинга */
+            .monitor-accordion-item {
+                border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 12px;
+                background: white; overflow: hidden;
+            }
+            .monitor-accordion-header {
+                background: #f8fafc; padding: 14px 16px; font-weight: 600;
+                cursor: pointer; display: flex; justify-content: space-between;
+                align-items: center; font-size: 1rem;
+            }
+            .monitor-accordion-header:after { content: "▼"; font-size: 0.8rem; transition: transform 0.2s; }
+            .monitor-accordion-item.open .monitor-accordion-header:after { transform: rotate(180deg); }
+            .monitor-accordion-details { display: none; padding: 16px; border-top: 1px solid #e2e8f0; background: white; }
+            .monitor-accordion-item.open .monitor-accordion-details { display: block; }
+            .monitor-accordion-details-row {
+                display: flex; justify-content: space-between; padding: 8px 0;
+                border-bottom: 1px solid #f1f5f9;
+            }
+            .monitor-accordion-details-row:last-child { border-bottom: none; }
+
+            /* Аккордеон уведомлений */
+            .notifications-accordion-item {
+                border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 12px;
+                background: white; overflow: hidden;
+            }
+            .notifications-accordion-header {
+                background: #f8fafc; padding: 14px 16px; cursor: pointer;
+                display: flex; justify-content: space-between; align-items: center; font-size: 1rem;
+            }
+            .notifications-accordion-header:after { content: "▼"; font-size: 0.8rem; transition: transform 0.2s; }
+            .notifications-accordion-item.open .notifications-accordion-header:after { transform: rotate(180deg); }
+            .notifications-accordion-details { display: none; padding: 16px; border-top: 1px solid #e2e8f0; background: white; }
+            .notifications-accordion-item.open .notifications-accordion-details { display: block; }
+            .notif-detail-row { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9; }
+            .notif-detail-label { font-weight: 600; color: #0f172a; margin-bottom: 4px; font-size: 0.85rem; }
+            .notif-detail-value { font-size: 0.95rem; }
+            .notif-explanation-text { background: #f8fafc; padding: 12px; border-radius: 8px; margin-top: 12px; font-size: 0.9rem; }
+
+            .dropdown-menu { right: -10px !important; min-width: 160px !important; }
+        }
+        @media (max-width: 480px) {
+            .container { padding: 12px; }
+        }
+
+        /* Плоский пикер */
+        .flatpickr-calendar button,
+        .flatpickr-calendar .flatpickr-prev-month,
+        .flatpickr-calendar .flatpickr-next-month {
+            height: auto !important; padding: 4px 6px !important;
+            background: transparent !important; border: none !important;
+            margin: 0 !important; font-size: 14px !important; line-height: 1 !important;
+            color: #3b82f6 !important;
+        }
+        .flatpickr-calendar button:hover { background: #e2e8f0 !important; }
+        .flatpickr-current-month .cur-month, .flatpickr-current-month .cur-year { font-size: 14px; }
+        .flatpickr-calendar { box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 16px; margin-top: 4px; }
+
+        /* Контейнер для вкладок и контента */
+        .main-layout {
+            display: flex;
+            gap: 24px;          /* отступ между вкладками и содержимым */
+            margin-top: 16px;
+        }
+
+        /* Блок вкладок (вертикальный) */
         .tabs {
             display: flex;
+            flex-direction: column;   /* вертикальное расположение */
             gap: 8px;
-            margin-bottom: 24px;
-            border-bottom: 1px solid #e2e8f0;
-            padding-bottom: 8px;
+            flex-shrink: 0;          /* не сжимается */
+            min-width: 50px;        /* чтобы текст не обрезался */
+            border-bottom: none;     /* убираем лишнюю линию */
+            padding-bottom: 0;
+            overflow-x: visible;
         }
+
+        /* Кнопки вкладок */
         .tab-btn {
             background: transparent;
             border: none;
-            padding: 8px 20px;
+            padding: 10px 16px;
             font-size: 1rem;
             font-weight: 500;
             color: #64748b;
             cursor: pointer;
             border-radius: 40px;
             transition: all 0.2s;
+            text-align: left;        /* выравнивание текста по левому краю */
+            white-space: nowrap;     /* чтобы текст не переносился */
         }
+
         .tab-btn:hover {
             background: #f1f5f9;
             color: #1e293b;
         }
+
         .tab-btn.active {
             background: #3b82f6;
             color: white;
         }
-        .tab-content {
-            animation: fadeIn 0.2s ease;
+
+        /* Блок для содержимого вкладок */
+        .tab-contents {
+            flex: 1;                /* занимает всё оставшееся пространство */
+            min-width: 0;           /* предотвращает переполнение */
         }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        .date-picker {
+
+        /* Основной контейнер */
+        .main-layout {
             display: flex;
-            gap: 12px;
-            align-items: center;
-            margin-bottom: 20px;
+            gap: 24px;
+            margin-top: 16px;
+            transition: gap 0.3s ease;
         }
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-        }
-        .modal-content {
-            background: white;
-            margin: 20% auto;
-            padding: 20px;
-            border-radius: 20px;
-            width: 90%;
-            max-width: 400px;
-        }
-        .modal-content input {
-            width: 100%;
-            margin: 8px 0;
-            padding: 8px;
-        }
-        .modal-content button {
-            margin-top: 12px;
-        }
-        .close {
-            float: right;
-            font-size: 24px;
-            cursor: pointer;
-        }
-        #monitorContainer {
-            overflow-x: visible;
-        }
-        #monitorContainer .report-table {
-            width: 100%;
-            min-width: 0;
-        }
-        #monitorContainer .recent-table {
-            overflow-x: visible;
-        }
-        #monitorContainer .report-table th,
-        #monitorContainer .report-table td {
-            white-space: normal;
-            word-break: break-word;
-        }
-        @media (max-width: 600px) {
-            .tabs {
-                overflow-x: auto;
-                white-space: nowrap;
-                flex-wrap: nowrap;
-                -webkit-overflow-scrolling: touch;
-                padding-bottom: 4px;
-            }
-            .tab-btn {
-                font-size: 0.85rem;
-                padding: 6px 16px;
-                flex-shrink: 0;
-            }
-        }
-        .sortable-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
+
+        /* Блок вкладок (шторка) – теперь без min-width */
+        .tabs {
             display: flex;
-            flex-direction: row;
+            flex-direction: column;
             gap: 8px;
-            background: #f8fafc;
-            border-radius: 60px;
-            padding: 0;
-            flex-wrap: wrap;
-            align-items: center;
-            height: 38px;
+            flex-shrink: 0;
+            overflow: hidden;
+            width: auto;
+            max-width: 200px;          /* максимальная ширина при открытии */
+            transition: max-width 0.3s ease, opacity 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+            opacity: 1;
+            border-bottom: none;
+            padding: 0 !important;     /* убираем все внутренние отступы */
+            margin: 0 !important;      /* убираем внешние отступы */
+            min-width: 0 !important;   /* обязательно! чтобы max-width мог сработать */
         }
 
-        .sortable-list li {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 40px;
-            padding: 6px 16px;
-            cursor: grab;
-            user-select: none;
-            transition: background 0.2s;
-            display: inline-block;
-            line-height: 1.2;
-            font-size: 0.85rem;
-        }
-        .sortable-list li:active {
-            cursor: grabbing;
-        }
-        .sortable-list li.dragging {
-            opacity: 0.5;
-        }
-        .btn {
-            background: #3b82f6;
-            border: none;
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            margin-right: 6px;
-            transition: all 0.2s;
-            height: 38px;
-            line-height: 1.2;
-        }
-        .btn:hover {
-            background: #2563eb;
-        }
-        .btn-sm {
-            padding: 4px 8px;
-            font-size: 0.75rem;
-        }
-        #monitorContainer .report-table th,
-        #monitorContainer .report-table td {
-            text-align: center;
-        }
-        #monitorContainer .report-table th:first-child,
-        #monitorContainer .report-table td:first-child,
-        #monitorContainer .report-table th:nth-child(5),
-        #monitorContainer .report-table td:nth-child(5) {
-            text-align: left;
-        }
-        .recent-table {
-            overflow-x: visible;
-            overflow-y: visible;
-        }
-        
-        .recent-table table {
-            border-collapse: separate;
-            border-spacing: 0;
-            margin-top: 0;
-            width: 100%;
-        }
-        .recent-table th {
-            position: sticky;
-            top: 0;
-            background: #f8fafc;
-            z-index: 10;
-        }
-        .row-not-started { background-color: #f1f5f9; }
-        .row-working { background-color: #dcfce7; }
-        .row-on-break { background-color: #fef9c3; }
-        .row-ended { background-color: #dbeafe; }
-        #notifBadge {
-            background: #ef4444;
-            color: white;
-            border-radius: 20px;
-            padding: 2px 8px;
-            font-size: 0.7rem;
-            margin-left: 5px;
+        /* Закрытое состояние шторки */
+        .main-layout.drawer-closed {
+            gap: 0;                    /* убираем отступ между вкладками и контентом */
         }
 
-        .send-notif {
-            background: #3b82f6 !important;
-            color: white !important;
-            border: none;
-            font-size: 1rem;
-            width: 32px;
-            height: 32px;
-            padding: 0;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-        .send-notif:hover {
-            background: #2563eb !important;
-            transform: scale(1.05);
-        }
-
-        #notificationsContainer .btn-sm {
-            background: #3b82f6;
-            border: none;
-            color: white;
-            padding: 4px 10px;
-            border-radius: 16px;
-            font-size: 0.75rem;
-            cursor: pointer;
-            transition: 0.2s;
-            margin: 0 2px;
-        }
-        #notificationsContainer .btn-sm:hover {
-            background: #2563eb;
-        }
-        #notificationsContainer .view-explanation-employee {
-            background: #3b82f6;
-        }
-        #notificationsContainer .view-explanation-employee:hover {
-            background: #3b82f6;
-        }
-
-        #explanationModal .btn,
-        #createNotificationModal .btn {
-            background: #3b82f6;
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 24px;
-            cursor: pointer;
-        }
-        #explanationModal .btn:hover,
-        #createNotificationModal .btn:hover {
-            background: #2563eb;
-        }
-
-        @media (max-width: 768px) {
-            #monitorContainer .report-table,
-            #monitorContainer .report-table thead,
-            #monitorContainer .report-table tbody,
-            #monitorContainer .report-table tr,
-            #monitorContainer .report-table th,
-            #monitorContainer .report-table td {
-                display: block;
-            }
-
-            #monitorContainer .report-table thead {
-                display: none;
-            }
-
-            #monitorContainer .report-table tr {
-                margin-bottom: 16px;
-                border: 1px solid #e2e8f0;
-                border-radius: 12px;
-                background: white;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-
-            #monitorContainer .report-table td {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 10px 12px;
-                border-bottom: 1px solid #e2e8f0;
-                text-align: left;
-                gap: 8px;
-            }
-
-            #monitorContainer .report-table td:last-child {
-                border-bottom: none;
-            }
-
-            #monitorContainer .report-table td::before {
-                content: attr(data-label);
-                font-weight: 600;
-                width: 40%;
-                color: #0f172a;
-                flex-shrink: 0;
-            }
-
-            #monitorContainer .report-table td {
-                text-align: left;
-            }
-            #monitorContainer .report-table td:first-child {
-                background-color: #f8fafc;
-                font-weight: 600;
-            }
-
-            #monitorContainer .report-table td:last-child {
-                justify-content: flex-end;
-            }
-            #monitorContainer .report-table td:last-child::before {
-                content: none;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .monitor-accordion {
-                display: block;
-            }
-            .monitor-accordion-item {
-                border: 1px solid #e2e8f0;
-                border-radius: 12px;
-                margin-bottom: 12px;
-                background: white;
-                overflow: hidden;
-            }
-            .monitor-accordion-header {
-                background: #f8fafc;
-                padding: 14px 16px;
-                font-weight: 600;
-                cursor: pointer;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-size: 1rem;
-            }
-            .monitor-accordion-header:after {
-                content: "▼";
-                font-size: 0.8rem;
-                transition: transform 0.2s;
-            }
-            .monitor-accordion-item.open .monitor-accordion-header:after {
-                transform: rotate(180deg);
-            }
-            .monitor-accordion-details {
-                display: none;
-                padding: 16px;
-                border-top: 1px solid #e2e8f0;
-                background: white;
-            }
-            .monitor-accordion-item.open .monitor-accordion-details {
-                display: block;
-            }
-            .monitor-accordion-details-row {
-                display: flex;
-                justify-content: space-between;
-                padding: 8px 0;
-                border-bottom: 1px solid #f1f5f9;
-            }
-            .monitor-accordion-details-row:last-child {
-                border-bottom: none;
-            }
-            .monitor-accordion-label {
-                font-weight: 600;
-                color: #0f172a;
-            }
-            .monitor-accordion-value {
-                text-align: right;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .notifications-accordion {
-                display: block;
-            }
-            .notifications-accordion-item {
-                border: 1px solid #e2e8f0;
-                border-radius: 12px;
-                margin-bottom: 12px;
-                background: white;
-                overflow: hidden;
-            }
-            .notifications-accordion-header {
-                background: #f8fafc;
-                padding: 14px 16px;
-                cursor: pointer;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-size: 1rem;
-            }
-            .notifications-accordion-header:after {
-                content: "▼";
-                font-size: 0.8rem;
-                transition: transform 0.2s;
-            }
-            .notifications-accordion-item.open .notifications-accordion-header:after {
-                transform: rotate(180deg);
-            }
-            .notifications-accordion-details {
-                display: none;
-                padding: 16px;
-                border-top: 1px solid #e2e8f0;
-                background: white;
-            }
-            .notifications-accordion-item.open .notifications-accordion-details {
-                display: block;
-            }
-            .notif-detail-row {
-                margin-bottom: 12px;
-                padding-bottom: 8px;
-                border-bottom: 1px solid #f1f5f9;
-            }
-            .notif-detail-label {
-                font-weight: 600;
-                color: #0f172a;
-                margin-bottom: 4px;
-                font-size: 0.85rem;
-            }
-            .notif-detail-value {
-                font-size: 0.95rem;
-            }
-            .notif-explanation-text {
-                background: #f8fafc;
-                padding: 12px;
-                border-radius: 8px;
-                margin-top: 12px;
-                font-size: 0.9rem;
-            }
-        }
-
-        .close-explanation,
-        .close-create-notif,
-        .close-explanation-view,
-        .close-edit-notif {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.2s;
-        }
-        .close-explanation:hover,
-        .close-create-notif:hover,
-        .close-explanation-view:hover,
-        .close-edit-notif:hover {
-            color: black;
-        }
-
-        .close-explanation-view {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .close-explanation-view:hover {
-            color: black;
-        }
-
-        .close-edit-notif {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .close-edit-notif:hover {
-            color: black;
-        }
-
-        .report-table thead {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-        }
-        .report-table th {
-            position: sticky;
-            top: 0;
-            background: #f8fafc;
-            z-index: 20;
-        }
-
-        #allNotificationsContainer .report-table thead,
-        #allNotificationsContainer .report-table th {
-            position: sticky !important;
-            top: 0 !important;
-            background: #f8fafc !important;
-            z-index: 30 !important;
-        }
-
-        #allNotificationsContainer {
-            overflow: visible !important;
-        }
-
-        #allNotificationsContainer .btn-sm.view-explanation {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 16px;
-            padding: 4px 10px;
-            cursor: pointer;
-            font-size: 0.75rem;
-            transition: 0.2s;
-        }
-        #allNotificationsContainer .btn-sm.view-explanation:hover {
-            background: #2563eb;
-        }
-
-        #allNotifStatusFilter,
-        #all-notifications-tab select {
-            border-radius: 20px;
-            padding: 8px 12px;
-            border: 1px solid #cbd5e1;
-        }
-        .flatpickr-calendar button,
-        .flatpickr-calendar .flatpickr-prev-month,
-        .flatpickr-calendar .flatpickr-next-month {
-            height: auto !important;
-            padding: 4px 6px !important;
-            background: transparent !important;
-            border: none !important;
+        .main-layout.drawer-closed .tabs {
+            max-width: 0 !important;   /* сворачиваем в ноль */
+            opacity: 0;
+            pointer-events: none;      /* чтобы кнопки вкладок не кликались */
             margin: 0 !important;
-            font-size: 14px !important;
-            line-height: 1 !important;
-            color: #3b82f6 !important;
-        }
-        .flatpickr-calendar button:hover {
-            background: #e2e8f0 !important;
-        }
-
-        .flatpickr-current-month .cur-month,
-        .flatpickr-current-month .cur-year {
-            font-size: 14px;
-        }
-
-        .flatpickr-calendar {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border-radius: 16px;
-            margin-top: 4px;
-        }
-        .btn-warning { background: #f59e0b; }
-        .btn-warning:hover { background: #d97706; }
-        input, select {
-            padding: 8px 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 20px;
-            font-size: 1rem;
-        }
-
-        .report-table tr.notif-answered {
-            background-color: rgba(34, 197, 94, 0.1);
-        }
-        .report-table tr.notif-pending {
-            background-color: rgba(239, 68, 68, 0.1);
-        }
-
-        .notifications-accordion-item.notif-answered {
-            background-color: rgba(34, 197, 94, 0.1) !important;
-        }
-        .notifications-accordion-item.notif-pending {
-            background-color: rgba(239, 68, 68, 0.1) !important;
-        }
-        #fixEndTimeModal .close-fix-end {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        #fixEndTimeModal .close-fix-end:hover {
-            color: black;
+            padding: 0 !important;
+            overflow: hidden;
         }
     </style>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/rangePlugin.js"></script>
 </head>
 <body>
 <div class="container">
-    <h1>Личный кабинет</h1>
-    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 16px;">
-        <button id="adminPanelBtn" class="logout" style="display: none; background: #3b82f6;">Админ-панель</button>
-        <button onclick="window.location.href='/static/search.html'" class="logout" style="background: #3b82f6;" title="IMG">🔍</button>
-        <button onclick="window.location.href='/mark'" class="logout" style="background: #3b82f6; font-size: 1.2rem;" title="Маркировка">📜</button>
-        <button id="changePasswordBtn" class="logout">Сменить пароль</button>
-        <button id="logoutBtn" class="logout" title="Выход">🚪</button>
-    </div>
-    
 
-    <!-- Вкладки -->
-    <div class="tabs">
-        <button class="tab-btn active" data-tab="daily" title="Сегодня">📅</button>
-        <!--button class="tab-btn" data-tab="weekly" title="Статистика по неделям">📆</button-->
-        <button class="tab-btn" data-tab="monitor" id="monitorTab" style="display: none;" title="Мониторинг">📊</button>
-        <button class="tab-btn" data-tab="notifications" title="Уведомления">🔔 <span id="notifBadge">0</span></button>
-        <button class="tab-btn" data-tab="all-notifications" id="allNotifTab" style="display: none;">📋</button>
-    </div>
-
-    <!-- Содержимое вкладки "Сегодня" -->
-    <div id="daily-tab" class="tab-content">
-        <div id="employeeName" class="info">Загрузка...</div>
-        <div id="statusInfo" class="info">
-            <strong>Статус дня:</strong> <span id="statusDay">—</span><br>
-            <strong>Статус перерыва:</strong> <span id="statusBreak">—</span><br>
-            <strong>Отработано сегодня:</strong> <span id="workedToday">—</span><br>
-            <strong>Перерывы сегодня:</strong> <span id="breakToday">—</span><br>
-            <strong>Количество перерывов:</strong> <span id="breakCountToday">—</span>
-        </div>
-
-        <div id="actionButtons" class="buttons"></div>
-
-        <h2>Мои отметки за сегодня</h2>
-        <div id="entriesContainer">Загрузка...</div>
-    </div>
-
-    <!-- Содержимое вкладки "Недельная статистика" -->
-    <div id="weekly-tab" class="tab-content" style="display: none;">
-        <div class="date-picker">
-            <input type="week" id="weekPicker">
-            <button id="loadWeeklyBtn">Показать</button>
-        </div>
-        <div id="weeklyContainer">Загрузка...</div>
-    </div>
-
-    <div id="monitor-tab" class="tab-content" style="display: none;">
-        <div class="date-picker">
-            <input type="date" id="monitorDate" value="">
-            <button id="refreshMonitorBtn" class="btn btn-sm" style="background: #3b82f6;">Обновить</button>
-        </div>
-    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
-        <button id="toggleMonitorFilterBtn" class="btn">🎛️ Фильтр по статусам</button>
-        <div id="monitorStatusOrderSettings" style="display: none;">
-            <ul id="monitorStatusOrderList" class="sortable-list">
-                <li data-status="working">✅ Работает</li>
-                <li data-status="onbreak">☕ В перерыве</li>
-                <li data-status="notstarted">❌ Не начал</li>
-                <li data-status="ended">🏁 Завершил</li>
-            </ul>
+    <!-- ===== ШАПКА С КНОПКОЙ-ТРИГГЕРОМ ===== -->
+    <div style="display: flex; gap: 8px; justify-content: space-between; margin-bottom: 16px; align-items: center;">
+        <!-- Кнопка-триггер (гамбургер) -->
+        <button id="drawerToggle" style="background: transparent; border: none; font-size: 1.8rem; cursor: pointer; padding: 0 8px;">☰</button>
+        <h1 style="margin: 0;">Личный кабинет</h1>
+        <div style="position: relative; display: inline-block;">
+            <button id="settingsBtn" class="logout" style="background: transparent; border: none; font-size: 1.6rem; cursor: pointer; padding: 0 4px; line-height: 1;">⚙️</button>
+            <div id="settingsDropdown" class="dropdown-menu">
+                <a href="#" id="dropdownAdmin" style="display: none;">🛠️ Админ-панель</a>
+                <a href="#" id="dropdownChangePassword">🔑 Сменить пароль</a>
+                <a href="#" id="dropdownLogout" class="logout-item">🚪 Выход</a>
+            </div>
         </div>
     </div>
-        <div id="monitorContainer">Загрузка...</div>
-    </div>
+    <div class="main-layout drawer-closed">
+        <!-- ===== ВКЛАДКИ (вертикальные) ===== -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="daily" title="Сегодня">📅</button>
+            <button class="tab-btn" data-tab="search" title="Поиск">🔍</button>
+            <button class="tab-btn" data-tab="mark" title="Маркировка">📜</button>
+            <button class="tab-btn" data-tab="monitor" id="monitorTab" style="display: none;" title="Мониторинг">📊</button>
+            <button class="tab-btn" data-tab="notifications" title="Уведомления">🔔 <span id="notifBadge"></span></button>
+            <button class="tab-btn" data-tab="all-notifications" id="allNotifTab" style="display: none;">📋</button>
+        </div>
 
-    <!-- Содержимое вкладки "Мои уведомления" -->
+        <!-- ===== ОБЁРТКА ДЛЯ КОНТЕНТА (добавлена!) ===== -->
+        <div class="tab-contents">
+            <div id="daily-tab" class="tab-content">
+                <div id="employeeName" class="info">Загрузка...</div>
+                <div id="statusInfo" class="info">
+                    <strong>Статус дня:</strong> <span id="statusDay">—</span><br>
+                    <strong>Статус перерыва:</strong> <span id="statusBreak">—</span><br>
+                    <strong>Отработано сегодня:</strong> <span id="workedToday">—</span><br>
+                    <strong>Перерывы сегодня:</strong> <span id="breakToday">—</span><br>
+                    <strong>Количество перерывов:</strong> <span id="breakCountToday">—</span>
+                </div>
+                <div id="actionButtons" class="buttons"></div>
+                <h2>Мои отметки за сегодня</h2>
+                <div id="entriesContainer">Загрузка...</div>
+            </div>
 
-    <div id="notifications-tab" class="tab-content" style="display: none;">
-        <h2>🔔 Мои уведомления</h2>
-        <div id="notificationsContainer">Загрузка...</div>
-    </div>
-    <div id="changePasswordModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h3>Смена пароля</h3>
-            <input type="password" id="oldPassword" placeholder="Старый пароль">
-            <input type="password" id="newPassword" placeholder="Новый пароль">
-            <input type="password" id="confirmPassword" placeholder="Подтвердите новый пароль">
-            <button id="savePasswordBtn" class="action-btn">Сохранить</button>
-            <div id="passwordError" style="color:red; margin-top:8px;"></div>
+            <div id="weekly-tab" class="tab-content" style="display: none;">
+                <div class="date-picker">
+                    <input type="week" id="weekPicker">
+                    <button id="loadWeeklyBtn" class="btn">Показать</button>
+                </div>
+                <div id="weeklyContainer">Загрузка...</div>
+            </div>
+
+            <div id="monitor-tab" class="tab-content" style="display: none;">
+                <div class="date-picker">
+                    <input type="date" id="monitorDate" value="">
+                    <button id="refreshMonitorBtn" class="btn btn-sm" style="background: #3b82f6;">Обновить</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+                    <button id="toggleMonitorFilterBtn" class="btn">🎛️ Фильтр по статусам</button>
+                    <div id="monitorStatusOrderSettings" style="display: none;">
+                        <ul id="monitorStatusOrderList" class="sortable-list">
+                            <li data-status="working">✅ Работает</li>
+                            <li data-status="onbreak">☕ В перерыве</li>
+                            <li data-status="notstarted">❌ Не начал</li>
+                            <li data-status="ended">🏁 Завершил</li>
+                        </ul>
+                    </div>
+                </div>
+                <div id="monitorContainer">Загрузка...</div>
+            </div>
+
+            <div id="notifications-tab" class="tab-content" style="display: none;">
+                <h2>🔔 Мои уведомления</h2>
+                <div id="notificationsContainer">Загрузка...</div>
+            </div>
+
+            <div id="all-notifications-tab" class="tab-content" style="display: none;">
+                <h2>📋 Управление уведомлениями</h2>
+                <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                    <label>Фильтр по статусу:</label>
+                    <select id="allNotifStatusFilter">
+                        <option value="">Все</option>
+                        <option value="draft">Черновики</option>
+                        <option value="sent">Отправленные</option>
+                        <option value="rejected">Отклонённые</option>
+                    </select>
+                    <label>Сотрудник:</label>
+                    <select id="allNotifEmployeeFilter">
+                        <option value="">Все</option>
+                    </select>
+                    <label>Период:</label>
+                    <input type="text" id="allNotifDateRange" placeholder="Выберите период" style="width: 240px;">
+                    <button id="clearAllNotifDateFilterBtn" class="btn btn-warning">Сбросить даты</button>
+                    <button id="refreshAllNotifBtn" class="btn">Обновить</button>
+                </div>
+                <div id="allNotificationsContainer">Загрузка...</div>
+            </div>
         </div>
     </div>
+<!-- ===== МОДАЛЬНЫЕ ОКНА ===== -->
+<div id="toast" class="toast"></div>
 
-    <!-- Содержимое вкладки "Все уведомления" -->
-
-    <div id="all-notifications-tab" class="tab-content" style="display: none;">
-        <h2>📋 Управление уведомлениями</h2>
-        <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-            <label>Фильтр по статусу:</label>
-            <select id="allNotifStatusFilter">
-                <option value="">Все</option>
-                <option value="draft">Черновики</option>
-                <option value="sent">Отправленные</option>
-                <option value="rejected">Отклонённые</option>
-            </select>
-
-            <label>Сотрудник:</label>
-            <select id="allNotifEmployeeFilter">
-                <option value="">Все</option>
-            </select>
-
-            <label>Период:</label>
-            <input type="text" id="allNotifDateRange" placeholder="Выберите период" style="width: 240px;">
-
-            <button id="clearAllNotifDateFilterBtn" class="btn btn-warning">Сбросить даты</button>
-            <button id="refreshAllNotifBtn" class="btn">Обновить</button>
-        </div>
-        <div id="allNotificationsContainer">Загрузка...</div>
+<div id="changePasswordModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Смена пароля</h3>
+        <input type="password" id="oldPassword" placeholder="Старый пароль">
+        <input type="password" id="newPassword" placeholder="Новый пароль">
+        <input type="password" id="confirmPassword" placeholder="Подтвердите новый пароль">
+        <button id="savePasswordBtn" class="action-btn">Сохранить</button>
+        <div id="passwordError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
-<div id="toast" class="toast"></div>
+
 <div id="explanationModal" class="modal">
     <div class="modal-content" style="max-width: 500px;">
         <span class="close-explanation">&times;</span>
@@ -779,6 +484,7 @@
         <div id="explanationError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
+
 <div id="createNotificationModal" class="modal">
     <div class="modal-content" style="max-width: 500px;">
         <span class="close-create-notif">&times;</span>
@@ -802,6 +508,7 @@
         <div id="createNotifError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
+
 <div id="explanationViewModal" class="modal">
     <div class="modal-content" style="max-width: 500px;">
         <span class="close-explanation-view">&times;</span>
@@ -809,6 +516,7 @@
         <div id="explanationTextDisplay" style="background:#f8fafc; padding: 12px; border-radius: 8px; white-space: pre-wrap;"></div>
     </div>
 </div>
+
 <div id="fixEndTimeModal" class="modal">
     <div class="modal-content" style="max-width: 400px;">
         <span class="close-fix-end">&times;</span>
@@ -820,13 +528,10 @@
         <div id="fixEndError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
+
+<!-- ===== JAVASCRIPT ===== -->
 <script>
-    let allNotifStartDate = '';
-    let allNotifEndDate = '';
-    let allNotifEmployeeId = '';
-    let startDate = '';
-    let endDate = '';
-    // ========== Вспомогательные функции ==========
+    // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
     function getLocalDate() {
         const now = new Date();
         const year = now.getFullYear();
@@ -834,7 +539,6 @@
         const day = String(now.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     }
-
     function formatDateTime(isoString) {
         if (!isoString) return '—';
         let str = isoString.slice(0, 19).replace('T', ' ');
@@ -844,7 +548,6 @@
         const [hours, minutes] = timePart.split(':');
         return `${day}-${month}-${year} ${hours}:${minutes}`;
     }
-
     function formatHoursToHHMM(hoursDecimal) {
         if (hoursDecimal === undefined || hoursDecimal === null) return '—';
         const totalMinutes = Math.round(hoursDecimal * 60);
@@ -852,14 +555,12 @@
         const mm = totalMinutes % 60;
         return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     }
-
     function formatMinutesToHHMM(minutes) {
         if (minutes === undefined || minutes === null) return '—';
         const hh = Math.floor(minutes / 60);
         const mm = minutes % 60;
         return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
     }
-
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -869,7 +570,6 @@
             return m;
         });
     }
-
     function showToast(message, isError = false) {
         const toast = document.getElementById('toast');
         toast.textContent = message;
@@ -880,13 +580,16 @@
 
     // ========== API ==========
     async function fetchWithAuth(url, options = {}) {
-        const resp = await fetch(url, { ...options, credentials: 'include' });
+        const resp = await fetch(url, { ...options, credentials: 'include', cache: 'no-cache'});
         if (resp.status === 401) {
             window.location.replace('/static/login.html');
             throw new Error('Unauthorized');
         }
         return resp;
     }
+
+    // ========== ЗАГРУЗКА ДАННЫХ ==========
+    let currentEmployeeId = null;
 
     async function loadEmployeeNameAndId() {
         try {
@@ -899,9 +602,7 @@
             }
             if ((data.is_admin || data.is_monitor) && !window._monitorSSE_active) {
                 window._monitorSSE_active = true;
-                setTimeout(() => {
-                    connectMonitorSSE();
-                }, 2000);
+                setTimeout(() => connectMonitorSSE(), 2000);
             }
             const allNotifTab = document.getElementById('allNotifTab');
             if (allNotifTab && (data.is_admin || data.is_monitor)) {
@@ -911,14 +612,10 @@
                 <strong>Сотрудник:</strong> ${escapeHtml(data.full_name)}<br>
                 <strong>Логин:</strong> ${escapeHtml(data.username)} (ID: ${data.id})
             `;
-            const adminBtn = document.getElementById('adminPanelBtn');
-            if (adminBtn) {
-                if (data.is_admin) {
-                    adminBtn.style.display = 'inline-block';
-                    adminBtn.onclick = () => window.location.href = '/admin';
-                } else {
-                    adminBtn.style.display = 'none';
-                }
+            // Показываем/скрываем пункт "Админ-панель" в выпадающем меню
+            const dropdownAdmin = document.getElementById('dropdownAdmin');
+            if (dropdownAdmin) {
+                dropdownAdmin.style.display = data.is_admin ? 'block' : 'none';
             }
             return data.id;
         } catch (err) {
@@ -979,7 +676,6 @@
     }
 
     let isSending = false;
-    let currentEmployeeId = null;
 
     async function sendAction(action) {
         if (isSending) {
@@ -993,7 +689,6 @@
         isSending = true;
         const btns = document.querySelectorAll('.action-btn');
         btns.forEach(btn => btn.disabled = true);
-
         try {
             const resp = await fetchWithAuth('/api/timelog', {
                 method: 'POST',
@@ -1015,9 +710,7 @@
             showToast('Ошибка соединения с сервером', true);
         } finally {
             isSending = false;
-            setTimeout(() => {
-                btns.forEach(btn => btn.disabled = false);
-            }, 500);
+            setTimeout(() => btns.forEach(btn => btn.disabled = false), 500);
         }
     }
 
@@ -1063,13 +756,12 @@
         renderButtons(availableActions);
     }
 
-    // ========== Недельный отчёт ==========
+    // ========== НЕДЕЛЬНЫЙ ОТЧЁТ ==========
     function getWeekNumber(date) {
         const firstJan = new Date(date.getFullYear(), 0, 1);
         const days = Math.floor((date - firstJan) / (24 * 60 * 60 * 1000));
         return Math.ceil((days + firstJan.getDay() + 1) / 7);
     }
-
     function getMonday(date) {
         const d = new Date(date);
         const day = d.getDay();
@@ -1077,7 +769,6 @@
         d.setDate(d.getDate() + diff);
         return new Date(d.getFullYear(), d.getMonth(), d.getDate());
     }
-
     function getMondayOfWeek(year, week) {
         const date = new Date(year, 0, 1);
         const days = (week - 1) * 7;
@@ -1097,17 +788,9 @@
             }
             let html = '<table style="width:100%;"><thead><tr><th>День</th><th>Отработано</th><th>Перерывы</th></tr></thead><tbody>';
             for (const day of data.days) {
-                html += `<tr>
-                            <td>${escapeHtml(day.weekday)} (${day.date})</td>
-                            <td>${formatHoursToHHMM(day.worked_hours)}</td>
-                            <td>${formatMinutesToHHMM(day.break_minutes)}</td>
-                         </tr>`;
+                html += `<tr><td>${escapeHtml(day.weekday)} (${day.date})</td><td>${formatHoursToHHMM(day.worked_hours)}</td><td>${formatMinutesToHHMM(day.break_minutes)}</td></tr>`;
             }
-            html += `<tr style="border-top: 2px solid #cbd5e1;">
-                        <td><strong>Итого</strong></td>
-                        <td><strong>${formatHoursToHHMM(data.total_worked_hours)}</strong></td>
-                        <td><strong>${formatMinutesToHHMM(data.total_break_minutes)}</strong></td>
-                     </tr>`;
+            html += `<tr style="border-top:2px solid #cbd5e1;"><td><strong>Итого</strong></td><td><strong>${formatHoursToHHMM(data.total_worked_hours)}</strong></td><td><strong>${formatMinutesToHHMM(data.total_break_minutes)}</strong></td></tr>`;
             html += '</tbody></table>';
             container.innerHTML = html;
         } catch (err) {
@@ -1116,19 +799,29 @@
         }
     }
 
+    // ========== ВКЛАДКИ ==========
     function initTabs() {
         const tabs = document.querySelectorAll('.tab-btn');
         const dailyTab = document.getElementById('daily-tab');
         const weeklyTab = document.getElementById('weekly-tab');
         const monitorTabDiv = document.getElementById('monitor-tab');
         const notificationsTab = document.getElementById('notifications-tab');
+        const allNotifTabDiv = document.getElementById('all-notifications-tab');
         const weekPicker = document.getElementById('weekPicker');
         const loadWeeklyBtn = document.getElementById('loadWeeklyBtn');
-        const allNotifTabDiv = document.getElementById('all-notifications-tab');
 
         tabs.forEach(btn => {
             btn.addEventListener('click', () => {
                 const tabId = btn.dataset.tab;
+                // Обработка вкладок-переходов
+                if (tabId === 'search') {
+                    window.location.href = '/static/search.html';
+                    return;
+                } else if (tabId === 'mark') {
+                    window.location.href = '/mark';
+                    return;
+                }
+                // Остальные вкладки – показываем/скрываем
                 tabs.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 dailyTab.style.display = 'none';
@@ -1196,36 +889,65 @@
                 }
             });
         }
+        // По умолчанию открываем "Сегодня"
         const defaultTab = document.querySelector('.tab-btn[data-tab="daily"]');
-        if (defaultTab) defaultTab.click();
+        if (defaultTab) {
+            defaultTab.classList.add('active');
+            document.getElementById('daily-tab').style.display = 'block';
+        }
     }
 
-    // ========== Выход ==========
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
+    // ========== ВЫПАДАЮЩЕЕ МЕНЮ (шестерёнка) ==========
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsDropdown = document.getElementById('settingsDropdown');
+    const dropdownAdmin = document.getElementById('dropdownAdmin');
+    const dropdownChangePassword = document.getElementById('dropdownChangePassword');
+    const dropdownLogout = document.getElementById('dropdownLogout');
+
+    settingsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        settingsDropdown.style.display = settingsDropdown.style.display === 'block' ? 'none' : 'block';
+    });
+    document.addEventListener('click', (e) => {
+        if (!settingsBtn.contains(e.target) && !settingsDropdown.contains(e.target)) {
+            settingsDropdown.style.display = 'none';
+        }
+    });
+
+    dropdownAdmin.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.location.href = '/admin';
+        settingsDropdown.style.display = 'none';
+    });
+
+    dropdownChangePassword.addEventListener('click', (e) => {
+        e.preventDefault();
+        const modal = document.getElementById('changePasswordModal');
+        if (modal) {
+            modal.style.display = 'block';
+            document.getElementById('oldPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+            document.getElementById('passwordError').innerText = '';
+        }
+        settingsDropdown.style.display = 'none';
+    });
+
+    dropdownLogout.addEventListener('click', async (e) => {
+        e.preventDefault();
         try {
             await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
             window.location.replace('/static/login.html');
         } catch (err) {
             showToast('Ошибка выхода', true);
         }
+        settingsDropdown.style.display = 'none';
     });
 
-    // ========== Инициализация ==========
-    initTabs();
-    refreshState();
-
+    // ========== МОДАЛКА СМЕНЫ ПАРОЛЯ ==========
     const modal = document.getElementById('changePasswordModal');
-    const changePwdBtn = document.getElementById('changePasswordBtn');
     const closeModal = document.querySelector('#changePasswordModal .close');
     const savePwdBtn = document.getElementById('savePasswordBtn');
-
-    changePwdBtn.onclick = () => {
-        modal.style.display = 'block';
-        document.getElementById('oldPassword').value = '';
-        document.getElementById('newPassword').value = '';
-        document.getElementById('confirmPassword').value = '';
-        document.getElementById('passwordError').innerText = '';
-    };
 
     closeModal.onclick = () => modal.style.display = 'none';
     window.onclick = (event) => {
@@ -1238,7 +960,6 @@
         const confirmPwd = document.getElementById('confirmPassword').value;
         const errorSpan = document.getElementById('passwordError');
         errorSpan.innerText = '';
-
         if (newPwd !== confirmPwd) {
             errorSpan.innerText = 'Новые пароли не совпадают';
             return;
@@ -1265,6 +986,80 @@
         }
     };
 
+    // ========== МОНИТОРИНГ ==========
+    let monitorEventSource = null;
+    let monitorFilterEnabled = localStorage.getItem('monitorFilterEnabled') === 'true';
+    let monitorStatusOrder = [];
+
+    function loadMonitorStatusOrder() {
+        const saved = localStorage.getItem('monitorStatusOrder');
+        if (saved) monitorStatusOrder = JSON.parse(saved);
+        else monitorStatusOrder = ['working', 'onbreak', 'notstarted', 'ended'];
+        applyMonitorOrderToUI();
+    }
+    function applyMonitorOrderToUI() {
+        const container = document.getElementById('monitorStatusOrderList');
+        const items = Array.from(container.children);
+        items.sort((a,b) => monitorStatusOrder.indexOf(a.dataset.status) - monitorStatusOrder.indexOf(b.dataset.status));
+        container.innerHTML = '';
+        items.forEach(item => container.appendChild(item));
+    }
+    function saveMonitorStatusOrder() {
+        const items = document.querySelectorAll('#monitorStatusOrderList li');
+        monitorStatusOrder = Array.from(items).map(li => li.dataset.status);
+        localStorage.setItem('monitorStatusOrder', JSON.stringify(monitorStatusOrder));
+        showToast('Порядок статусов сохранён');
+        const monitorDate = document.getElementById('monitorDate').value;
+        if (monitorDate) loadMonitorReport(monitorDate);
+    }
+    function initMonitorDragAndDrop() {
+        const list = document.getElementById('monitorStatusOrderList');
+        if (!list) return;
+        const items = list.querySelectorAll('li');
+        items.forEach(item => item.setAttribute('draggable', 'true'));
+        let dragItem = null;
+        list.addEventListener('dragstart', (e) => {
+            dragItem = e.target.closest('li');
+            if (!dragItem) return;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', '');
+            dragItem.classList.add('dragging');
+        });
+        list.addEventListener('dragend', (e) => {
+            if (dragItem) dragItem.classList.remove('dragging');
+            dragItem = null;
+            saveMonitorStatusOrder();
+        });
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const targetItem = e.target.closest('li');
+            if (!targetItem || targetItem === dragItem) return;
+            const rect = targetItem.getBoundingClientRect();
+            const midpoint = (rect.left + rect.right) / 2;
+            if (e.clientX < midpoint) targetItem.parentNode.insertBefore(dragItem, targetItem);
+            else targetItem.parentNode.insertBefore(dragItem, targetItem.nextSibling);
+        });
+    }
+
+    function toggleMonitorFilter() {
+        monitorFilterEnabled = !monitorFilterEnabled;
+        localStorage.setItem('monitorFilterEnabled', monitorFilterEnabled);
+        const settingsDiv = document.getElementById('monitorStatusOrderSettings');
+        const toggleBtn = document.getElementById('toggleMonitorFilterBtn');
+        if (monitorFilterEnabled) {
+            settingsDiv.style.display = 'block';
+            toggleBtn.textContent = '🎛️ Скрыть фильтр статусов';
+            loadMonitorStatusOrder();
+            initMonitorDragAndDrop();
+        } else {
+            settingsDiv.style.display = 'none';
+            toggleBtn.textContent = '🎛️ Фильтр по статусам';
+        }
+        const currentDate = document.getElementById('monitorDate').value;
+        if (currentDate) loadMonitorReport(currentDate);
+    }
+
     async function loadMonitorReport(date) {
         const container = document.getElementById('monitorContainer');
         container.innerHTML = '<p>Загрузка...</p>';
@@ -1276,13 +1071,7 @@
                 container.innerHTML = '<p>Нет данных за этот день</p>';
                 return;
             }
-            const getCombinedStatus = (row) => {
-                if (row.status_break && row.status_break !== '') {
-                    return row.status_break;
-                } else {
-                    return row.status_day;
-                }
-            };
+            const getCombinedStatus = (row) => row.status_break && row.status_break !== '' ? row.status_break : row.status_day;
 
             if (monitorFilterEnabled) {
                 const getStatusPriority = (row) => {
@@ -1295,29 +1084,24 @@
                     const idx = monitorStatusOrder.indexOf(key);
                     return idx !== -1 ? idx : 99;
                 };
-                report.sort((a, b) => {
-                    const priorityA = getStatusPriority(a);
-                    const priorityB = getStatusPriority(b);
-                    if (priorityA !== priorityB) return priorityA - priorityB;
+                report.sort((a,b) => {
+                    const pa = getStatusPriority(a), pb = getStatusPriority(b);
+                    if (pa !== pb) return pa - pb;
                     return a.full_name.localeCompare(b.full_name, 'ru');
                 });
             } else {
-                report.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+                report.sort((a,b) => a.full_name.localeCompare(b.full_name, 'ru'));
             }
 
             const isMobile = window.innerWidth <= 768;
-
             if (!isMobile) {
-                let html = '<div class="recent-table"><table class="report-table" style="width:100%;"><thead>';
-                html += '<tr><th>Сотрудник</th><th>Статус</th><th>Начало рабочего дня</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th><th>Действие</th></tr>';
-                html += '</thead><tbody>';
+                let html = '<div class="recent-table"><table class="report-table"><thead><tr><th>Сотрудник</th><th>Статус</th><th>Начало дня</th><th>Последняя отметка</th><th>Отработано</th><th>Перерывы</th><th>Кол-во перерывов</th><th>Действие</th></tr></thead><tbody>';
                 for (const row of report) {
                     let rowClass = '';
                     if (row.status_day === '❌ не начал') rowClass = 'row-not-started';
                     else if (row.status_break === '☕ в перерыве') rowClass = 'row-on-break';
                     else if (row.status_day === '✅ работает') rowClass = 'row-working';
                     else if (row.status_day === '🏁 завершил') rowClass = 'row-ended';
-                    
                     let lastEntryDisplay = '';
                     if (row.last_entry_time) {
                         const timePart = row.last_entry_time.slice(11,16);
@@ -1333,27 +1117,21 @@
                     }
                     let startTimeDisplay = row.first_start_time ? row.first_start_time.slice(11,16) : '';
                     const combinedStatus = getCombinedStatus(row);
-                    
                     html += `<tr class="${rowClass}">
-                                <td>${escapeHtml(row.full_name)}</td>
-                                <td>${escapeHtml(combinedStatus)}</td>
-                                <td>${startTimeDisplay}</td>
-                                <td>${lastEntryDisplay}</td>
-                                <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
-                                <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
-                                <td>${row.break_count}</td>
-                                <td><button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}">📝</button></td>
-                            </tr>`;
+                        <td>${escapeHtml(row.full_name)}</td>
+                        <td>${escapeHtml(combinedStatus)}</td>
+                        <td>${startTimeDisplay}</td>
+                        <td>${lastEntryDisplay}</td>
+                        <td>${formatHoursToHHMM(row.worked_hours_current)}</td>
+                        <td>${formatMinutesToHHMM(row.break_minutes_current)}</td>
+                        <td>${row.break_count}</td>
+                        <td><button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}">📝</button></td>
+                    </tr>`;
                 }
                 html += '</tbody></table></div>';
                 container.innerHTML = html;
-                
                 document.querySelectorAll('.send-notif').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const empId = btn.dataset.id;
-                        const empName = btn.dataset.name;
-                        openNotificationModal(empId, empName);
-                    });
+                    btn.addEventListener('click', () => openNotificationModal(btn.dataset.id, btn.dataset.name));
                 });
             } else {
                 let html = '<div class="monitor-accordion">';
@@ -1377,9 +1155,7 @@
                     else if (row.status_break === '☕ в перерыве') statusClass = 'row-on-break';
                     else if (row.status_day === '✅ работает') statusClass = 'row-working';
                     else if (row.status_day === '🏁 завершил') statusClass = 'row-ended';
-                    
                     const combinedStatus = getCombinedStatus(row);
-                    
                     html += `
                         <div class="monitor-accordion-item ${statusClass}">
                             <div class="monitor-accordion-header">
@@ -1387,49 +1163,25 @@
                                 <span>${escapeHtml(combinedStatus)}</span>
                             </div>
                             <div class="monitor-accordion-details">
-                                <div class="monitor-accordion-details-row">
-                                    <span class="monitor-accordion-label">Начало рабочего дня:</span>
-                                    <span class="monitor-accordion-value">${startTimeDisplay || '—'}</span>
-                                </div>
-                                <div class="monitor-accordion-details-row">
-                                    <span class="monitor-accordion-label">Последняя отметка:</span>
-                                    <span class="monitor-accordion-value">${lastEntryDisplay || '—'}</span>
-                                </div>
-                                <div class="monitor-accordion-details-row">
-                                    <span class="monitor-accordion-label">Отработано:</span>
-                                    <span class="monitor-accordion-value">${formatHoursToHHMM(row.worked_hours_current)}</span>
-                                </div>
-                                <div class="monitor-accordion-details-row">
-                                    <span class="monitor-accordion-label">Перерывы:</span>
-                                    <span class="monitor-accordion-value">${formatMinutesToHHMM(row.break_minutes_current)}</span>
-                                </div>
-                                <div class="monitor-accordion-details-row">
-                                    <span class="monitor-accordion-label">Кол-во перерывов:</span>
-                                    <span class="monitor-accordion-value">${row.break_count}</span>
-                                </div>
-                                <div class="monitor-accordion-details-row">
-                                    <span class="monitor-accordion-label">Действие:</span>
-                                    <span class="monitor-accordion-value"><button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}">📝</button></span>
-                                </div>
+                                <div class="monitor-accordion-details-row"><span class="monitor-accordion-label">Начало дня:</span><span class="monitor-accordion-value">${startTimeDisplay || '—'}</span></div>
+                                <div class="monitor-accordion-details-row"><span class="monitor-accordion-label">Последняя отметка:</span><span class="monitor-accordion-value">${lastEntryDisplay || '—'}</span></div>
+                                <div class="monitor-accordion-details-row"><span class="monitor-accordion-label">Отработано:</span><span class="monitor-accordion-value">${formatHoursToHHMM(row.worked_hours_current)}</span></div>
+                                <div class="monitor-accordion-details-row"><span class="monitor-accordion-label">Перерывы:</span><span class="monitor-accordion-value">${formatMinutesToHHMM(row.break_minutes_current)}</span></div>
+                                <div class="monitor-accordion-details-row"><span class="monitor-accordion-label">Кол-во перерывов:</span><span class="monitor-accordion-value">${row.break_count}</span></div>
+                                <div class="monitor-accordion-details-row"><span class="monitor-accordion-label">Действие:</span><span class="monitor-accordion-value"><button class="btn-sm send-notif" data-id="${row.employee_id}" data-name="${escapeHtml(row.full_name)}">📝</button></span></div>
                             </div>
                         </div>
                     `;
                 }
                 html += '</div>';
                 container.innerHTML = html;
-                
-                document.querySelectorAll('.monitor-accordion-header').forEach(header => {
-                    header.addEventListener('click', () => {
-                        const item = header.closest('.monitor-accordion-item');
-                        item.classList.toggle('open');
-                    });
-                });
+                document.querySelectorAll('.monitor-accordion-header').forEach(h => h.addEventListener('click', function() {
+                    this.closest('.monitor-accordion-item').classList.toggle('open');
+                }));
                 document.querySelectorAll('.send-notif').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        const empId = btn.dataset.id;
-                        const empName = btn.dataset.name;
-                        openNotificationModal(empId, empName);
+                        openNotificationModal(btn.dataset.id, btn.dataset.name);
                     });
                 });
             }
@@ -1439,1072 +1191,611 @@
         }
     }
 
-const monitorDateInput = document.getElementById('monitorDate');
-const refreshMonitorBtn = document.getElementById('refreshMonitorBtn');
-if (monitorDateInput) {
-    monitorDateInput.value = getLocalDate();
-}
-if (refreshMonitorBtn) {
-    refreshMonitorBtn.addEventListener('click', () => {
-        loadMonitorReport(monitorDateInput.value);
-    });
-    monitorDateInput.addEventListener('change', () => {
-        loadMonitorReport(monitorDateInput.value);
-    });
-}
-
-let monitorEventSource = null;
-
-function connectMonitorSSE() {
-    if (monitorEventSource) monitorEventSource.close();
-    monitorEventSource = new EventSource('/api/monitor/events');
-    monitorEventSource.addEventListener('update', () => {
-        console.log('Получено обновление мониторинга');
-        const activeTabBtn = document.querySelector('.tab-btn.active');
-        if (activeTabBtn && activeTabBtn.dataset.tab === 'monitor') {
-            const monitorDate = document.getElementById('monitorDate').value || getLocalDate();
-            loadMonitorReport(monitorDate);
-        }
-    });
-    monitorEventSource.onerror = () => {
-        console.warn('SSE мониторинга ошибка, соединение закрыто');
+    function connectMonitorSSE() {
         if (monitorEventSource) monitorEventSource.close();
-        monitorEventSource = null;
-    };
-}
-
-if (monitorDateInput) {
-    monitorDateInput.value = getLocalDate();
-}
-// ========== Фильтр мониторинга ==========
-let monitorFilterEnabled = localStorage.getItem('monitorFilterEnabled') === 'true';
-let monitorStatusOrder = [];
-
-function loadMonitorStatusOrder() {
-    const saved = localStorage.getItem('monitorStatusOrder');
-    if (saved) {
-        monitorStatusOrder = JSON.parse(saved);
-    } else {
-        monitorStatusOrder = ['working', 'onbreak', 'notstarted', 'ended'];
+        monitorEventSource = new EventSource('/api/monitor/events');
+        monitorEventSource.addEventListener('update', () => {
+            const activeTab = document.querySelector('.tab-btn.active');
+            if (activeTab && activeTab.dataset.tab === 'monitor') {
+                const monitorDate = document.getElementById('monitorDate').value || getLocalDate();
+                loadMonitorReport(monitorDate);
+            }
+        });
+        monitorEventSource.onerror = () => {
+            if (monitorEventSource) monitorEventSource.close();
+            monitorEventSource = null;
+        };
     }
-    applyMonitorOrderToUI();
-}
 
-function applyMonitorOrderToUI() {
-    const container = document.getElementById('monitorStatusOrderList');
-    const items = Array.from(container.children);
-    items.sort((a, b) => {
-        const aIdx = monitorStatusOrder.indexOf(a.dataset.status);
-        const bIdx = monitorStatusOrder.indexOf(b.dataset.status);
-        return aIdx - bIdx;
+    document.getElementById('monitorDate').value = getLocalDate();
+    document.getElementById('refreshMonitorBtn').addEventListener('click', () => {
+        loadMonitorReport(document.getElementById('monitorDate').value);
     });
-    container.innerHTML = '';
-    items.forEach(item => container.appendChild(item));
-}
-
-function saveMonitorStatusOrder() {
-    const items = document.querySelectorAll('#monitorStatusOrderList li');
-    monitorStatusOrder = Array.from(items).map(li => li.dataset.status);
-    localStorage.setItem('monitorStatusOrder', JSON.stringify(monitorStatusOrder));
-    showToast('Порядок статусов сохранён');
-    const monitorDate = document.getElementById('monitorDate').value;
-    if (monitorDate) loadMonitorReport(monitorDate);
-}
-
-function initMonitorDragAndDrop() {
-    const list = document.getElementById('monitorStatusOrderList');
-    if (!list) return;
-    const items = list.querySelectorAll('li');
-    items.forEach(item => item.setAttribute('draggable', 'true'));
-    let dragItem = null;
-    
-    list.addEventListener('dragstart', (e) => {
-        dragItem = e.target.closest('li');
-        if (!dragItem) return;
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', '');
-        dragItem.classList.add('dragging');
+    document.getElementById('monitorDate').addEventListener('change', () => {
+        loadMonitorReport(document.getElementById('monitorDate').value);
     });
-    
-    list.addEventListener('dragend', (e) => {
-        if (dragItem) dragItem.classList.remove('dragging');
-        dragItem = null;
-        saveMonitorStatusOrder();
-    });
-    
-    list.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        const targetItem = e.target.closest('li');
-        if (!targetItem || targetItem === dragItem) return;
-        const rect = targetItem.getBoundingClientRect();
-        const midpoint = (rect.left + rect.right) / 2;
-        if (e.clientX < midpoint) {
-            targetItem.parentNode.insertBefore(dragItem, targetItem);
-        } else {
-            targetItem.parentNode.insertBefore(dragItem, targetItem.nextSibling);
-        }
-    });
-}
+    document.getElementById('toggleMonitorFilterBtn').addEventListener('click', toggleMonitorFilter);
 
-function toggleMonitorFilter() {
-    monitorFilterEnabled = !monitorFilterEnabled;
-    localStorage.setItem('monitorFilterEnabled', monitorFilterEnabled);
-    const settingsDiv = document.getElementById('monitorStatusOrderSettings');
-    const toggleBtn = document.getElementById('toggleMonitorFilterBtn');
-    if (monitorFilterEnabled) {
-        settingsDiv.style.display = 'block';
-        toggleBtn.textContent = '🎛️ Скрыть фильтр статусов';
-        loadMonitorStatusOrder();
-        initMonitorDragAndDrop();
-    } else {
-        settingsDiv.style.display = 'none';
-        toggleBtn.textContent = '🎛️ Фильтр по статусам';
-    }
-    const currentDate = document.getElementById('monitorDate').value;
-    if (currentDate) loadMonitorReport(currentDate);
-}
+    // ========== УВЕДОМЛЕНИЯ СОТРУДНИКА ==========
+    let currentNotificationId = null;
 
-const monitorToggleBtn = document.getElementById('toggleMonitorFilterBtn');
-if (monitorToggleBtn) {
-    monitorToggleBtn.addEventListener('click', toggleMonitorFilter);
-    if (monitorFilterEnabled) {
-        document.getElementById('monitorStatusOrderSettings').style.display = 'block';
-        monitorToggleBtn.textContent = '🎛️ Скрыть фильтр статусов';
-        loadMonitorStatusOrder();
-        initMonitorDragAndDrop();
-    } else {
-        document.getElementById('monitorStatusOrderSettings').style.display = 'none';
-        monitorToggleBtn.textContent = '🎛️ Фильтр по статусам';
-    }
-}
-
-let currentNotificationId = null;
-
-async function loadNotifications() {
-    try {
-        const resp = await fetch('/api/employee/notifications', { credentials: 'include' });
-        if (!resp.ok) throw new Error('Ошибка загрузки');
-        const data = await resp.json();
-        const badge = document.getElementById('notifBadge');
-        if (badge) {
-            const unansweredCount = data.filter(n => !n.has_explanation).length;
-            if (unansweredCount > 0) {
-                badge.style.display = 'inline-block';
+    async function loadNotifications() {
+        try {
+            const resp = await fetch('/api/employee/notifications', { credentials: 'include' });
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            const data = await resp.json();
+            const badge = document.getElementById('notifBadge');
+            if (badge) {
+                const unansweredCount = data.filter(n => !n.has_explanation).length;
+                badge.style.display = unansweredCount > 0 ? 'inline-block' : 'none';
                 badge.innerText = unansweredCount;
-            } else {
-                badge.style.display = 'none';
             }
+            renderNotifications(data);
+            return data;
+        } catch (err) {
+            console.error(err);
+            return [];
         }
-        renderNotifications(data);
-        return data;
-    } catch (err) {
-        console.error(err);
-        return [];
     }
-}
 
-function renderNotifications(notifications) {
-    const container = document.getElementById('notificationsContainer');
-    if (!container) return;
-    if (!notifications.length) {
-        container.innerHTML = '<p>Нет уведомлений</p>';
-        return;
-    }
-    const isMobile = window.innerWidth <= 768;
-    if (!isMobile) {
-        let html = '<div class="recent-table"><table class="report-table"><thead><tr>';
-        html += '<th>Тип</th><th>Сообщение</th><th>Дата</th><th>Статус объяснительной</th><th>Объяснительная</th><th>Действие</th></tr></thead><tbody>';
-        for (const n of notifications) {
-            let typeIcon = '';
-            let typeColor = '';
-            let gradeHtml = '';
-            switch (n.type) {
-                case 'reprimand':
-                    typeIcon = '❌';
-                    typeColor = 'red';
-                    break;
-                case 'warning':
-                    typeIcon = '⚠️';
-                    typeColor = 'orange';
-                    break;
-                case 'commendation':
-                    typeIcon = '✅';
-                    typeColor = 'green';
-                    break;
-                case 'performance_review':
-                    typeIcon = '⭐';
-                    typeColor = '#3b82f6'; // синий цвет
-                    typeLabel = 'Оценка работы';
-                    break;
-            }
-            gradeHtml = '';
-            if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
-                const gradeMap = {
-                    'red': '🔴 Неудовлетворительно',
-                    'yellow': '🟡 Сойдёт, есть замечания',
-                    'blue': '🔵 Всё ровно, так держать',
-                    'green': '🟢 Молодец, ты супер!'
-                };
-                const colorMap = {
-                    'red': '#ef4444',
-                    'yellow': '#f59e0b',
-                    'blue': '#3b82f6',
-                    'green': '#22c55e'
-                };
-                gradeHtml = `<div style="font-size:0.8rem; color:${colorMap[n.extra_data.grade] || '#64748b'};">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>`;
-            }
-            const dateStr = new Date(n.created_at).toLocaleString();
-            const hasExpl = n.has_explanation;
-            const rowClass = hasExpl ? 'notif-answered' : 'notif-pending';
-            let explanationCell = hasExpl ? `<span class="explanation-text">${escapeHtml(n.explanation_text || '')}</span>` : '—';
-            let actionCell = '';
-            if (hasExpl) {
-                actionCell = '—';
-            } else {
-                if (n.type === 'reprimand' || n.type === 'performance_review') {
-                    actionCell = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
-                } else if (n.type === 'commendation') {
-                    actionCell = `<button class="btn-sm mark-as-read" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>`;
-                } else if (n.type === 'warning' && n.message !== 'Не был завершен рабочий день') {
-                    actionCell = `<button class="btn-sm mark-as-read" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>`;
+    function renderNotifications(notifications) {
+        const container = document.getElementById('notificationsContainer');
+        if (!container) return;
+        if (!notifications.length) {
+            container.innerHTML = '<p>Нет уведомлений</p>';
+            return;
+        }
+        const isMobile = window.innerWidth <= 768;
+        if (!isMobile) {
+            let html = '<div class="recent-table"><table class="report-table"><thead><tr><th>Тип</th><th>Сообщение</th><th>Дата</th><th>Статус объяснительной</th><th>Объяснительная</th><th>Действие</th></tr></thead><tbody>';
+            for (const n of notifications) {
+                let typeIcon = '', typeColor = '', gradeHtml = '';
+                if (n.type === 'reprimand') { typeIcon = '❌'; typeColor = 'red'; }
+                else if (n.type === 'warning') { typeIcon = '⚠️'; typeColor = 'orange'; }
+                else if (n.type === 'commendation') { typeIcon = '✅'; typeColor = 'green'; }
+                else if (n.type === 'performance_review') { typeIcon = '⭐'; typeColor = '#3b82f6'; }
+                if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
+                    const gradeMap = { red:'🔴 Неудовлетворительно', yellow:'🟡 Сойдёт, есть замечания', blue:'🔵 Всё ровно, так держать', green:'🟢 Молодец, ты супер!' };
+                    const colorMap = { red:'#ef4444', yellow:'#f59e0b', blue:'#3b82f6', green:'#22c55e' };
+                    gradeHtml = `<div style="font-size:0.8rem; color:${colorMap[n.extra_data.grade] || '#64748b'};">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>`;
                 }
+                const dateStr = new Date(n.created_at).toLocaleString();
+                const hasExpl = n.has_explanation;
+                const rowClass = hasExpl ? 'notif-answered' : 'notif-pending';
+                let explanationCell = hasExpl ? `<span class="explanation-text">${escapeHtml(n.explanation_text || '')}</span>` : '—';
+                let actionCell = '';
+                if (!hasExpl) {
+                    if (n.type === 'reprimand' || n.type === 'performance_review')
+                        actionCell = `<button class="btn-sm" data-id="${n.id}">✏️ Написать</button>`;
+                    else if (n.type === 'commendation' || (n.type === 'warning' && n.message !== 'Не был завершен рабочий день'))
+                        actionCell = `<button class="btn-sm mark-as-read" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>`;
+                }
+                let fixAction = '';
+                if (n.type === 'warning' && n.message === 'Не был завершен рабочий день' && !hasExpl) {
+                    let workdayDate = n.created_at;
+                    if (n.extra_data && n.extra_data.workday_date) workdayDate = n.extra_data.workday_date;
+                    else {
+                        const created = new Date(n.created_at);
+                        if (created.getHours() === 5 && created.getMinutes() === 0) {
+                            const prevDay = new Date(created);
+                            prevDay.setDate(created.getDate() - 1);
+                            workdayDate = prevDay.toISOString();
+                        }
+                    }
+                    fixAction = `<button class="btn-sm fix-end-time" data-id="${n.id}" data-workday-date="${workdayDate}">✏️ Исправить</button>`;
+                }
+                html += `<tr class="${rowClass}">
+                    <td style="color:${typeColor}; font-size:1.2rem;">${typeIcon} ${gradeHtml}</td>
+                    <td>${escapeHtml(n.message)}</td>
+                    <td>${dateStr}</td>
+                    <td>${hasExpl ? 'Отвечено' : 'Ожидает'}</td>
+                    <td>${explanationCell}</td>
+                    <td>${actionCell} ${fixAction}</td>
+                </tr>`;
             }
-            let fixAction = '';
-            if (n.type === 'warning' && n.message === 'Не был завершен рабочий день' && !hasExpl) {
-                let workdayDate = n.created_at;
-                if (n.extra_data && n.extra_data.workday_date) {
-                    workdayDate = n.extra_data.workday_date;
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+            // обработчики
+            document.querySelectorAll('.fix-end-time').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const notifId = btn.dataset.id;
+                    const workdayDateStr = btn.dataset.workdayDate;
+                    const date = new Date(workdayDateStr);
+                    const formattedDate = `${String(date.getDate()).padStart(2,'0')}.${String(date.getMonth()+1).padStart(2,'0')}.${date.getFullYear()}`;
+                    document.getElementById('fixEndDate').innerText = formattedDate;
+                    document.getElementById('fixEndTime').value = '17:00';
+                    document.getElementById('fixEndError').innerText = '';
+                    document.getElementById('fixEndTimeModal').style.display = 'block';
+                    window.currentFixNotificationId = notifId;
+                });
+            });
+            document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.mark-as-read):not(.fix-end-time)').forEach(btn => {
+                btn.addEventListener('click', () => openExplanationModal(parseInt(btn.dataset.id)));
+            });
+            document.querySelectorAll('#notificationsContainer .mark-as-read').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    markAsRead(parseInt(btn.dataset.id));
+                });
+            });
+        } else {
+            // Мобильная версия (аккордеон)
+            let html = '<div class="notifications-accordion">';
+            for (const n of notifications) {
+                let typeIcon = '', typeColor = '', typeLabel = '';
+                if (n.type === 'reprimand') { typeIcon = '❌'; typeColor = 'red'; typeLabel = 'Замечание'; }
+                else if (n.type === 'warning') { typeIcon = '⚠️'; typeColor = 'orange'; typeLabel = 'Предупреждение'; }
+                else if (n.type === 'commendation') { typeIcon = '✅'; typeColor = 'green'; typeLabel = 'Похвала'; }
+                else if (n.type === 'performance_review') { typeIcon = '⭐'; typeColor = '#3b82f6'; typeLabel = 'Оценка работы'; }
+                const dateStr = new Date(n.created_at).toLocaleString();
+                const hasExpl = n.has_explanation;
+                const statusText = hasExpl ? 'Отвечено' : 'Ожидает';
+                let shortMessage = escapeHtml(n.message);
+                if (shortMessage.length > 45) shortMessage = shortMessage.substring(0,42)+'...';
+                let detailsHtml = `
+                    <div class="notif-detail-row"><div class="notif-detail-label">Тип</div><div class="notif-detail-value" style="color:${typeColor};">${typeIcon} ${typeLabel}</div></div>
+                    <div class="notif-detail-row"><div class="notif-detail-label">Дата</div><div class="notif-detail-value">${dateStr}</div></div>
+                    <div class="notif-detail-row"><div class="notif-detail-label">Статус</div><div class="notif-detail-value">${statusText}</div></div>
+                    <div class="notif-detail-row"><div class="notif-detail-label">Сообщение</div><div class="notif-detail-value">${escapeHtml(n.message)}</div></div>
+                `;
+                if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
+                    const gradeMap = { red:'🔴 Неудовлетворительно', yellow:'🟡 Сойдёт, есть замечания', blue:'🔵 Всё ровно, так держать', green:'🟢 Молодец, ты супер!' };
+                    detailsHtml += `<div class="notif-detail-row"><div class="notif-detail-label">Оценка</div><div class="notif-detail-value">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div></div>`;
+                }
+                if (hasExpl) {
+                    detailsHtml += `<div class="notif-detail-row"><div class="notif-detail-label">Объяснительная</div><div class="notif-detail-value"><div class="notif-explanation-text">${escapeHtml(n.explanation_text || '')}</div></div></div>`;
                 } else {
-                    const created = new Date(n.created_at);
-                    if (created.getHours() === 5 && created.getMinutes() === 0) {
-                        const prevDay = new Date(created);
-                        prevDay.setDate(created.getDate() - 1);
-                        workdayDate = prevDay.toISOString();
+                    if (n.type === 'reprimand' || n.type === 'performance_review') {
+                        detailsHtml += `<div class="notif-detail-row"><div class="notif-detail-label">Действие</div><div class="notif-detail-value"><button class="btn-sm write-explanation" data-id="${n.id}">✏️ Написать</button></div></div>`;
+                    } else if (n.type === 'commendation' || (n.type === 'warning' && n.message !== 'Не был завершен рабочий день')) {
+                        detailsHtml += `<div class="notif-detail-row"><div class="notif-detail-label">Действие</div><div class="notif-detail-value"><button class="btn-sm mark-as-read-mobile" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button></div></div>`;
                     }
                 }
-                fixAction = `<button class="btn-sm fix-end-time" data-id="${n.id}" data-workday-date="${workdayDate}">✏️ Исправить</button>`;
-            }
-            html += `<tr class="${rowClass}">
-                        <td style="color:${typeColor}; font-size:1.2rem;">
-                            ${typeIcon}
-                            ${gradeHtml}
-                        </td>
-                        <td>${escapeHtml(n.message)}</td>
-                        <td>${dateStr}</td>
-                        <td>${hasExpl ? 'Отвечено' : 'Ожидает'}</td>
-                        <td>${explanationCell}</td>
-                        <td>${actionCell} ${fixAction}</td>
-                    </tr>`;
-        }
-        html += '</tbody></table></div>';
-        container.innerHTML = html;
-
-        // Обработчик для десктопных кнопок "Исправить"
-        document.querySelectorAll('.fix-end-time').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const notifId = btn.dataset.id;
-                const workdayDateStr = btn.dataset.workdayDate;
-                const date = new Date(workdayDateStr);
-                const year = date.getFullYear();
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate()).padStart(2, '0');
-                const formattedDate = `${day}.${month}.${year}`;
-                document.getElementById('fixEndDate').innerText = formattedDate;
-                document.getElementById('fixEndTime').value = '17:00';
-                document.getElementById('fixEndError').innerText = '';
-                document.getElementById('fixEndTimeModal').style.display = 'block';
-                window.currentFixNotificationId = notifId;
-            });
-        });
-        document.querySelectorAll('#notificationsContainer .btn-sm[data-id]:not(.mark-as-read):not(.fix-end-time)').forEach(btn => {
-            const id = parseInt(btn.dataset.id);
-            btn.addEventListener('click', () => openExplanationModal(id));
-        });
-        document.querySelectorAll('#notificationsContainer .mark-as-read').forEach(btn => {
-            const id = parseInt(btn.dataset.id);
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                markAsRead(id);
-            });
-        });
-    } else {
-        // Мобильная версия (аккордеон)
-        let html = '<div class="notifications-accordion">';
-        for (const n of notifications) {
-            let typeIcon = '';
-            let gradeHtml = '';
-            if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
-                const gradeMap = {
-                    'red': '🔴 Неудовлетворительно',
-                    'yellow': '🟡 Сойдёт, есть замечания',
-                    'blue': '🔵 Всё ровно, так держать',
-                    'green': '🟢 Молодец, ты супер!'
-                };
-                const colorMap = {
-                    'red': '#ef4444',
-                    'yellow': '#f59e0b',
-                    'blue': '#3b82f6',
-                    'green': '#22c55e'
-                };
-                gradeHtml = `<div style="font-size:0.8rem; color:${colorMap[n.extra_data.grade] || '#64748b'};">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>`;
-            }
-            let typeColor = '';
-            let typeLabel = '';
-            switch (n.type) {
-                case 'reprimand':
-                    typeIcon = '❌';
-                    typeColor = 'red';
-                    typeLabel = 'Замечание';
-                    break;
-                case 'warning':
-                    typeIcon = '⚠️';
-                    typeColor = 'orange';
-                    typeLabel = 'Предупреждение';
-                    break;
-                case 'commendation':
-                    typeIcon = '✅';
-                    typeColor = 'green';
-                    typeLabel = 'Похвала';
-                    break;
-            }
-            const dateStr = new Date(n.created_at).toLocaleString();
-            const hasExpl = n.has_explanation;
-            const statusText = hasExpl ? 'Отвечено' : 'Ожидает';
-            
-            let shortMessage = escapeHtml(n.message);
-            if (shortMessage.length > 45) shortMessage = shortMessage.substring(0, 42) + '...';
-            
-            let detailsHtml = `
-                <div class="notif-detail-row">
-                    <div class="notif-detail-label">Тип</div>
-                    <div class="notif-detail-value" style="color:${typeColor};">${typeIcon} ${typeLabel}</div>
-                </div>
-                <div class="notif-detail-row">
-                    <div class="notif-detail-label">Дата</div>
-                    <div class="notif-detail-value">${dateStr}</div>
-                </div>
-                <div class="notif-detail-row">
-                    <div class="notif-detail-label">Статус объяснительной</div>
-                    <div class="notif-detail-value">${statusText}</div>
-                </div>
-                <div class="notif-detail-row">
-                    <div class="notif-detail-label">Сообщение</div>
-                    <div class="notif-detail-value">${escapeHtml(n.message)}</div>
-                </div>
-            `;
-
-            // Отображение оценки для performance_review
-            if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
-                const gradeMap = {
-                    'red': '🔴 Неудовлетворительно',
-                    'yellow': '🟡 Сойдёт, есть замечания',
-                    'blue': '🔵 Всё ровно, так держать',
-                    'green': '🟢 Молодец, ты супер!'
-                };
-                detailsHtml += `
-                    <div class="notif-detail-row">
-                        <div class="notif-detail-label">Оценка</div>
-                        <div class="notif-detail-value">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>
-                    </div>
-                `;
-            }
-            
-            if (hasExpl) {
-                detailsHtml += `
-                    <div class="notif-detail-row">
-                        <div class="notif-detail-label">Объяснительная</div>
-                        <div class="notif-detail-value">
-                            <div class="notif-explanation-text">${escapeHtml(n.explanation_text || '')}</div>
-                        </div>
-                    </div>
-                `;
-            } else {
-                if (n.type === 'reprimand' || n.type === 'performance_review') {
-                    detailsHtml += `
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Действие</div>
-                            <div class="notif-detail-value">
-                                <button class="btn-sm write-explanation" data-id="${n.id}">✏️ Написать объяснительную</button>
-                            </div>
-                        </div>
-                    `;
-                } else if (n.type === 'commendation') {
-                    detailsHtml += `
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Действие</div>
-                            <div class="notif-detail-value">
-                                <button class="btn-sm mark-as-read-mobile" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>
-                            </div>
-                        </div>
-                    `;
-                } else if (n.type === 'warning' && n.message !== 'Не был завершен рабочий день') {
-                    detailsHtml += `
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Действие</div>
-                            <div class="notif-detail-value">
-                                <button class="btn-sm mark-as-read-mobile" data-id="${n.id}" data-type="${n.type}">✅ Прочитано</button>
-                            </div>
-                        </div>
-                    `;
-                }
-            }
-            
-            // ДОБАВЛЯЕМ КНОПКУ ИСПРАВЛЕНИЯ ДЛЯ МОБИЛЬНЫХ
-            if (n.type === 'warning' && n.message === 'Не был завершен рабочий день' && !hasExpl) {
-                let workdayDateMobile = n.created_at;
-                if (n.extra_data && n.extra_data.workday_date) {
-                    workdayDateMobile = n.extra_data.workday_date;
-                } else {
-                    const createdMobile = new Date(n.created_at);
-                    if (createdMobile.getHours() === 5 && createdMobile.getMinutes() === 0) {
-                        const prevDayMobile = new Date(createdMobile);
-                        prevDayMobile.setDate(createdMobile.getDate() - 1);
-                        workdayDateMobile = prevDayMobile.toISOString();
+                // Исправление времени (мобилка)
+                if (n.type === 'warning' && n.message === 'Не был завершен рабочий день' && !hasExpl) {
+                    let workdayDateMobile = n.created_at;
+                    if (n.extra_data && n.extra_data.workday_date) workdayDateMobile = n.extra_data.workday_date;
+                    else {
+                        const createdMobile = new Date(n.created_at);
+                        if (createdMobile.getHours() === 5 && createdMobile.getMinutes() === 0) {
+                            const prevDayMobile = new Date(createdMobile);
+                            prevDayMobile.setDate(createdMobile.getDate() - 1);
+                            workdayDateMobile = prevDayMobile.toISOString();
+                        }
                     }
+                    detailsHtml += `<div class="notif-detail-row"><div class="notif-detail-label">Исправление</div><div class="notif-detail-value"><button class="btn-sm fix-end-time-mobile" data-id="${n.id}" data-workday-date="${workdayDateMobile}">✏️ Исправить</button></div></div>`;
                 }
-                detailsHtml += `
-                    <div class="notif-detail-row">
-                        <div class="notif-detail-label">Исправление времени</div>
-                        <div class="notif-detail-value">
-                            <button class="btn-sm fix-end-time-mobile" data-id="${n.id}" data-workday-date="${workdayDateMobile}">✏️ Исправить</button>
+                const accordionClass = hasExpl ? 'notif-answered' : 'notif-pending';
+                html += `
+                    <div class="notifications-accordion-item ${accordionClass}" data-id="${n.id}">
+                        <div class="notifications-accordion-header">
+                            <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+                                <span style="color:${typeColor};">${typeIcon}</span>
+                                <span style="white-space:nowrap;">${dateStr.split(',')[0]}</span>
+                                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#475569; font-size:0.85rem;">${shortMessage}</span>
+                            </div>
                         </div>
+                        <div class="notifications-accordion-details">${detailsHtml}</div>
                     </div>
                 `;
             }
-            
-            const accordionClass = hasExpl ? 'notif-answered' : 'notif-pending';
-            html += `
-                <div class="notifications-accordion-item ${accordionClass}" data-id="${n.id}">
-                    <div class="notifications-accordion-header">
-                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
-                            <span style="color:${typeColor};">${typeIcon}</span>
-                            <span style="white-space: nowrap;">${dateStr.split(',')[0]}</span>
-                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #475569; font-size: 0.85rem;">${shortMessage}</span>
-                        </div>
-                    </div>
-                    <div class="notifications-accordion-details">
-                        ${detailsHtml}
-                    </div>
-                </div>
-            `;
-        }
-        html += '</div>';
-        container.innerHTML = html;
-        
-        // Обработчики для мобильной версии
-        document.querySelectorAll('.notifications-accordion-header').forEach(header => {
-            header.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const item = header.closest('.notifications-accordion-item');
-                const wasOpen = item.classList.contains('open');
-                document.querySelectorAll('.notifications-accordion-item').forEach(i => i.classList.remove('open'));
-                if (!wasOpen) {
-                    item.classList.add('open');
-                }
+            html += '</div>';
+            container.innerHTML = html;
+            // Обработчики для мобильных
+            document.querySelectorAll('.notifications-accordion-header').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const item = header.closest('.notifications-accordion-item');
+                    const wasOpen = item.classList.contains('open');
+                    document.querySelectorAll('.notifications-accordion-item').forEach(i => i.classList.remove('open'));
+                    if (!wasOpen) item.classList.add('open');
+                });
             });
-        });
-        
-        document.querySelectorAll('.write-explanation').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const notifId = parseInt(btn.dataset.id);
-                openExplanationModal(notifId);
+            document.querySelectorAll('.write-explanation').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openExplanationModal(parseInt(btn.dataset.id));
+                });
             });
-        });
-        document.querySelectorAll('.mark-as-read-mobile').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const id = parseInt(btn.dataset.id);
-                markAsRead(id);
+            document.querySelectorAll('.mark-as-read-mobile').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    markAsRead(parseInt(btn.dataset.id));
+                });
             });
-        });
-        // Обработчик для мобильных кнопок "Исправить"
-        document.querySelectorAll('.fix-end-time-mobile').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const notifId = btn.dataset.id;
-                const workdayDateStr = btn.dataset.workdayDate;
-                const date = new Date(workdayDateStr);
-                const year = date.getFullYear();
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate()).padStart(2, '0');
-                const formattedDate = `${day}.${month}.${year}`;
-                document.getElementById('fixEndDate').innerText = formattedDate;
-                document.getElementById('fixEndTime').value = '17:00';
-                document.getElementById('fixEndError').innerText = '';
-                document.getElementById('fixEndTimeModal').style.display = 'block';
-                window.currentFixNotificationId = notifId;
+            document.querySelectorAll('.fix-end-time-mobile').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const notifId = btn.dataset.id;
+                    const workdayDateStr = btn.dataset.workdayDate;
+                    const date = new Date(workdayDateStr);
+                    const formattedDate = `${String(date.getDate()).padStart(2,'0')}.${String(date.getMonth()+1).padStart(2,'0')}.${date.getFullYear()}`;
+                    document.getElementById('fixEndDate').innerText = formattedDate;
+                    document.getElementById('fixEndTime').value = '17:00';
+                    document.getElementById('fixEndError').innerText = '';
+                    document.getElementById('fixEndTimeModal').style.display = 'block';
+                    window.currentFixNotificationId = notifId;
+                });
             });
-        });
-    }
-}
-
-window.openExplanationModal = async function(notificationId) {
-    currentNotificationId = notificationId;
-    document.getElementById('explanationText').value = '';
-    document.getElementById('explanationError').innerText = '';
-    document.getElementById('explanationModal').style.display = 'block';
-}
-async function viewEmployeeExplanation(notificationId) {
-    try {
-        const resp = await fetch(`/api/employee/notifications/${notificationId}/explanation`, { credentials: 'include' });
-        if (!resp.ok) throw new Error('Объяснительная не найдена');
-        const data = await resp.json();
-        const modal = document.getElementById('explanationViewModal');
-        const textDiv = document.getElementById('explanationTextDisplay');
-        if (textDiv) textDiv.innerText = data.explanation_text;
-        if (modal) modal.style.display = 'block';
-    } catch (err) {
-        showToast(err.message, true);
-    }
-}
-document.getElementById('submitExplanationBtn')?.addEventListener('click', async () => {
-    const text = document.getElementById('explanationText').value.trim();
-    if (!text) {
-        document.getElementById('explanationError').innerText = 'Введите текст объяснительной';
-        return;
-    }
-    try {
-        const resp = await fetch(`/api/employee/notifications/${currentNotificationId}/explanation`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ explanation_text: text }),
-            credentials: 'include'
-        });
-        if (resp.ok) {
-            showToast('Объяснительная отправлена');
-            document.getElementById('explanationModal').style.display = 'none';
-            await loadNotifications();
-            if (document.querySelector('.tab-btn.active')?.dataset.tab === 'notifications') {
-                await loadNotifications();
-            }
-        } else {
-            const err = await resp.json();
-            document.getElementById('explanationError').innerText = err.detail || 'Ошибка отправки';
         }
-    } catch (err) {
-        document.getElementById('explanationError').innerText = 'Ошибка соединения';
     }
-});
 
-const expModal = document.getElementById('explanationModal');
-document.querySelector('.close-explanation')?.addEventListener('click', () => expModal.style.display = 'none');
-window.addEventListener('click', (e) => { if (e.target === expModal) expModal.style.display = 'none'; });
-
-let currentNotifyEmployeeId = null;
-let currentNotifyEmployeeName = '';
-
-function openNotificationModal(empId, empName) {
-    currentNotifyEmployeeId = empId;
-    currentNotifyEmployeeName = empName;
-    document.getElementById('notifyEmployeeName').innerText = empName;
-    document.getElementById('notifMessage').value = '';
-    document.getElementById('createNotifError').innerText = '';
-    document.getElementById('createNotificationModal').style.display = 'block';
-}
-
-async function sendNotification() {
-    const type = document.getElementById('notifType').value;
-    const message = document.getElementById('notifMessage').value.trim();
-    if (!message) {
-        document.getElementById('createNotifError').innerText = 'Введите сообщение';
-        return;
-    }
-    try {
-        const resp = await fetch('/api/admin/notifications/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                employee_id: currentNotifyEmployeeId,
-                type: type,
-                message: message
-            }),
-            credentials: 'include'
-        });
-        if (resp.ok) {
-            showToast('✅ Черновик уведомления создан. Админ может утвердить его в админ-панели.');
-            document.getElementById('createNotificationModal').style.display = 'none';
-        } else {
-            const err = await resp.json();
-            document.getElementById('createNotifError').innerText = err.detail || 'Ошибка отправки';
-        }
-    } catch (err) {
-        document.getElementById('createNotifError').innerText = 'Ошибка сети';
-    }
-}
-
-document.getElementById('sendNotificationBtn')?.addEventListener('click', sendNotification);
-document.querySelector('.close-create-notif')?.addEventListener('click', () => {
-    document.getElementById('createNotificationModal').style.display = 'none';
-    document.getElementById('notifyEmployeeName').innerText = '—';
-});
-// Отправка предложения времени администратору
-document.getElementById('submitFixEndBtn')?.addEventListener('click', async () => {
-    const time = document.getElementById('fixEndTime').value;
-    if (!time) {
-        document.getElementById('fixEndError').innerText = 'Выберите время';
-        return;
-    }
-    const dateStr = document.getElementById('fixEndDate').innerText; // формат DD.MM.YYYY
-    const [day, month, year] = dateStr.split('.');
-    const isoDate = `${year}-${month}-${day}`;
-    const proposedDateTime = `${isoDate}T${time}:00`;
-    try {
-        const resp = await fetch(`/api/employee/notifications/${window.currentFixNotificationId}/propose-end-time`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ proposed_end_time: proposedDateTime }),
-            credentials: 'include'
-        });
-        if (resp.ok) {
-            showToast('Предложение отправлено администратору');
-            document.getElementById('fixEndTimeModal').style.display = 'none';
-            loadNotifications(); // обновить список уведомлений
-        } else {
-            const err = await resp.json();
-            document.getElementById('fixEndError').innerText = err.detail || 'Ошибка';
-        }
-    } catch (err) {
-        document.getElementById('fixEndError').innerText = 'Ошибка сети';
-    }
-});
-
-// Закрытие модального окна
-document.querySelector('#fixEndTimeModal .close-fix-end')?.addEventListener('click', () => {
-    document.getElementById('fixEndTimeModal').style.display = 'none';
-});
-
-// Также закрытие по клику вне модального окна (можно добавить в существующий обработчик)
-window.addEventListener('click', (e) => {
-    const fixModal = document.getElementById('fixEndTimeModal');
-    if (e.target === fixModal) fixModal.style.display = 'none';
-});
-window.addEventListener('click', (e) => {
-    const modal = document.getElementById('createNotificationModal');
-    if (e.target === modal) modal.style.display = 'none';
-});
-
-let employeeEventSource = null;
-
-function connectEmployeeSSE() {
-    if (employeeEventSource) employeeEventSource.close();
-    employeeEventSource = new EventSource('/api/employee/events', { withCredentials: true });
-    employeeEventSource.addEventListener('update', () => {
-        console.log('Получено обновление уведомлений');
-        loadNotifications();
-    });
-    employeeEventSource.onerror = () => {
-        console.warn('SSE ошибка, переподключение через 5 секунд');
-        employeeEventSource.close();
-        setTimeout(connectEmployeeSSE, 5000);
+    window.openExplanationModal = function(notificationId) {
+        currentNotificationId = notificationId;
+        document.getElementById('explanationText').value = '';
+        document.getElementById('explanationError').innerText = '';
+        document.getElementById('explanationModal').style.display = 'block';
     };
-}
-loadNotifications();
-setTimeout(() => {
-    connectEmployeeSSE();
-}, 2000);
 
-let resizeTimeout;
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
-        if (activeTab === 'monitor') {
-            const monitorDate = document.getElementById('monitorDate').value;
-            if (monitorDate) loadMonitorReport(monitorDate);
-        } else if (activeTab === 'notifications') {
-            loadNotifications();
+    document.getElementById('submitExplanationBtn').addEventListener('click', async () => {
+        const text = document.getElementById('explanationText').value.trim();
+        if (!text) {
+            document.getElementById('explanationError').innerText = 'Введите текст объяснительной';
+            return;
         }
-    }, 250);
-});
-
-document.querySelector('#explanationViewModal .close-explanation-view')?.addEventListener('click', () => {
-    document.getElementById('explanationViewModal').style.display = 'none';
-});
-
-document.addEventListener('click', function(event) {
-    if (event.target.classList && event.target.classList.contains('modal')) {
-        event.target.style.display = 'none';
-    }
-});
-
-// ========== Управление уведомлениями (для мониторов) ==========
-let currentEditNotificationId = null;
-
-async function loadAllNotifications() {
-    const container = document.getElementById('allNotificationsContainer');
-    const status = document.getElementById('allNotifStatusFilter').value;
-    
-    let url = '/api/admin/notifications';
-    const params = new URLSearchParams();
-    if (status) params.append('status', status);
-    if (allNotifEmployeeId) params.append('employee_id', allNotifEmployeeId);
-    if (allNotifStartDate) params.append('start_date', allNotifStartDate);
-    if (allNotifEndDate) params.append('end_date', allNotifEndDate);
-    if (params.toString()) url += '?' + params.toString();
-    
-    try {
-        const resp = await fetch(url, { credentials: 'include' });
-        if (!resp.ok) throw new Error('Ошибка загрузки');
-        const data = await resp.json();
-        renderAllNotifications(data);
-    } catch (err) {
-        container.innerHTML = `<p>Ошибка: ${err.message}</p>`;
-    }
-}
-
-function renderAllNotifications(notifications) {
-    const container = document.getElementById('allNotificationsContainer');
-    if (!notifications.length) {
-        container.innerHTML = '<p>Нет уведомлений</p>';
-        return;
-    }
-
-    const isMobile = window.innerWidth <= 768;
-    const isAdmin = window.isAdmin === true;
-
-    if (!isMobile) {
-        let html = '<div class="recent-table"><table class="report-table"><thead>';
-        html += '<th>ФИО</th><th>Тип</th><th>Дата создания</th><th>Сообщение</th><th>Объяснительная</th><th>Статус</th><th>Действия</th>';
-        for (const n of notifications) {
-            let typeIcon = '';
-            switch (n.type) {
-                case 'reprimand': typeIcon = '❌'; break;
-                case 'warning': typeIcon = '⚠️'; break;
-                case 'commendation': typeIcon = '✅'; break;
-                case 'performance_review':
-                    typeIcon = '⭐';
-                    break;
+        try {
+            const resp = await fetch(`/api/employee/notifications/${currentNotificationId}/explanation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ explanation_text: text }),
+                credentials: 'include'
+            });
+            if (resp.ok) {
+                showToast('Объяснительная отправлена');
+                document.getElementById('explanationModal').style.display = 'none';
+                await loadNotifications();
+            } else {
+                const err = await resp.json();
+                document.getElementById('explanationError').innerText = err.detail || 'Ошибка отправки';
             }
-            let statusText = '';
-            if (n.status === 'draft') statusText = 'Черновик';
-            else if (n.status === 'sent') statusText = 'Отправлено';
-            else statusText = 'Отклонено';
+        } catch (err) {
+            document.getElementById('explanationError').innerText = 'Ошибка соединения';
+        }
+    });
 
-            let createdDate = '';
-            if (n.created_at) {
-                const date = new Date(n.created_at);
-                createdDate = date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    document.querySelector('.close-explanation').addEventListener('click', () => document.getElementById('explanationModal').style.display = 'none');
+    window.addEventListener('click', (e) => {
+        const expModal = document.getElementById('explanationModal');
+        if (e.target === expModal) expModal.style.display = 'none';
+    });
+
+    // ========== ОТПРАВКА УВЕДОМЛЕНИЙ (монитор/админ) ==========
+    let currentNotifyEmployeeId = null, currentNotifyEmployeeName = '';
+
+    function openNotificationModal(empId, empName) {
+        currentNotifyEmployeeId = empId;
+        currentNotifyEmployeeName = empName;
+        document.getElementById('notifyEmployeeName').innerText = empName;
+        document.getElementById('notifMessage').value = '';
+        document.getElementById('createNotifError').innerText = '';
+        document.getElementById('createNotificationModal').style.display = 'block';
+    }
+
+    document.getElementById('sendNotificationBtn').addEventListener('click', async () => {
+        const type = document.getElementById('notifType').value;
+        const message = document.getElementById('notifMessage').value.trim();
+        if (!message) {
+            document.getElementById('createNotifError').innerText = 'Введите сообщение';
+            return;
+        }
+        try {
+            const resp = await fetch('/api/admin/notifications/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ employee_id: currentNotifyEmployeeId, type, message }),
+                credentials: 'include'
+            });
+            if (resp.ok) {
+                showToast('✅ Черновик уведомления создан. Админ может утвердить его.');
+                document.getElementById('createNotificationModal').style.display = 'none';
+            } else {
+                const err = await resp.json();
+                document.getElementById('createNotifError').innerText = err.detail || 'Ошибка отправки';
             }
+        } catch (err) {
+            document.getElementById('createNotifError').innerText = 'Ошибка сети';
+        }
+    });
 
-            let actionsHtml = '';
-            if (n.status === 'draft') {
-                if (isAdmin) {
-                    actionsHtml = `
-                        <button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>
-                        <button class="btn-sm approve-notif" data-id="${n.id}">✅</button>
-                        <button class="btn-sm reject-notif" data-id="${n.id}">❌</button>
-                    `;
+    document.querySelector('.close-create-notif').addEventListener('click', () => {
+        document.getElementById('createNotificationModal').style.display = 'none';
+    });
+    window.addEventListener('click', (e) => {
+        const modal = document.getElementById('createNotificationModal');
+        if (e.target === modal) modal.style.display = 'none';
+    });
+
+    // ========== ИСПРАВЛЕНИЕ ВРЕМЕНИ ==========
+    document.getElementById('submitFixEndBtn').addEventListener('click', async () => {
+        const time = document.getElementById('fixEndTime').value;
+        if (!time) {
+            document.getElementById('fixEndError').innerText = 'Выберите время';
+            return;
+        }
+        const dateStr = document.getElementById('fixEndDate').innerText; // DD.MM.YYYY
+        const [day, month, year] = dateStr.split('.');
+        const isoDate = `${year}-${month}-${day}`;
+        const proposedDateTime = `${isoDate}T${time}:00`;
+        try {
+            const resp = await fetch(`/api/employee/notifications/${window.currentFixNotificationId}/propose-end-time`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ proposed_end_time: proposedDateTime }),
+                credentials: 'include'
+            });
+            if (resp.ok) {
+                showToast('Предложение отправлено администратору');
+                document.getElementById('fixEndTimeModal').style.display = 'none';
+                loadNotifications();
+            } else {
+                const err = await resp.json();
+                document.getElementById('fixEndError').innerText = err.detail || 'Ошибка';
+            }
+        } catch (err) {
+            document.getElementById('fixEndError').innerText = 'Ошибка сети';
+        }
+    });
+
+    document.querySelector('#fixEndTimeModal .close-fix-end').addEventListener('click', () => {
+        document.getElementById('fixEndTimeModal').style.display = 'none';
+    });
+    window.addEventListener('click', (e) => {
+        const fixModal = document.getElementById('fixEndTimeModal');
+        if (e.target === fixModal) fixModal.style.display = 'none';
+    });
+
+    // ========== ПРОСМОТР ОБЪЯСНИТЕЛЬНОЙ ==========
+    document.querySelector('#explanationViewModal .close-explanation-view').addEventListener('click', () => {
+        document.getElementById('explanationViewModal').style.display = 'none';
+    });
+    window.addEventListener('click', (e) => {
+        const modal = document.getElementById('explanationViewModal');
+        if (e.target === modal) modal.style.display = 'none';
+    });
+
+    // ========== УВЕДОМЛЕНИЯ (админ/монитор) ==========
+    let currentEditNotificationId = null;
+
+    async function loadAllNotifications() {
+        const container = document.getElementById('allNotificationsContainer');
+        const status = document.getElementById('allNotifStatusFilter').value;
+        let url = '/api/admin/notifications';
+        const params = new URLSearchParams();
+        if (status) params.append('status', status);
+        if (allNotifEmployeeId) params.append('employee_id', allNotifEmployeeId);
+        if (allNotifStartDate) params.append('start_date', allNotifStartDate);
+        if (allNotifEndDate) params.append('end_date', allNotifEndDate);
+        if (params.toString()) url += '?' + params.toString();
+        try {
+            const resp = await fetch(url, { credentials: 'include' });
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            const data = await resp.json();
+            renderAllNotifications(data);
+        } catch (err) {
+            container.innerHTML = `<p>Ошибка: ${err.message}</p>`;
+        }
+    }
+
+    function renderAllNotifications(notifications) {
+        const container = document.getElementById('allNotificationsContainer');
+        if (!notifications.length) {
+            container.innerHTML = '<p>Нет уведомлений</p>';
+            return;
+        }
+        const isMobile = window.innerWidth <= 768;
+        const isAdmin = window.isAdmin === true;
+        if (!isMobile) {
+            let html = '<div class="recent-table"><table class="report-table"><thead><tr><th>ФИО</th><th>Тип</th><th>Дата</th><th>Сообщение</th><th>Объяснительная</th><th>Статус</th><th>Действия</th></tr></thead><tbody>';
+            for (const n of notifications) {
+                let typeIcon = '';
+                if (n.type === 'reprimand') typeIcon = '❌';
+                else if (n.type === 'warning') typeIcon = '⚠️';
+                else if (n.type === 'commendation') typeIcon = '✅';
+                else if (n.type === 'performance_review') typeIcon = '⭐';
+                let statusText = n.status === 'draft' ? 'Черновик' : n.status === 'sent' ? 'Отправлено' : 'Отклонено';
+                let createdDate = n.created_at ? new Date(n.created_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+                let actionsHtml = '';
+                if (n.status === 'draft' && isAdmin) {
+                    actionsHtml = `<button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>
+                                   <button class="btn-sm approve-notif" data-id="${n.id}">✅</button>
+                                   <button class="btn-sm reject-notif" data-id="${n.id}">❌</button>`;
                 } else {
                     actionsHtml = '<span style="color:gray;">—</span>';
                 }
-            } else {
-                actionsHtml = '<span style="color:gray;">—</span>';
+                let explanationHtml = n.explanation ? escapeHtml(n.explanation) : '—';
+                html += `<tr>
+                    <td>${escapeHtml(n.full_name)}</td>
+                    <td>${typeIcon}</td>
+                    <td>${createdDate}</td>
+                    <td>${escapeHtml(n.message)}</td>
+                    <td>${explanationHtml}</td>
+                    <td>${statusText}</td>
+                    <td>${actionsHtml}</td>
+                </tr>`;
             }
-
-            let explanationHtml = '—';
-            if (n.explanation) {
-                explanationHtml = escapeHtml(n.explanation);
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+            if (isAdmin) {
+                container.querySelectorAll('.edit-notif').forEach(btn => {
+                    btn.addEventListener('click', () => openEditNotificationModal(parseInt(btn.dataset.id)));
+                });
+                container.querySelectorAll('.approve-notif').forEach(btn => {
+                    btn.addEventListener('click', () => approveNotification(parseInt(btn.dataset.id)));
+                });
+                container.querySelectorAll('.reject-notif').forEach(btn => {
+                    btn.addEventListener('click', () => rejectNotification(parseInt(btn.dataset.id)));
+                });
             }
-
-            html += `<tr>
-                <td>${escapeHtml(n.full_name)}</td>
-                <td>
-                    ${typeIcon}
-                    ${(n.type === 'performance_review' && n.extra_data && n.extra_data.grade) ? (() => {
-                        const gradeMap = {
-                            'red': '🔴 Неудовлетворительно',
-                            'yellow': '🟡 Сойдёт, есть замечания',
-                            'blue': '🔵 Всё ровно, так держать',
-                            'green': '🟢 Молодец, ты супер!'
-                        };
-                        return `<div style="font-size:0.7rem; color:#64748b;">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>`;
-                    })() : ''}
-                </td>
-                <td>${createdDate}</td>
-                <td>${escapeHtml(n.message)}</td>
-                <td>${explanationHtml}</td>
-                <td>${statusText}</td>
-                <td>${actionsHtml}</td>
-            </tr>`;
-        }
-        html += '</tbody></table></div>';
-        container.innerHTML = html;
-
-        if (isAdmin) {
-            container.querySelectorAll('.edit-notif').forEach(btn => {
-                btn.addEventListener('click', () => openEditNotificationModal(parseInt(btn.dataset.id)));
-            });
-            container.querySelectorAll('.approve-notif').forEach(btn => {
-                btn.addEventListener('click', () => approveNotification(parseInt(btn.dataset.id)));
-            });
-            container.querySelectorAll('.reject-notif').forEach(btn => {
-                btn.addEventListener('click', () => rejectNotification(parseInt(btn.dataset.id)));
-            });
-        }
-        container.querySelectorAll('.view-explanation').forEach(btn => {
-            btn.addEventListener('click', () => viewExplanation(parseInt(btn.dataset.id)));
-        });
-    } else {
-        let html = '<div class="notifications-accordion">';
-        for (const n of notifications) {
-            let typeIcon = '';
-            let typeColor = '';
-            let typeLabel = '';
-            switch (n.type) {
-                case 'reprimand': typeIcon = '❌'; typeColor = 'red'; typeLabel = 'Замечание'; break;
-                case 'warning': typeIcon = '⚠️'; typeColor = 'orange'; typeLabel = 'Предупреждение'; break;
-                case 'commendation': typeIcon = '✅'; typeColor = 'green'; typeLabel = 'Похвала'; break;
-                case 'performance_review':
-                    typeIcon = '⭐';
-                    typeColor = '#3b82f6';
-                    typeLabel = '⭐ Оценка работы';
-                    break;
-            }
-            let statusText = '';
-            if (n.status === 'draft') statusText = 'Черновик';
-            else if (n.status === 'sent') statusText = 'Отправлено';
-            else statusText = 'Отклонено';
-
-            let createdDate = '';
-            if (n.created_at) {
-                const date = new Date(n.created_at);
-                createdDate = date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-            }
-
-            let actionsHtml = '';
-            if (n.status === 'draft') {
-                if (isAdmin) {
+        } else {
+            // мобильная версия
+            let html = '<div class="notifications-accordion">';
+            for (const n of notifications) {
+                let typeIcon = '', typeColor = '', typeLabel = '';
+                if (n.type === 'reprimand') { typeIcon = '❌'; typeColor = 'red'; typeLabel = 'Замечание'; }
+                else if (n.type === 'warning') { typeIcon = '⚠️'; typeColor = 'orange'; typeLabel = 'Предупреждение'; }
+                else if (n.type === 'commendation') { typeIcon = '✅'; typeColor = 'green'; typeLabel = 'Похвала'; }
+                else if (n.type === 'performance_review') { typeIcon = '⭐'; typeColor = '#3b82f6'; typeLabel = 'Оценка работы'; }
+                let statusText = n.status === 'draft' ? 'Черновик' : n.status === 'sent' ? 'Отправлено' : 'Отклонено';
+                let createdDate = n.created_at ? new Date(n.created_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+                let actionsHtml = '';
+                if (n.status === 'draft' && isAdmin) {
                     actionsHtml = `
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Действия</div>
-                            <div class="notif-detail-value">
-                                <button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>
-                                <button class="btn-sm approve-notif" data-id="${n.id}">✅</button>
-                                <button class="btn-sm reject-notif" data-id="${n.id}">❌</button>
-                            </div>
-                        </div>
+                        <div class="notif-detail-row"><div class="notif-detail-label">Действия</div><div class="notif-detail-value">
+                            <button class="btn-sm edit-notif" data-id="${n.id}">✏️</button>
+                            <button class="btn-sm approve-notif" data-id="${n.id}">✅</button>
+                            <button class="btn-sm reject-notif" data-id="${n.id}">❌</button>
+                        </div></div>
                     `;
                 } else {
-                    actionsHtml = `
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Действия</div>
-                            <div class="notif-detail-value"><span style="color:gray;">—</span></div>
-                        </div>
-                    `;
+                    actionsHtml = `<div class="notif-detail-row"><div class="notif-detail-label">Действия</div><div class="notif-detail-value"><span style="color:gray;">—</span></div></div>`;
                 }
-            } else {
-                actionsHtml = `
-                    <div class="notif-detail-row">
-                        <div class="notif-detail-label">Действия</div>
-                        <div class="notif-detail-value"><span style="color:gray;">—</span></div>
+                let explanationHtml = n.explanation ? `<div class="notif-detail-row"><div class="notif-detail-label">Объяснительная</div><div class="notif-detail-value">${escapeHtml(n.explanation)}</div></div>` :
+                    `<div class="notif-detail-row"><div class="notif-detail-label">Объяснительная</div><div class="notif-detail-value">—</div></div>`;
+
+                html += `
+                    <div class="notifications-accordion-item" data-id="${n.id}">
+                        <div class="notifications-accordion-header"><span style="color:${typeColor};">${typeIcon}</span><span>${escapeHtml(n.full_name)}</span></div>
+                        <div class="notifications-accordion-details">
+                            <div class="notif-detail-row"><div class="notif-detail-label">Тип</div><div class="notif-detail-value">${typeLabel}</div></div>
+                            <div class="notif-detail-row"><div class="notif-detail-label">Статус</div><div class="notif-detail-value">${statusText}</div></div>
+                            <div class="notif-detail-row"><div class="notif-detail-label">Дата</div><div class="notif-detail-value">${createdDate}</div></div>
+                            <div class="notif-detail-row"><div class="notif-detail-label">Сообщение</div><div class="notif-detail-value">${escapeHtml(n.message)}</div></div>
+                            ${explanationHtml}
+                            ${actionsHtml}
+                        </div>
                     </div>
                 `;
             }
-
-            let explanationHtml = '';
-            if (n.explanation) {
-                explanationHtml = `
-                    <div class="notif-detail-row">
-                        <div class="notif-detail-label">Объяснительная</div>
-                        <div class="notif-detail-value">${escapeHtml(n.explanation)}</div>
-                    </div>
-                `;
-            } else {
-                explanationHtml = `
-                    <div class="notif-detail-row">
-                        <div class="notif-detail-label">Объяснительная</div>
-                        <div class="notif-detail-value">—</div>
-                    </div>
-                `;
+            html += '</div>';
+            container.innerHTML = html;
+            container.querySelectorAll('.notifications-accordion-header').forEach(h => {
+                h.addEventListener('click', () => {
+                    const item = h.closest('.notifications-accordion-item');
+                    item.classList.toggle('open');
+                });
+            });
+            if (isAdmin) {
+                container.querySelectorAll('.edit-notif').forEach(btn => {
+                    btn.addEventListener('click', (e) => { e.stopPropagation(); openEditNotificationModal(parseInt(btn.dataset.id)); });
+                });
+                container.querySelectorAll('.approve-notif').forEach(btn => {
+                    btn.addEventListener('click', (e) => { e.stopPropagation(); approveNotification(parseInt(btn.dataset.id)); });
+                });
+                container.querySelectorAll('.reject-notif').forEach(btn => {
+                    btn.addEventListener('click', (e) => { e.stopPropagation(); rejectNotification(parseInt(btn.dataset.id)); });
+                });
             }
-
-            // Отображение оценки для performance_review (добавляем в detailsHtml до использования)
-            if (n.type === 'performance_review' && n.extra_data && n.extra_data.grade) {
-                const gradeMap = {
-                    'red': '🔴 Неудовлетворительно',
-                    'yellow': '🟡 Сойдёт, есть замечания',
-                    'blue': '🔵 Всё ровно, так держать',
-                    'green': '🟢 Молодец, ты супер!'
-                };
-                detailsHtml += `
-                    <div class="notif-detail-row">
-                        <div class="notif-detail-label">Оценка</div>
-                        <div class="notif-detail-value">${gradeMap[n.extra_data.grade] || n.extra_data.grade}</div>
-                    </div>
-                `;
-            }
-
-            html += `
-                <div class="notifications-accordion-item" data-id="${n.id}">
-                    <div class="notifications-accordion-header">
-                        <span style="color:${typeColor};">${typeIcon}</span>
-                        <span>${escapeHtml(n.full_name)}</span>
-                    </div>
-                    <div class="notifications-accordion-details">
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Тип</div>
-                            <div class="notif-detail-value">${typeLabel}</div>
-                        </div>
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Статус</div>
-                            <div class="notif-detail-value">${statusText}</div>
-                        </div>
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Дата создания</div>
-                            <div class="notif-detail-value">${createdDate}</div>
-                        </div>
-                        <div class="notif-detail-row">
-                            <div class="notif-detail-label">Сообщение</div>
-                            <div class="notif-detail-value">${escapeHtml(n.message)}</div>
-                        </div>
-                        ${explanationHtml}
-                        ${actionsHtml}
-                    </div>
-                </div>
-            `;
         }
-        html += '</div>';
-        container.innerHTML = html;
+    }
 
-        container.querySelectorAll('.notifications-accordion-header').forEach(header => {
-            header.addEventListener('click', () => {
-                const item = header.closest('.notifications-accordion-item');
-                item.classList.toggle('open');
+    async function openEditNotificationModal(notifId) {
+        currentEditNotificationId = notifId;
+        const resp = await fetch('/api/admin/notifications', { credentials: 'include' });
+        const list = await resp.json();
+        const notif = list.find(n => n.id === notifId);
+        if (!notif) return;
+        // Для простоты, если нет модалки редактирования, можно использовать prompt
+        const newType = prompt('Тип (reprimand/warning/commendation/performance_review):', notif.type);
+        if (newType === null) return;
+        const newMessage = prompt('Сообщение:', notif.message);
+        if (newMessage === null) return;
+        try {
+            const resp2 = await fetch(`/api/admin/notifications/${notifId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: newType, message: newMessage }),
+                credentials: 'include'
             });
-        });
-
-        if (isAdmin) {
-            container.querySelectorAll('.edit-notif').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    openEditNotificationModal(parseInt(btn.dataset.id));
-                });
-            });
-            container.querySelectorAll('.approve-notif').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    approveNotification(parseInt(btn.dataset.id));
-                });
-            });
-            container.querySelectorAll('.reject-notif').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    rejectNotification(parseInt(btn.dataset.id));
-                });
-            });
+            if (resp2.ok) {
+                showToast('Уведомление обновлено');
+                loadAllNotifications();
+            } else {
+                const err = await resp2.json();
+                showToast(err.detail || 'Ошибка', true);
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
         }
-        container.querySelectorAll('.view-explanation').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                viewExplanation(parseInt(btn.dataset.id));
-            });
-        });
     }
-}
 
-async function openEditNotificationModal(notifId) {
-    currentEditNotificationId = notifId;
-    const resp = await fetch(`/api/admin/notifications`, { credentials: 'include' });
-    const list = await resp.json();
-    const notif = list.find(n => n.id === notifId);
-    if (!notif) return;
-    document.getElementById('editNotifType').value = notif.type;
-    document.getElementById('editNotifMessage').value = notif.message;
-    document.getElementById('editNotificationModal').style.display = 'block';
-}
-
-async function saveEditedNotification() {
-    const newType = document.getElementById('editNotifType').value;
-    const newMessage = document.getElementById('editNotifMessage').value.trim();
-    if (!newMessage) {
-        document.getElementById('editNotifError').innerText = 'Сообщение не может быть пустым';
-        return;
-    }
-    try {
-        const resp = await fetch(`/api/admin/notifications/${currentEditNotificationId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: newType, message: newMessage }),
-            credentials: 'include'
-        });
+    async function approveNotification(id) {
+        if (!confirm('Утвердить уведомление?')) return;
+        const resp = await fetch(`/api/admin/notifications/${id}/approve`, { method: 'POST', credentials: 'include' });
         if (resp.ok) {
-            showToast('Уведомление обновлено');
-            document.getElementById('editNotificationModal').style.display = 'none';
-            await loadAllNotifications();
+            showToast('Утверждено');
+            loadAllNotifications();
+            loadNotifications();
         } else {
             const err = await resp.json();
-            document.getElementById('editNotifError').innerText = err.detail || 'Ошибка';
+            showToast(err.detail || 'Ошибка', true);
         }
-    } catch (err) {
-        document.getElementById('editNotifError').innerText = 'Ошибка сети';
     }
-}
 
-async function approveNotification(id) {
-    if (!confirm('Утвердить уведомление? Оно станет доступно сотруднику.')) return;
-    const resp = await fetch(`/api/admin/notifications/${id}/approve`, {
-        method: 'POST',
-        credentials: 'include'
-    });
-    if (resp.ok) {
-        showToast('Уведомление утверждено');
+    async function rejectNotification(id) {
+        if (!confirm('Отклонить уведомление?')) return;
+        const resp = await fetch(`/api/admin/notifications/${id}/reject`, { method: 'POST', credentials: 'include' });
+        if (resp.ok) {
+            showToast('Отклонено');
+            loadAllNotifications();
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || 'Ошибка', true);
+        }
+    }
+
+    async function viewExplanation(notifId) {
+        try {
+            const resp = await fetch(`/api/admin/notifications/${notifId}/explanation`, { credentials: 'include' });
+            if (!resp.ok) throw new Error('Объяснительная не найдена');
+            const data = await resp.json();
+            document.getElementById('explanationTextDisplay').innerText = data.explanation_text;
+            document.getElementById('explanationViewModal').style.display = 'block';
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    // Фильтры для "всех уведомлений"
+    let allNotifStartDate = '', allNotifEndDate = '', allNotifEmployeeId = '';
+
+    document.getElementById('allNotifStatusFilter').addEventListener('change', loadAllNotifications);
+    document.getElementById('allNotifEmployeeFilter').addEventListener('change', function() {
+        allNotifEmployeeId = this.value;
         loadAllNotifications();
-        loadNotifications();
-    } else {
-        const err = await resp.json();
-        showToast(err.detail || 'Ошибка', true);
-    }
-}
-
-async function rejectNotification(id) {
-    if (!confirm('Отклонить уведомление?')) return;
-    const resp = await fetch(`/api/admin/notifications/${id}/reject`, {
-        method: 'POST',
-        credentials: 'include'
     });
-    if (resp.ok) {
-        showToast('Уведомление отклонено');
+    document.getElementById('refreshAllNotifBtn').addEventListener('click', loadAllNotifications);
+
+    const allNotifDateRangeInput = document.getElementById('allNotifDateRange');
+    flatpickr(allNotifDateRangeInput, {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        onChange: function(selectedDates, dateStr, instance) {
+            if (selectedDates.length === 2) {
+                allNotifStartDate = instance.formatDate(selectedDates[0], "Y-m-d");
+                allNotifEndDate = instance.formatDate(selectedDates[1], "Y-m-d");
+            } else {
+                allNotifStartDate = '';
+                allNotifEndDate = '';
+            }
+            loadAllNotifications();
+        }
+    });
+    document.getElementById('clearAllNotifDateFilterBtn').addEventListener('click', () => {
+        const picker = document.getElementById('allNotifDateRange')._flatpickr;
+        if (picker) picker.clear();
+        allNotifStartDate = '';
+        allNotifEndDate = '';
         loadAllNotifications();
-    } else {
-        const err = await resp.json();
-        showToast(err.detail || 'Ошибка', true);
-    }
-}
+    });
 
-async function viewExplanation(notifId) {
-    try {
-        const resp = await fetch(`/api/admin/notifications/${notifId}/explanation`, { credentials: 'include' });
-        if (!resp.ok) throw new Error('Объяснительная не найдена');
-        const data = await resp.json();
-        document.getElementById('explanationTextDisplay').innerText = data.explanation_text;
-        document.getElementById('explanationViewModal').style.display = 'block';
-    } catch (err) {
-        showToast(err.message, true);
-    }
-}
-
-document.querySelector('#editNotificationModal .close-edit-notif')?.addEventListener('click', () => {
-    document.getElementById('editNotificationModal').style.display = 'none';
-});
-document.querySelector('#explanationViewModal .close-explanation-view')?.addEventListener('click', () => {
-    document.getElementById('explanationViewModal').style.display = 'none';
-});
-document.getElementById('saveNotifEditBtn')?.addEventListener('click', saveEditedNotification);
-document.getElementById('refreshAllNotifBtn')?.addEventListener('click', loadAllNotifications);
-document.getElementById('allNotifStatusFilter')?.addEventListener('change', loadAllNotifications);
-document.addEventListener('DOMContentLoaded', async () => {
-    initTabs();
-
-    // ========== Инициализация фильтров для "Управление уведомлениями" ==========
+    // Загрузка сотрудников для фильтра уведомлений
     async function loadEmployeesForAllNotif() {
         try {
             const resp = await fetch('/api/employees?active_only=false', { credentials: 'include' });
             if (!resp.ok) throw new Error('Ошибка загрузки');
             let employees = await resp.json();
-            employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+            employees.sort((a,b) => a.full_name.localeCompare(b.full_name, 'ru'));
             const select = document.getElementById('allNotifEmployeeFilter');
             if (select) {
                 select.innerHTML = '<option value="">Все</option>';
@@ -2516,83 +1807,83 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             }
         } catch (err) {
-            console.error('Ошибка загрузки списка сотрудников для фильтра уведомлений', err);
+            console.error(err);
         }
     }
 
-    const allNotifDateRangeInput = document.getElementById('allNotifDateRange');
-    if (allNotifDateRangeInput) {
-        flatpickr(allNotifDateRangeInput, {
-            mode: "range",
-            dateFormat: "Y-m-d",
-            onChange: function(selectedDates, dateStr, instance) {
-                if (selectedDates.length === 2) {
-                    allNotifStartDate = instance.formatDate(selectedDates[0], "Y-m-d");
-                    allNotifEndDate = instance.formatDate(selectedDates[1], "Y-m-d");
-                } else {
-                    allNotifStartDate = '';
-                    allNotifEndDate = '';
-                }
-                loadAllNotifications();
+    // ========== МЕТКА "ПРОЧИТАНО" ==========
+    async function markAsRead(notificationId) {
+        try {
+            const resp = await fetch(`/api/employee/notifications/${notificationId}/explanation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ explanation_text: 'Прочитано' }),
+                credentials: 'include'
+            });
+            if (resp.ok) {
+                showToast('Уведомление отмечено как прочитанное');
+                loadNotifications();
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка', true);
             }
-        });
+        } catch (err) {
+            showToast('Ошибка сети', true);
+        }
     }
 
-    const clearAllNotifDateBtn = document.getElementById('clearAllNotifDateFilterBtn');
-    if (clearAllNotifDateBtn) {
-        clearAllNotifDateBtn.addEventListener('click', () => {
-            const picker = document.getElementById('allNotifDateRange')._flatpickr;
-            if (picker) picker.clear();
-            allNotifStartDate = '';
-            allNotifEndDate = '';
-            loadAllNotifications();
+    // ========== SSE для уведомлений ==========
+    let employeeEventSource = null;
+    function connectEmployeeSSE() {
+        if (employeeEventSource) employeeEventSource.close();
+        employeeEventSource = new EventSource('/api/employee/events', { withCredentials: true });
+        employeeEventSource.addEventListener('update', () => {
+            console.log('Обновление уведомлений');
+            loadNotifications();
         });
+        employeeEventSource.onerror = () => {
+            employeeEventSource.close();
+            setTimeout(connectEmployeeSSE, 5000);
+        };
     }
 
-    if (window.isAdmin || window.isMonitor) {
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
+    document.addEventListener('DOMContentLoaded', async () => {
+        initTabs();
+        await refreshState();
         await loadEmployeesForAllNotif();
-    }
-
-    const allNotifEmployeeSelect = document.getElementById('allNotifEmployeeFilter');
-    if (allNotifEmployeeSelect) {
-        allNotifEmployeeSelect.addEventListener('change', () => {
-            allNotifEmployeeId = allNotifEmployeeSelect.value;
-            loadAllNotifications();
+        // Подключаем SSE для уведомлений
+        setTimeout(connectEmployeeSSE, 2000);
+        // Обработка ресайза для перерисовки таблиц
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+                if (activeTab === 'monitor') {
+                    const monitorDate = document.getElementById('monitorDate').value;
+                    if (monitorDate) loadMonitorReport(monitorDate);
+                } else if (activeTab === 'notifications') {
+                    loadNotifications();
+                } else if (activeTab === 'all-notifications') {
+                    loadAllNotifications();
+                }
+            }, 250);
         });
-    }
+    });
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtn = document.getElementById('drawerToggle');
+    const mainLayout = document.querySelector('.main-layout');
 
-    const allNotifStatusFilter = document.getElementById('allNotifStatusFilter');
-    if (allNotifStatusFilter) {
-        allNotifStatusFilter.removeEventListener('change', loadAllNotifications);
-        allNotifStatusFilter.addEventListener('change', loadAllNotifications);
-    }
-
-    const refreshBtn = document.getElementById('refreshAllNotifBtn');
-    if (refreshBtn) {
-        refreshBtn.removeEventListener('click', loadAllNotifications);
-        refreshBtn.addEventListener('click', loadAllNotifications);
+    if (toggleBtn && mainLayout) {
+        toggleBtn.textContent = mainLayout.classList.contains('drawer-closed') ? '☰' : '✕';
+        toggleBtn.addEventListener('click', function() {
+            mainLayout.classList.toggle('drawer-closed');
+            // Меняем символ кнопки (опционально)
+            this.textContent = mainLayout.classList.contains('drawer-closed') ? '☰' : '✕';
+        });
     }
 });
-
-async function markAsRead(notificationId) {
-    try {
-        const resp = await fetch(`/api/employee/notifications/${notificationId}/explanation`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ explanation_text: 'Прочитано' }),
-            credentials: 'include'
-        });
-        if (resp.ok) {
-            showToast('Уведомление отмечено как прочитанное');
-            loadNotifications();
-        } else {
-            const err = await resp.json();
-            showToast(err.detail || 'Ошибка', true);
-        }
-    } catch (err) {
-        showToast('Ошибка сети', true);
-    }
-}
 </script>
 </body>
 </html>
