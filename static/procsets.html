@@ -1,10 +1,424 @@
 <style>
+    /* Стили для песочницы (уже были, дополним немного) */
+    .sandbox-container {
+        display: flex;
+        gap: 24px;
+        min-height: 500px;
+        padding: 16px 0;
+    }
+    .sandbox-sidebar {
+        flex: 0 0 180px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border-right: 1px solid #e2e8f0;
+        padding-right: 16px;
+    }
+    .sandbox-sidebar .nav-btn {
+        padding: 10px 16px;
+        border: none;
+        background: transparent;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: #475569;
+        font-weight: 500;
+    }
+    .sandbox-sidebar .nav-btn:hover {
+        background: #f1f5f9;
+        color: #0f172a;
+    }
+    .sandbox-sidebar .nav-btn.active {
+        background: #3b82f6;
+        color: white;
+    }
+    .sandbox-sidebar .nav-btn .icon {
+        margin-right: 10px;
+    }
 
+    .sandbox-content {
+        flex: 1;
+        min-width: 0;
+    }
+    .sandbox-panel {
+        display: none;
+    }
+    .sandbox-panel.active {
+        display: block;
+    }
+
+    /* Стили для inline-форм */
+    .inline-form {
+        background: #f8fafc;
+        padding: 16px;
+        border-radius: 12px;
+        margin-bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: end;
+    }
+    .inline-form .form-group {
+        flex: 1 1 200px;
+        min-width: 150px;
+    }
+    .inline-form .form-group label {
+        display: block;
+        font-weight: 500;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+        color: #475569;
+    }
+    .inline-form .form-group input,
+    .inline-form .form-group select {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 20px;
+        font-size: 0.95rem;
+    }
+    .inline-form button {
+        padding: 8px 20px;
+        border: none;
+        border-radius: 20px;
+        background: #3b82f6;
+        color: white;
+        cursor: pointer;
+        font-size: 0.95rem;
+        height: 38px;
+    }
+    .inline-form button.success {
+        background: #22c55e;
+    }
+    .inline-form button.danger {
+        background: #ef4444;
+    }
+
+    .task-type-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    .task-type-item {
+        background: #e2e8f0;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .task-type-item .remove-type {
+        cursor: pointer;
+        color: #ef4444;
+        font-weight: bold;
+    }
+
+    .task-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .task-item .task-name {
+        font-weight: 500;
+        flex: 1;
+    }
+    .task-item .task-type {
+        color: #64748b;
+        font-size: 0.85rem;
+    }
+    .task-item .task-actions button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.1rem;
+        margin-left: 6px;
+    }
+
+    .product-item {
+        border-bottom: 1px solid #e2e8f0;
+        padding: 12px 0;
+    }
+    .product-item .product-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+    }
+    .product-item .product-header .product-name {
+        font-weight: 500;
+        flex: 1;
+    }
+    .product-item .product-header .product-code {
+        color: #64748b;
+        font-size: 0.85rem;
+    }
+    .product-item .tech-card {
+        margin-top: 8px;
+        padding: 8px 16px;
+        background: #f8fafc;
+        border-radius: 8px;
+        display: none;
+    }
+    .product-item .tech-card.open {
+        display: block;
+    }
+    .tech-card .stage-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin: 8px 0;
+    }
+    .tech-card .stage-list .stage-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        background: white;
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+    }
+    .tech-card .stage-list .stage-row .drag-handle {
+        cursor: grab;
+        color: #94a3b8;
+        font-size: 1.2rem;
+        user-select: none;
+    }
+    .tech-card .stage-list .stage-row .stage-order {
+        font-weight: 500;
+        color: #475569;
+        min-width: 24px;
+    }
+    .tech-card .stage-list .stage-row .stage-name {
+        flex: 1;
+    }
+    .tech-card .stage-list .stage-row .remove-stage {
+        cursor: pointer;
+        color: #ef4444;
+        font-weight: bold;
+    }
+    .tech-card .add-stage-form {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        align-items: center;
+    }
+    .tech-card .add-stage-form select {
+        flex: 1;
+        padding: 6px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 20px;
+    }
+    .tech-card .add-stage-form button {
+        background: #3b82f6;
+        border: none;
+        color: white;
+        padding: 6px 16px;
+        border-radius: 20px;
+        cursor: pointer;
+    }
+    .tech-card .save-tech-card {
+        margin-top: 8px;
+        background: #22c55e;
+        border: none;
+        color: white;
+        padding: 6px 16px;
+        border-radius: 20px;
+        cursor: pointer;
+    }
 </style>
 
-<h2>🛠️ Настройки процессов</h2>
-<p>Здесь будут параметры, управляющие бизнес-процессами.</p>
+<div class="sandbox-container">
 
-<script>
+    <!-- Боковая панель -->
+    <div class="sandbox-sidebar">
+        <button class="nav-btn active" data-target="deals"><span class="icon">📋</span> Сделки</button>
+        <button class="nav-btn" data-target="counterparties"><span class="icon">🏢</span> ИП/МП</button>
+        <button class="nav-btn" data-target="products"><span class="icon">📦</span> Товары</button>
+        <button class="nav-btn" data-target="tasks"><span class="icon">⚙️</span> Задачи</button>
+        <button class="nav-btn" data-target="roles"><span class="icon">👥</span> Роли</button>
+    </div>
 
-</script>
+    <!-- Основная область -->
+    <div class="sandbox-content">
+
+        <!-- ==================== ПАНЕЛЬ: СДЕЛКИ (оставлена как есть) ==================== -->
+        <div class="sandbox-panel active" id="panel-deals">
+            <div class="toolbar">
+                <button id="refreshDealsBtn">🔄 Обновить</button>
+                <button id="createDealBtn" class="success">➕ Создать сделку</button>
+                <select id="statusFilter" style="padding:8px 12px; border-radius:20px; border:1px solid #cbd5e1; height:38px;">
+                    <option value="">Все статусы</option>
+                    <option value="draft">Черновик</option>
+                    <option value="active">Активна</option>
+                    <option value="completed">Завершена</option>
+                    <option value="cancelled">Отменена</option>
+                </select>
+                <span style="margin-left:auto; color:#64748b; font-size:0.9rem;" id="dealsCount">Загрузка...</span>
+            </div>
+            <div id="dealsList"><p style="color:#94a3b8;">Загрузка сделок...</p></div>
+        </div>
+
+        <!-- ==================== ПАНЕЛЬ: ИП/МП ==================== -->
+        <div class="sandbox-panel" id="panel-counterparties">
+            <div class="toolbar">
+                <button id="refreshCounterpartiesBtn">🔄 Обновить</button>
+            </div>
+
+            <!-- ===== ТИПЫ СДЕЛОК ===== -->
+            <div style="margin-bottom: 24px;">
+                <h4 style="margin:0 0 8px 0;">📋 Типы сделок</h4>
+                <div class="inline-form" id="addDealTypeForm" style="margin-bottom:8px;">
+                    <div class="form-group" style="flex:1;">
+                        <input type="text" id="newDealTypeName" placeholder="Название (FBS, FBP, FSK)">
+                    </div>
+                    <button class="success" id="saveDealTypeBtn">➕ Добавить</button>
+                </div>
+                <div id="dealTypesList"><p style="color:#94a3b8;">Загрузка...</p></div>
+            </div>
+
+            <!-- ===== ИП ===== -->
+            <div style="margin-bottom: 24px;">
+                <h4 style="margin:0 0 8px 0;">🏢 ИП</h4>
+                <div class="inline-form" id="addIPForm" style="margin-bottom:8px;">
+                    <div class="form-group" style="flex:1;">
+                        <input type="text" id="newIPName" placeholder="Название ИП (KTV, KPD, REG, SIA)">
+                    </div>
+                    <button class="success" id="saveIPBtn">➕ Добавить</button>
+                </div>
+                <div id="ipsList"><p style="color:#94a3b8;">Загрузка...</p></div>
+            </div>
+
+            <!-- ===== МП ===== -->
+            <div>
+                <h4 style="margin:0 0 8px 0;">📦 МП</h4>
+                <div class="inline-form" id="addMPForm" style="margin-bottom:8px;">
+                    <div class="form-group" style="flex:1;">
+                        <input type="text" id="newMPName" placeholder="Название МП (OZ, WB)">
+                    </div>
+                    <button class="success" id="saveMPBtn">➕ Добавить</button>
+                </div>
+                <div id="mpsList"><p style="color:#94a3b8;">Загрузка...</p></div>
+            </div>
+        </div>
+
+        <!-- ==================== ПАНЕЛЬ: ТОВАРЫ ==================== -->
+        <div class="sandbox-panel" id="panel-products">
+            <h3 style="margin-top:0;">📦 Товары</h3>
+            <!-- Форма добавления товара -->
+            <div class="inline-form" id="addProductForm">
+                <div class="form-group">
+                    <label>Название</label>
+                    <input type="text" id="productName" placeholder="Название товара">
+                </div>
+                <button class="success" id="saveProductBtn">➕ Добавить</button>
+            </div>
+            <!-- Список товаров -->
+            <div id="productsList"><p style="color:#94a3b8;">Загрузка товаров...</p></div>
+        </div>
+
+        <!-- ==================== ПАНЕЛЬ: ЗАДАЧИ ==================== -->
+        <div class="sandbox-panel" id="panel-tasks">
+            <h3 style="margin-top:0;">⚙️ Задачи</h3>
+
+            <!-- Блок управления типами задач -->
+            <div style="margin-bottom: 24px;">
+                <h4>Типы задач</h4>
+                <div class="inline-form" id="addTaskTypeForm">
+                    <div class="form-group">
+                        <label>Название типа</label>
+                        <input type="text" id="taskTypeName" placeholder="Например, Печать">
+                    </div>
+                    <button class="success" id="saveTaskTypeBtn">➕ Добавить тип</button>
+                </div>
+                <div id="taskTypeList" class="task-type-list"><p style="color:#94a3b8;">Загрузка...</p></div>
+            </div>
+
+            <!-- Блок управления задачами (экземплярами) -->
+            <div>
+                <h4>Список задач</h4>
+                <div class="inline-form" id="addTaskForm">
+                    <div class="form-group">
+                        <label>Название задачи</label>
+                        <input type="text" id="taskName" placeholder="Название задачи">
+                    </div>
+                    <div class="form-group">
+                        <label>Тип</label>
+                        <select id="taskTypeSelect"></select>
+                    </div>
+                    <button class="success" id="saveTaskBtn">➕ Добавить задачу</button>
+                </div>
+                <div id="tasksList"><p style="color:#94a3b8;">Загрузка...</p></div>
+            </div>
+        </div>
+
+        <!-- ==================== ПАНЕЛЬ: РОЛИ ==================== -->
+        <div class="sandbox-panel" id="panel-roles">
+            <div class="toolbar">
+                <button id="refreshRolesBtn">🔄 Обновить</button>
+                <button id="addRoleBtn" class="success">➕ Добавить роль</button>
+            </div>
+            <div id="rolesList"><p style="color:#94a3b8;">Загрузка ролей...</p></div>
+        </div>
+
+    </div>
+    <!-- ========== МОДАЛЬНОЕ ОКНО ДЛЯ СОЗДАНИЯ СДЕЛКИ ========== -->
+    <div id="createDealModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" id="closeCreateModal">&times;</span>
+            <h3>Создание новой сделки</h3>
+            <form id="createDealForm">
+                <div class="form-group">
+                    <label>Название сделки</label>
+                    <input type="text" id="dealTitle" placeholder="Введите название" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Тип сделки</label>
+                        <select id="dealType" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Клиент</label>
+                        <select id="dealClient" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Плановая дата</label>
+                        <input type="date" id="dealPlannedDate" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Товары и этапы</label>
+                    <div id="productsContainer">
+                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                            <select class="product-select" style="flex:1;"></select>
+                            <input type="number" class="product-quantity" placeholder="Кол-во" min="1" value="1" style="width:80px;">
+                            <button type="button" class="add-product-btn" style="background:#3b82f6; color:white; border:none; border-radius:50%; width:30px; height:30px; cursor:pointer;">+</button>
+                        </div>
+                        <div id="productList"></div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:12px; margin-top:16px;">
+                    <button type="submit" class="success" style="padding:8px 24px;">Создать</button>
+                    <button type="button" id="cancelCreateBtn" style="background:#94a3b8; padding:8px 24px;">Отмена</button>
+                </div>
+                <div id="createError" style="color:red; margin-top:8px;"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========== МОДАЛЬНОЕ ОКНО ДЛЯ ПРОСМОТРА СДЕЛКИ ========== -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" id="closeDetailModal">&times;</span>
+            <div id="detailContent">
+                <h3 id="detailTitle">Загрузка...</h3>
+                <div id="detailBody"></div>
+            </div>
+        </div>
+    </div>
+</div>

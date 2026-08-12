@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from database import engine, Base, AsyncSessionLocal
-from routers import timelog, admin, auth, employee_notifications, products, mark
+from routers import timelog, admin, auth, employee_notifications, products, mark, sandbox
 from starlette.middleware.sessions import SessionMiddleware
 import os
 from backup import schedule_backup
@@ -57,6 +57,7 @@ app.include_router(auth.router)
 app.include_router(employee_notifications.router)
 app.include_router(products.router)
 app.include_router(mark.router)
+app.include_router(sandbox.router)
 from sse import admin_events_endpoint, monitor_events_endpoint
 app.add_api_route("/api/admin/events", endpoint=admin_events_endpoint, methods=["GET"])
 app.add_api_route("/api/monitor/events", endpoint=monitor_events_endpoint, methods=["GET"])

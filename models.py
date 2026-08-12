@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Text, UniqueConstraint, Date
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import relationship
-
+from enum import Enum
 from database import Base
 
 # ========================== ENUMS ==========================
@@ -19,11 +19,11 @@ class NotificationStatus(str, enum.Enum):
     SENT = "sent"
     REJECTED = "rejected"
 
-class DayType(str, enum.Enum):
-    WORK = "WORK"
-    OFF = "OFF"
-    VACATION = "VACATION"
-    SICK = "SICK"
+class DayType(str, Enum):
+    WORK = "work"
+    OFF = "off"
+    VACATION = "vacation"
+    SICK = "sick"
 
 class DealStatus(str, enum.Enum):
     DRAFT = "draft"
@@ -48,10 +48,14 @@ class DealTypeCode(str, enum.Enum):
     FSK = "FSK"
 
 class ClientCode(str, enum.Enum):
-    OZ = "OZ"
     WB = "WB"
-    INTERNAL = "INTERNAL"
+    OZ = "OZ"
 
+class IPCode(str, enum.Enum):
+    KTV = "KTV"
+    KPD = "KPD"
+    REG = "REG"
+    SIA = "SIA"
 
 # ========================== СУЩЕСТВУЮЩИЕ МОДЕЛИ ==========================
 
@@ -70,7 +74,7 @@ class Employee(Base):
     # Связи для песочницы
     deals_created = relationship("Deal", foreign_keys="Deal.created_by", back_populates="creator")
     deals_updated = relationship("Deal", foreign_keys="Deal.updated_by", back_populates="updater")
-    assigned_stages = relationship("DealProductStage", foreign_keys="DealProductStage.assigned_employee_id", back_populates="assigned_employee")
+    assigned_tasks = relationship("DealProductStage", foreign_keys="DealProductStage.assigned_employee_id", back_populates="assigned_employee")
     employee_roles = relationship("EmployeeRole", back_populates="employee", cascade="all, delete-orphan")
     deal_employee_roles = relationship("DealEmployeeRole", back_populates="employee", cascade="all, delete-orphan")
     notifications = relationship("Notification", foreign_keys="Notification.employee_id", back_populates="employee")
@@ -145,14 +149,13 @@ class Explanation(Base):
 class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True)
-    code = Column(String, unique=True, nullable=False)
-    product_type = Column(String, nullable=False)
+    code = Column(String, unique=True, nullable=True)      # nullable, генерируется автоматически
+    product_type = Column(String, nullable=True)
     fandom = Column(String, nullable=True)
     name = Column(String, nullable=False)
     tech_card = Column(Text, nullable=True)
-    default_stages = Column(JSON, nullable=True)
+    default_stages = Column(JSON, nullable=True)          # массив ID задач (Task.id)
 
-    # Связь с товарами в сделках
     deal_products = relationship("DealProduct", back_populates="product")
 
 
@@ -181,14 +184,9 @@ class DayStatus(Base):
 class DealType(Base):
     __tablename__ = "deal_types"
     id = Column(Integer, primary_key=True)
-    code = Column(
-        SAEnum(DealTypeCode, values_callable=lambda e: [v.value for v in e]),
-        unique=True,
-        nullable=False,
-    )
+    code = Column(String(10), unique=True, nullable=False)
     name = Column(String(50), nullable=False)
 
-    # Связь со сделками
     deals = relationship("Deal", back_populates="deal_type")
 
 
@@ -202,7 +200,6 @@ class Client(Base):
     )
     name = Column(String(50), nullable=False)
 
-    # Связь со сделками
     deals = relationship("Deal", back_populates="client")
 
 
@@ -214,16 +211,25 @@ class Role(Base):
 
     employee_roles = relationship("EmployeeRole", back_populates="role", cascade="all, delete-orphan")
     deal_employee_roles = relationship("DealEmployeeRole", back_populates="role", cascade="all, delete-orphan")
-    assigned_stages = relationship("DealProductStage", back_populates="assigned_role")
+    assigned_tasks = relationship("DealProductStage", back_populates="assigned_role")
 
 
-class Stage(Base):
-    __tablename__ = "stages"
+class TaskType(Base):
+    __tablename__ = "task_types"
     id = Column(Integer, primary_key=True)
     name = Column(String(50), unique=True, nullable=False)
-    description = Column(Text)
 
-    deal_product_stages = relationship("DealProductStage", back_populates="stage")
+    tasks = relationship("Task", back_populates="type", cascade="all, delete-orphan")
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    type_id = Column(Integer, ForeignKey("task_types.id"), nullable=False)
+
+    type = relationship("TaskType", back_populates="tasks")
+    deal_product_stages = relationship("DealProductStage", back_populates="task")
 
 
 class Deal(Base):
@@ -242,7 +248,6 @@ class Deal(Base):
     created_by = Column(Integer, ForeignKey("employees.id"))
     updated_by = Column(Integer, ForeignKey("employees.id"))
 
-    # Логистика
     logistics_address = Column(String(255), nullable=True)
     logistics_departure = Column(DateTime, nullable=True)
     logistics_arrival = Column(DateTime, nullable=True)
@@ -252,7 +257,6 @@ class Deal(Base):
     )
     logistics_route = Column(Text, nullable=True)
 
-    # Связи
     deal_type = relationship("DealType", back_populates="deals")
     client = relationship("Client", back_populates="deals")
     creator = relationship("Employee", foreign_keys=[created_by], back_populates="deals_created")
@@ -271,7 +275,6 @@ class DealProduct(Base):
 
     __table_args__ = (UniqueConstraint('deal_id', 'product_id', name='uix_deal_product'),)
 
-    # Связи
     deal = relationship("Deal", back_populates="deal_products")
     product = relationship("Product", back_populates="deal_products")
     stages = relationship("DealProductStage", back_populates="deal_product", cascade="all, delete-orphan")
@@ -281,7 +284,7 @@ class DealProductStage(Base):
     __tablename__ = "deal_product_stages"
     id = Column(Integer, primary_key=True)
     deal_product_id = Column(Integer, ForeignKey("deal_products.id", ondelete="CASCADE"), nullable=False)
-    stage_id = Column(Integer, ForeignKey("stages.id"), nullable=False)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)   # ссылка на Task
     sequence = Column(Integer, nullable=False)
 
     assigned_role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
@@ -299,11 +302,10 @@ class DealProductStage(Base):
 
     __table_args__ = (UniqueConstraint('deal_product_id', 'sequence', name='uix_stage_sequence'),)
 
-    # Связи
     deal_product = relationship("DealProduct", back_populates="stages")
-    stage = relationship("Stage", back_populates="deal_product_stages")
-    assigned_employee = relationship("Employee", foreign_keys=[assigned_employee_id], back_populates="assigned_stages")
-    assigned_role = relationship("Role", foreign_keys=[assigned_role_id], back_populates="assigned_stages")
+    task = relationship("Task", back_populates="deal_product_stages")
+    assigned_employee = relationship("Employee", foreign_keys=[assigned_employee_id], back_populates="assigned_tasks")
+    assigned_role = relationship("Role", foreign_keys=[assigned_role_id], back_populates="assigned_tasks")
     notifications = relationship("Notification", back_populates="deal_stage", cascade="all, delete-orphan")
 
 
@@ -339,3 +341,13 @@ class DealHistory(Base):
 
     deal = relationship("Deal", back_populates="history")
     changer = relationship("Employee")
+
+class IP(Base):
+    __tablename__ = "ip_list"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(20), unique=True, nullable=False)
+
+class MP(Base):
+    __tablename__ = "mp_list"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(20), unique=True, nullable=False)

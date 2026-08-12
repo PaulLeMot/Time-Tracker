@@ -2207,18 +2207,22 @@
         const employeesTab = document.getElementById('employees-tab');
         const notificationsTab = document.getElementById('notifications-tab');
         const monthlyTab = document.getElementById('monthly-tab');
+        const procsetsTab = document.getElementById('procsets-tab'); // <-- добавить
 
         tabs.forEach(btn => {
             btn.addEventListener('click', async () => {
                 const tabId = btn.dataset.tab;
                 tabs.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
+
+                // Скрываем все вкладки
                 dailyTab.style.display = 'none';
                 weeklyTab.style.display = 'none';
                 if (recentTab) recentTab.style.display = 'none';
                 if (employeesTab) employeesTab.style.display = 'none';
                 if (notificationsTab) notificationsTab.style.display = 'none';
                 if (monthlyTab) monthlyTab.style.display = 'none';
+                if (procsetsTab) procsetsTab.style.display = 'none'; // <-- скрываем
 
                 if (tabId === 'daily') {
                     dailyTab.style.display = 'block';
@@ -2266,34 +2270,24 @@
                         console.error('monthlyTab не найден');
                         return;
                     }
-                    console.log('Переключение на monthly');
                     monthlyTab.style.display = 'block';
-
                     if (!monthlyTab.dataset.loaded) {
-                        console.log('Загружаем monthly.html...');
                         try {
                             const resp = await fetch('/static/monthly.html');
-                            console.log('Статус ответа:', resp.status);
                             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                             const html = await resp.text();
-                            console.log('Получен HTML, длина:', html.length);
                             monthlyTab.innerHTML = html;
                             monthlyTab.dataset.loaded = 'true';
-                            console.log('HTML вставлен, вызываем initMonthlyTab()');
                             initMonthlyTab();
                         } catch (err) {
-                            console.error('Ошибка загрузки monthly:', err);
                             monthlyTab.innerHTML = `<p style="color:red;">Ошибка загрузки вкладки: ${err.message}</p>`;
                         }
                     } else {
-                        console.log('monthly уже загружен, вызываем initMonthlyTab()');
                         initMonthlyTab();
                     }
                 } else if (tabId === 'procsets') {
-                    const procsetsTab = document.getElementById('procsets-tab');
                     if (!procsetsTab) return;
                     procsetsTab.style.display = 'block';
-
                     if (!procsetsTab.dataset.loaded) {
                         try {
                             const resp = await fetch('/static/procsets.html');
@@ -2301,12 +2295,12 @@
                             const html = await resp.text();
                             procsetsTab.innerHTML = html;
                             procsetsTab.dataset.loaded = 'true';
-                            initProcsetsTab();  // если нужна инициализация
+                            initProcsetsTab();
                         } catch (err) {
                             procsetsTab.innerHTML = `<p style="color:red;">Ошибка загрузки вкладки: ${err.message}</p>`;
                         }
                     } else {
-                        initProcsetsTab();  // повторная инициализация (если нужна)
+                        initProcsetsTab();
                     }
                 }
                 saveTabState(tabId);
@@ -5905,16 +5899,984 @@ function getAverageTimeColor(timeStr) {
     return '';
 }
 function initProcsetsTab() {
-    // Здесь можно разместить код, который навешивает обработчики на элементы внутри procsets-tab
-    // Например:
+    // ---- Глобальные переменные для песочницы ----
+    let deals = [];
+    let allProducts = [];
+    let allTasks = [];
+    let dealTypes = [];
+    let clients = [];
+
+    // Ссылки на элементы внутри вкладки
     const container = document.getElementById('procsets-tab');
-    const saveBtn = container.querySelector('#saveProcSettings');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', () => {
-            // логика сохранения настроек
-            showToast('Настройки сохранены');
+    const dealsListEl = container.querySelector('#dealsList');
+    const statusFilter = container.querySelector('#statusFilter');
+    const refreshBtn = container.querySelector('#refreshDealsBtn');
+    const createBtn = container.querySelector('#createDealBtn');
+    const modalCreate = container.querySelector('#createDealModal');
+    const closeCreate = container.querySelector('#closeCreateModal');
+    const cancelCreate = container.querySelector('#cancelCreateBtn');
+    const createForm = container.querySelector('#createDealForm');
+    const createError = container.querySelector('#createError');
+    const detailModal = container.querySelector('#detailModal');
+    const closeDetail = container.querySelector('#closeDetailModal');
+    const detailBody = container.querySelector('#detailBody');
+    const detailTitle = container.querySelector('#detailTitle');
+    const dealsCount = container.querySelector('#dealsCount');
+
+    // ---- Вспомогательные функции ----
+    async function apiFetch(url, options = {}) {
+        const resp = await fetch(url, {
+            ...options,
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...(options.headers || {}) },
+            credentials: 'include'
+        });
+        if (!resp.ok) {
+            let detail = '';
+            try {
+                const err = await resp.json();
+                detail = err.detail || resp.statusText;
+            } catch (e) {
+                detail = resp.statusText;
+            }
+            throw new Error(`Ошибка ${resp.status}: ${detail}`);
+        }
+        return resp;
+    }
+
+    // ---- Загрузка справочников ----
+    async function loadDictionaries() {
+        try {
+            const [typesResp, clientsResp, productsResp, tasksResp] = await Promise.all([
+                apiFetch('/api/sandbox/deal-types'),
+                apiFetch('/api/sandbox/clients'),
+                apiFetch('/api/sandbox/products'),
+                apiFetch('/api/sandbox/tasks')
+            ]);
+            dealTypes = await typesResp.json();
+            clients = await clientsResp.json();
+            allProducts = await productsResp.json();
+            allTasks = await tasksResp.json();
+            populateSelects();
+        } catch (err) {
+            console.error('Ошибка загрузки справочников:', err);
+            showToast('Не удалось загрузить справочники', true);
+        }
+    }
+
+    function populateSelects() {
+        const typeSelect = container.querySelector('#dealType');
+        const clientSelect = container.querySelector('#dealClient');
+        const productSelects = container.querySelectorAll('.product-select');
+        const taskSelects = container.querySelectorAll('.stage-selector select');
+
+        if (typeSelect) {
+            typeSelect.innerHTML = dealTypes.map(t => `<option value="${t.id}">${t.name} (${t.code})</option>`).join('');
+        }
+        if (clientSelect) {
+            clientSelect.innerHTML = clients.map(c => `<option value="${c.id}">${c.name} (${c.code})</option>`).join('');
+        }
+        productSelects.forEach(sel => {
+            sel.innerHTML = allProducts.map(p => `<option value="${p.id}">${p.name} (${p.code})</option>`).join('');
+        });
+        taskSelects.forEach(sel => {
+            sel.innerHTML = allTasks.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
         });
     }
+
+    // ---- Загрузка списка сделок ----
+    async function loadDeals() {
+        const status = statusFilter.value;
+        let url = '/api/sandbox/deals?limit=100';
+        if (status) url += `&status=${status}`;
+        try {
+            const resp = await apiFetch(url);
+            deals = await resp.json();
+            renderDeals(deals);
+        } catch (err) {
+            dealsListEl.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
+            showToast(err.message, true);
+        }
+    }
+
+    function renderDeals(dealsList) {
+        if (!dealsList || dealsList.length === 0) {
+            dealsListEl.innerHTML = '<p style="color:#94a3b8;">Нет сделок</p>';
+            dealsCount.textContent = '0';
+            return;
+        }
+        dealsCount.textContent = dealsList.length;
+
+        let html = `<table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Тип</th>
+                    <th>Клиент</th>
+                    <th>Плановая дата</th>
+                    <th>Статус</th>
+                    <th>Логистика</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>`;
+        for (const deal of dealsList) {
+            const statusClass = `status-${deal.status}`;
+            const logisticsStatus = deal.logistics_status || 'pending';
+            const logisticsLabel = {
+                'pending': 'Ожидание',
+                'in_transit': 'В пути',
+                'delivered': 'Доставлено'
+            }[logisticsStatus] || logisticsStatus;
+
+            html += `<tr>
+                <td>${deal.id}</td>
+                <td><strong>${escapeHtml(deal.title)}</strong></td>
+                <td>${deal.deal_type?.name || '—'}</td>
+                <td>${deal.client?.name || '—'}</td>
+                <td>${deal.planned_date || '—'}</td>
+                <td><span class="status-badge ${statusClass}">${deal.status}</span></td>
+                <td><span style="font-size:0.8rem;">${logisticsLabel}</span></td>
+                <td>
+                    <button class="view-deal-btn" data-id="${deal.id}" style="background:#3b82f6; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">👁️</button>
+                    ${deal.status === 'draft' ? `<button class="launch-deal-btn" data-id="${deal.id}" style="background:#22c55e; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">▶️ Запустить</button>` : ''}
+                    ${deal.status === 'active' ? `<button class="cancel-deal-btn" data-id="${deal.id}" style="background:#ef4444; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">⛔ Отменить</button>` : ''}
+                    ${deal.status === 'active' && deal.logistics_status === 'pending' ? `<button class="logistics-depart-btn" data-id="${deal.id}" style="background:#f59e0b; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">🚛 Отправить</button>` : ''}
+                    ${deal.logistics_status === 'in_transit' ? `<button class="logistics-arrive-btn" data-id="${deal.id}" style="background:#8b5cf6; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">🏁 Доставить</button>` : ''}
+                </td>
+            </tr>`;
+        }
+        html += `</tbody></table>`;
+        dealsListEl.innerHTML = html;
+
+        // Навесить обработчики на кнопки
+        dealsListEl.querySelectorAll('.view-deal-btn').forEach(btn => {
+            btn.addEventListener('click', () => viewDeal(parseInt(btn.dataset.id)));
+        });
+        dealsListEl.querySelectorAll('.launch-deal-btn').forEach(btn => {
+            btn.addEventListener('click', () => launchDeal(parseInt(btn.dataset.id)));
+        });
+        dealsListEl.querySelectorAll('.cancel-deal-btn').forEach(btn => {
+            btn.addEventListener('click', () => cancelDeal(parseInt(btn.dataset.id)));
+        });
+        dealsListEl.querySelectorAll('.logistics-depart-btn').forEach(btn => {
+            btn.addEventListener('click', () => logisticsDepart(parseInt(btn.dataset.id)));
+        });
+        dealsListEl.querySelectorAll('.logistics-arrive-btn').forEach(btn => {
+            btn.addEventListener('click', () => logisticsArrive(parseInt(btn.dataset.id)));
+        });
+    }
+
+    // ---- Операции со сделками ----
+    async function viewDeal(dealId) {
+        try {
+            const resp = await apiFetch(`/api/sandbox/deals/${dealId}`);
+            const deal = await resp.json();
+            showDetail(deal);
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    function showDetail(deal) {
+        detailTitle.textContent = `Сделка #${deal.id}: ${deal.title}`;
+        let html = `
+            <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:16px;">
+                <div><strong>Тип:</strong> ${deal.deal_type?.name || '—'}</div>
+                <div><strong>Клиент:</strong> ${deal.client?.name || '—'}</div>
+                <div><strong>Плановая дата:</strong> ${deal.planned_date || '—'}</div>
+                <div><strong>Статус:</strong> <span class="status-badge status-${deal.status}">${deal.status}</span></div>
+                <div><strong>Логистика:</strong> ${deal.logistics_status}${deal.logistics_address ? ` (${deal.logistics_address})` : ''}</div>
+            </div>
+        `;
+
+        if (deal.products && deal.products.length) {
+            html += `<div class="detail-section"><h4>📦 Товары</h4><ul>`;
+            for (const p of deal.products) {
+                html += `<li>${p.product_name} — ${p.quantity} шт.</li>`;
+            }
+            html += `</ul></div>`;
+        }
+
+        if (deal.stages && deal.stages.length) {
+            html += `<div class="detail-section"><h4>⚙️ Этапы</h4><div class="stage-progress">`;
+            for (const st of deal.stages) {
+                const statusClass = st.status;
+                const assigned = st.assigned_employee_name || 'не назначен';
+                const totalQty = deal.products.find(p => p.id === st.deal_product_id)?.quantity || '?';
+                const progress = st.completed_quantity > 0 ? `${st.completed_quantity} / ${totalQty}` : '0';
+                html += `<div class="stage-item ${statusClass}">
+                    <strong>${st.stage_name}</strong> (шаг ${st.sequence})<br>
+                    <span style="font-size:0.7rem;">Исполнитель: ${assigned}</span><br>
+                    <span style="font-size:0.7rem;">Выполнено: ${progress} | Брак: ${st.defect_quantity || 0}</span>
+                    <span style="font-size:0.7rem; color:${st.status === 'completed' ? '#22c55e' : st.status === 'in_progress' ? '#f59e0b' : '#94a3b8'};">${st.status}</span>
+                </div>`;
+            }
+            html += `</div></div>`;
+        }
+
+        html += `<div class="detail-section"><h4>🚛 Логистика</h4>
+            <div><strong>Статус:</strong> ${deal.logistics_status}</div>
+            ${deal.logistics_address ? `<div><strong>Адрес:</strong> ${deal.logistics_address}</div>` : ''}
+            ${deal.logistics_route ? `<div><strong>Маршрут:</strong> ${deal.logistics_route}</div>` : ''}
+            ${deal.logistics_departure ? `<div><strong>Отправление:</strong> ${new Date(deal.logistics_departure).toLocaleString()}</div>` : ''}
+            ${deal.logistics_arrival ? `<div><strong>Прибытие:</strong> ${new Date(deal.logistics_arrival).toLocaleString()}</div>` : ''}
+        </div>`;
+
+        detailBody.innerHTML = html;
+        detailModal.style.display = 'block';
+    }
+
+    async function launchDeal(dealId) {
+        if (!confirm('Запустить сделку? Будут отправлены уведомления сотрудникам.')) return;
+        try {
+            const resp = await apiFetch(`/api/sandbox/deals/${dealId}/launch`, { method: 'POST' });
+            const data = await resp.json();
+            showToast(data.message || 'Сделка запущена');
+            loadDeals();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function cancelDeal(dealId) {
+        if (!confirm('Отменить сделку?')) return;
+        try {
+            const resp = await apiFetch(`/api/sandbox/deals/${dealId}/cancel`, { method: 'POST' });
+            const data = await resp.json();
+            showToast(data.message || 'Сделка отменена');
+            loadDeals();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function logisticsDepart(dealId) {
+        const address = prompt('Введите адрес склада:');
+        if (address === null) return;
+        const route = prompt('Введите маршрут (опционально):') || '';
+        try {
+            const resp = await apiFetch(`/api/sandbox/deals/${dealId}/logistics/depart?address=${encodeURIComponent(address)}&route=${encodeURIComponent(route)}`, { method: 'POST' });
+            const data = await resp.json();
+            showToast('Логистика отправлена');
+            loadDeals();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    async function logisticsArrive(dealId) {
+        if (!confirm('Подтвердить прибытие на склад?')) return;
+        try {
+            const resp = await apiFetch(`/api/sandbox/deals/${dealId}/logistics/arrive`, { method: 'POST' });
+            const data = await resp.json();
+            showToast('Сделка завершена, товары доставлены');
+            loadDeals();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    }
+
+    // ---- Создание сделки ----
+    function openCreateModal() {
+        modalCreate.style.display = 'block';
+        container.querySelector('#dealTitle').value = '';
+        container.querySelector('#dealPlannedDate').value = new Date().toISOString().split('T')[0];
+        createError.textContent = '';
+        container.querySelector('#productList').innerHTML = '';
+        container.querySelectorAll('.product-select').forEach(sel => sel.value = '');
+        container.querySelectorAll('.product-quantity').forEach(inp => inp.value = 1);
+        populateSelects();
+    }
+
+    function closeCreateModal() {
+        modalCreate.style.display = 'none';
+    }
+
+    function addProductRow(productId = null, quantity = 1, tasks = []) {
+        const list = container.querySelector('#productList');
+        const containerDiv = document.createElement('div');
+        containerDiv.className = 'product-entry';
+        containerDiv.dataset.productId = productId || '';
+
+        const sel = document.createElement('select');
+        sel.className = 'product-select';
+        sel.innerHTML = allProducts.map(p => `<option value="${p.id}" ${p.id == productId ? 'selected' : ''}>${p.name} (${p.code})</option>`).join('');
+        containerDiv.appendChild(sel);
+
+        const qty = document.createElement('input');
+        qty.type = 'number';
+        qty.min = 1;
+        qty.value = quantity;
+        qty.style.width = '70px';
+        qty.className = 'product-quantity';
+        containerDiv.appendChild(qty);
+
+        const taskSelect = document.createElement('select');
+        taskSelect.multiple = true;
+        taskSelect.size = 1;
+        taskSelect.style.width = '150px';
+        taskSelect.className = 'stage-selector';
+        taskSelect.innerHTML = allTasks.map(t => `<option value="${t.id}" ${tasks.includes(t.id) ? 'selected' : ''}>${t.name}</option>`).join('');
+        containerDiv.appendChild(taskSelect);
+
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'remove-product';
+        removeBtn.textContent = '✖';
+        removeBtn.addEventListener('click', () => containerDiv.remove());
+        containerDiv.appendChild(removeBtn);
+
+        list.appendChild(containerDiv);
+    }
+
+    // ---- Инициализация событий ----
+    function init() {
+        // Обработчик добавления товара в форму сделки
+        const addBtn = container.querySelector('.add-product-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => addProductRow());
+        }
+
+        // Отправка формы
+        if (createForm) {
+            createForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                const title = container.querySelector('#dealTitle').value.trim();
+                const dealTypeId = parseInt(container.querySelector('#dealType').value);
+                const clientId = parseInt(container.querySelector('#dealClient').value);
+                const plannedDate = container.querySelector('#dealPlannedDate').value;
+
+                if (!title || !dealTypeId || !clientId || !plannedDate) {
+                    createError.textContent = 'Заполните все обязательные поля';
+                    return;
+                }
+
+                const productEntries = container.querySelectorAll('#productList .product-entry');
+                if (productEntries.length === 0) {
+                    createError.textContent = 'Добавьте хотя бы один товар';
+                    return;
+                }
+
+                const products = [];
+                const productStages = {};
+                for (const entry of productEntries) {
+                    const productId = parseInt(entry.querySelector('.product-select').value);
+                    const quantity = parseInt(entry.querySelector('.product-quantity').value);
+                    if (!productId || quantity < 1) continue;
+                    const taskSelect = entry.querySelector('.stage-selector');
+                    const selectedTasks = Array.from(taskSelect.selectedOptions).map(opt => parseInt(opt.value));
+                    products.push({ product_id: productId, quantity });
+                    productStages[productId] = selectedTasks;
+                }
+
+                if (products.length === 0) {
+                    createError.textContent = 'Нет корректных товаров';
+                    return;
+                }
+
+                const payload = {
+                    title,
+                    deal_type_id: dealTypeId,
+                    client_id: clientId,
+                    planned_date: plannedDate,
+                    products: products,
+                    product_stages: productStages
+                };
+
+                try {
+                    const resp = await apiFetch('/api/sandbox/deals', {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await resp.json();
+                    showToast(`Сделка создана, ID: ${data.id}`);
+                    closeCreateModal();
+                    loadDeals();
+                } catch (err) {
+                    createError.textContent = err.message;
+                    showToast(err.message, true);
+                }
+            });
+        }
+
+        // Модальное окно создания
+        if (createBtn) {
+            createBtn.addEventListener('click', openCreateModal);
+        }
+        if (closeCreate) {
+            closeCreate.addEventListener('click', closeCreateModal);
+        }
+        if (cancelCreate) {
+            cancelCreate.addEventListener('click', closeCreateModal);
+        }
+        window.addEventListener('click', (e) => {
+            if (e.target === modalCreate) closeCreateModal();
+            if (e.target === detailModal) detailModal.style.display = 'none';
+        });
+
+        // Модальное окно деталей
+        if (closeDetail) {
+            closeDetail.addEventListener('click', () => detailModal.style.display = 'none');
+        }
+
+        // Обновление и фильтр
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', loadDeals);
+        }
+        if (statusFilter) {
+            statusFilter.addEventListener('change', loadDeals);
+        }
+
+        // Автообновление каждые 30 секунд
+        setInterval(loadDeals, 30000);
+
+        // Первая загрузка
+        loadDictionaries().then(() => loadDeals());
+    }
+
+    init();
+
+    // ======== ВКЛАДКА "ЗАДАЧИ" ========
+    const taskTypeList = document.getElementById('taskTypeList');
+    const taskTypeName = document.getElementById('taskTypeName');
+    const saveTaskTypeBtn = document.getElementById('saveTaskTypeBtn');
+    const taskName = document.getElementById('taskName');
+    const taskTypeSelect = document.getElementById('taskTypeSelect');
+    const saveTaskBtn = document.getElementById('saveTaskBtn');
+    const tasksList = document.getElementById('tasksList');
+
+    let taskTypes = [];
+    let tasks = [];
+
+    // Загрузка типов задач
+    async function loadTaskTypes() {
+        try {
+            const resp = await apiFetch('/api/sandbox/task-types');
+            taskTypes = await resp.json();
+            renderTaskTypes();
+            populateTaskTypeSelect();
+        } catch (err) {
+            taskTypeList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
+        }
+    }
+
+    function renderTaskTypes() {
+        if (!taskTypes.length) {
+            taskTypeList.innerHTML = '<p style="color:#94a3b8;">Нет типов задач</p>';
+            return;
+        }
+        let html = '';
+        for (const t of taskTypes) {
+            html += `<span class="task-type-item">
+                        ${escapeHtml(t.name)}
+                        <span class="remove-type" data-id="${t.id}">✖</span>
+                    </span>`;
+        }
+        taskTypeList.innerHTML = html;
+        taskTypeList.querySelectorAll('.remove-type').forEach(el => {
+            el.addEventListener('click', async () => {
+                const id = parseInt(el.dataset.id);
+                if (!confirm('Удалить тип задачи?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/task-types/${id}`, { method: 'DELETE' });
+                    showToast('Тип удалён');
+                    loadTaskTypes();
+                    loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    function populateTaskTypeSelect() {
+        const select = taskTypeSelect;
+        select.innerHTML = '<option value="">Выберите тип</option>';
+        for (const t of taskTypes) {
+            select.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`;
+        }
+    }
+
+    saveTaskTypeBtn.addEventListener('click', async () => {
+        const name = taskTypeName.value.trim();
+        if (!name) return showToast('Введите название типа', true);
+        try {
+            const resp = await apiFetch('/api/sandbox/task-types', {
+                method: 'POST',
+                body: JSON.stringify({ name })
+            });
+            const data = await resp.json();
+            showToast('Тип создан');
+            taskTypeName.value = '';
+            loadTaskTypes();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    async function loadTasks() {
+        try {
+            const resp = await apiFetch('/api/sandbox/tasks');
+            tasks = await resp.json();
+            renderTasks();
+        } catch (err) {
+            tasksList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
+        }
+    }
+
+    function renderTasks() {
+        if (!tasks.length) {
+            tasksList.innerHTML = '<p style="color:#94a3b8;">Нет задач</p>';
+            return;
+        }
+        let html = '';
+        for (const t of tasks) {
+            const typeName = taskTypes.find(tt => tt.id === t.type_id)?.name || 'Без типа';
+            html += `<div class="task-item">
+                        <span class="task-name">${escapeHtml(t.name)}</span>
+                        <span class="task-type">Тип: ${escapeHtml(typeName)}</span>
+                        <span class="task-actions">
+                            <button class="delete-task" data-id="${t.id}" title="Удалить">🗑️</button>
+                        </span>
+                    </div>`;
+        }
+        tasksList.innerHTML = html;
+        tasksList.querySelectorAll('.delete-task').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = parseInt(btn.dataset.id);
+                if (!confirm('Удалить задачу?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/tasks/${id}`, { method: 'DELETE' });
+                    showToast('Задача удалена');
+                    loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    saveTaskBtn.addEventListener('click', async () => {
+        const name = taskName.value.trim();
+        const typeId = parseInt(taskTypeSelect.value);
+        if (!name) return showToast('Введите название задачи', true);
+        if (!typeId) return showToast('Выберите тип задачи', true);
+        try {
+            const resp = await apiFetch('/api/sandbox/tasks', {
+                method: 'POST',
+                body: JSON.stringify({ name, type_id: typeId })
+            });
+            showToast('Задача создана');
+            taskName.value = '';
+            loadTasks();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    // ======== ВКЛАДКА "ТОВАРЫ" ========
+    const productNameInput = document.getElementById('productName');
+    const saveProductBtn = document.getElementById('saveProductBtn');
+    const productsList = document.getElementById('productsList');
+
+    let products = [];
+
+    async function loadProducts() {
+        try {
+            const resp = await apiFetch('/api/sandbox/products');
+            products = await resp.json();
+            renderProducts();
+        } catch (err) {
+            productsList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
+        }
+    }
+    async function saveTechCard(productId) {
+        const product = products.find(p => p.id === productId);
+        if (!product) return;
+        try {
+            await apiFetch(`/api/sandbox/products/${productId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ default_stages: product.default_stages || [] })
+            });
+            // Не показываем тост, чтобы не раздражать
+        } catch (err) {
+            showToast('Ошибка сохранения порядка', true);
+        }
+    }
+    function initDragAndDropForList(list) {
+        let dragItem = null;
+
+        list.addEventListener('dragstart', (e) => {
+            const row = e.target.closest('.stage-row');
+            if (!row) return;
+            dragItem = row;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', row.dataset.stageId);
+            row.classList.add('dragging');
+        });
+
+        list.addEventListener('dragend', (e) => {
+            const row = e.target.closest('.stage-row');
+            if (row) row.classList.remove('dragging');
+            dragItem = null;
+        });
+
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const targetRow = e.target.closest('.stage-row');
+            if (!targetRow || targetRow === dragItem) return;
+            const rect = targetRow.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+            if (e.clientY < midpoint) {
+                list.insertBefore(dragItem, targetRow);
+            } else {
+                list.insertBefore(dragItem, targetRow.nextSibling);
+            }
+        });
+
+        list.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const targetRow = e.target.closest('.stage-row');
+            if (!targetRow || !dragItem) return;
+
+            // Обновляем порядок в массиве default_stages товара
+            const productId = parseInt(list.dataset.productId);
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+
+            // Получаем все строки в новом порядке
+            const rows = Array.from(list.querySelectorAll('.stage-row'));
+            const newOrder = rows.map(row => parseInt(row.dataset.stageId));
+            product.default_stages = newOrder;
+
+            // Обновляем индексы (порядок отображения)
+            rows.forEach((row, idx) => {
+                const orderSpan = row.querySelector('.stage-order');
+                if (orderSpan) orderSpan.textContent = idx + 1;
+            });
+
+            // (Опционально) автоматически сохранять после перетаскивания
+            // Если нужно сохранять сразу – раскомментируйте:
+            // saveTechCard(productId);
+        });
+    }
+
+    function renderProducts() {
+        if (!products.length) {
+            productsList.innerHTML = '<p style="color:#94a3b8;">Нет товаров</p>';
+            return;
+        }
+        let html = '';
+        for (const p of products) {
+            const techCard = p.default_stages || [];
+            html += `<div class="product-item" data-id="${p.id}">
+                        <div class="product-header">
+                            <span class="product-name">${escapeHtml(p.name)}</span>
+                            
+                            <button class="toggle-tech-card" data-id="${p.id}">📋 Техкарта</button>
+                            <button class="delete-product" data-id="${p.id}" style="background:none; border:none; cursor:pointer;">🗑️</button>
+                        </div>
+                        <div class="tech-card" id="techcard-${p.id}">
+                            <div class="stage-list" data-product-id="${p.id}">
+                                ${techCard.map((stageId, idx) => {
+                                    const task = allTasks.find(t => t.id === stageId);
+                                    return `<div class="stage-row" draggable="true" data-stage-id="${stageId}" data-index="${idx}">
+                                                <span class="drag-handle">⠿</span>
+                                                <span class="stage-order">${idx+1}</span>
+                                                <span class="stage-name">${task ? escapeHtml(task.name) : 'Неизвестная задача'}</span>
+                                                <span class="remove-stage" data-stage-id="${stageId}">✖</span>
+                                            </div>`;
+                                }).join('')}
+                            </div>
+                            <div class="add-stage-form">
+                                <select class="stage-select">
+                                    <option value="">Выберите задачу</option>
+                                    ${allTasks.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}
+                                </select>
+                                <button class="add-stage-btn" data-product-id="${p.id}">➕ Добавить</button>
+                            </div>
+                            <button class="save-tech-card" data-product-id="${p.id}">💾 Сохранить техкарту</button>
+                        </div>
+                    </div>`;
+        }
+        productsList.innerHTML = html;
+
+        // --- Обработчики (как были) ---
+        document.querySelectorAll('.toggle-tech-card').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.id;
+                const card = document.getElementById(`techcard-${id}`);
+                if (card) card.classList.toggle('open');
+            });
+        });
+
+        document.querySelectorAll('.delete-product').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = parseInt(btn.dataset.id);
+                if (!confirm('Удалить товар?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/products/${id}`, { method: 'DELETE' });
+                    showToast('Товар удалён');
+                    loadProducts();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        document.querySelectorAll('.add-stage-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const productId = parseInt(btn.dataset.productId);
+                const select = btn.closest('.add-stage-form').querySelector('.stage-select');
+                const stageId = parseInt(select.value);
+                if (!stageId) return showToast('Выберите задачу', true);
+                const product = products.find(p => p.id === productId);
+                if (!product) return;
+                if (!product.default_stages) product.default_stages = [];
+                product.default_stages.push(stageId);
+                renderProductTechCard(productId);
+            });
+        });
+
+        document.querySelectorAll('.remove-stage').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const stageId = parseInt(btn.dataset.stageId);
+                const productId = parseInt(btn.closest('.product-item').dataset.id);
+                const product = products.find(p => p.id === productId);
+                if (!product) return;
+                product.default_stages = (product.default_stages || []).filter(id => id !== stageId);
+                renderProductTechCard(productId);
+            });
+        });
+
+        document.querySelectorAll('.save-tech-card').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const productId = parseInt(btn.dataset.productId);
+                const product = products.find(p => p.id === productId);
+                if (!product) return;
+                try {
+                    await apiFetch(`/api/sandbox/products/${productId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ default_stages: product.default_stages || [] })
+                    });
+                    showToast('Техкарта сохранена');
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        // --- ДОБАВЛЯЕМ DRAG & DROP для каждой техкарты ---
+        document.querySelectorAll('.stage-list').forEach(list => {
+            initDragAndDropForList(list);
+        });
+    }
+    function renderProductTechCard(productId) {
+        const product = products.find(p => p.id === productId);
+        if (!product) return;
+        const card = document.getElementById(`techcard-${productId}`);
+        if (!card) return;
+        const stageList = card.querySelector('.stage-list');
+        const techCard = product.default_stages || [];
+        stageList.innerHTML = techCard.map((stageId, idx) => {
+            const task = allTasks.find(t => t.id === stageId);
+            return `<div class="stage-row" draggable="true" data-stage-id="${stageId}" data-index="${idx}">
+                        <span class="drag-handle">⠿</span>
+                        <span class="stage-order">${idx+1}</span>
+                        <span class="stage-name">${task ? escapeHtml(task.name) : 'Неизвестная задача'}</span>
+                        <span class="remove-stage" data-stage-id="${stageId}">✖</span>
+                    </div>`;
+        }).join('');
+
+        // Перезапускаем обработчики для новых элементов
+        stageList.querySelectorAll('.remove-stage').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const stageId = parseInt(btn.dataset.stageId);
+                const product = products.find(p => p.id === productId);
+                if (!product) return;
+                product.default_stages = (product.default_stages || []).filter(id => id !== stageId);
+                renderProductTechCard(productId);
+            });
+        });
+
+        // Переинициализируем drag & drop для обновлённого списка
+        initDragAndDropForList(stageList);
+    }
+
+    saveProductBtn.addEventListener('click', async () => {
+        const name = productNameInput.value.trim();
+        if (!name) return showToast('Введите название товара', true);
+        try {
+            const resp = await apiFetch('/api/sandbox/products', {
+                method: 'POST',
+                body: JSON.stringify({ name, default_stages: [] })
+            });
+            showToast('Товар создан');
+            productNameInput.value = '';
+            loadProducts();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    // ======== НАВИГАЦИЯ ПО ВКЛАДКАМ ========
+    document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const target = this.dataset.target;
+            document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            document.querySelectorAll('.sandbox-panel').forEach(p => p.classList.remove('active'));
+            const panel = document.getElementById(`panel-${target}`);
+            if (panel) panel.classList.add('active');
+            if (target === 'products') loadProducts();
+            if (target === 'tasks') {
+                loadTaskTypes();
+                loadTasks();
+            }
+            if (target === 'counterparties') loadAllCounterparties();
+        });
+    });
+    // ======== ВКЛАДКА ИП/МП ========
+    const dealTypesList = document.getElementById('dealTypesList');
+    const ipsList = document.getElementById('ipsList');
+    const mpsList = document.getElementById('mpsList');
+    const refreshCounterpartiesBtn = document.getElementById('refreshCounterpartiesBtn');
+
+    const newDealTypeName = document.getElementById('newDealTypeName');
+    const saveDealTypeBtn = document.getElementById('saveDealTypeBtn');
+    const newIPName = document.getElementById('newIPName');
+    const saveIPBtn = document.getElementById('saveIPBtn');
+    const newMPName = document.getElementById('newMPName');
+    const saveMPBtn = document.getElementById('saveMPBtn');
+
+    // ---- Загрузка данных ----
+    async function loadDealTypes() {
+        try {
+            const resp = await apiFetch('/api/sandbox/deal-types');
+            const data = await resp.json();
+            renderList(dealTypesList, data, 'id', 'name', 'deal-type');
+        } catch (err) {
+            dealTypesList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
+        }
+    }
+
+    async function loadIPs() {
+        try {
+            const resp = await apiFetch('/api/sandbox/ips');
+            const data = await resp.json();
+            renderList(ipsList, data, 'id', 'name', 'ip');
+        } catch (err) {
+            ipsList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
+        }
+    }
+
+    async function loadMPs() {
+        try {
+            const resp = await apiFetch('/api/sandbox/mps');
+            const data = await resp.json();
+            renderList(mpsList, data, 'id', 'name', 'mp');
+        } catch (err) {
+            mpsList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
+        }
+    }
+
+    function renderList(container, items, idField, nameField, type) {
+        if (!items || items.length === 0) {
+            container.innerHTML = '<p style="color:#94a3b8;">Нет записей</p>';
+            return;
+        }
+        let html = `<table>
+            <thead><tr><th>Название</th><th>Действия</th></tr></thead>
+            <tbody>`;
+        for (const item of items) {
+            html += `<tr>
+                <td><strong>${escapeHtml(item[nameField])}</strong></td>
+                <td>
+                    <button class="delete-counterparty" data-id="${item[idField]}" data-type="${type}" style="background:none; border:none; cursor:pointer; color:#ef4444; font-size:1.1rem;">🗑️</button>
+                </td>
+            </tr>`;
+        }
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+
+        // Обработчики удаления
+        container.querySelectorAll('.delete-counterparty').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = parseInt(btn.dataset.id);
+                const type = btn.dataset.type;
+                if (!confirm('Удалить эту запись?')) return;
+                try {
+                    let url;
+                    if (type === 'deal-type') url = `/api/sandbox/deal-types/${id}`;
+                    else if (type === 'ip') url = `/api/sandbox/ips/${id}`;
+                    else if (type === 'mp') url = `/api/sandbox/mps/${id}`;
+                    else return;
+                    await apiFetch(url, { method: 'DELETE' });
+                    showToast('Запись удалена');
+                    loadAllCounterparties();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    async function loadAllCounterparties() {
+        await Promise.all([loadDealTypes(), loadIPs(), loadMPs()]);
+    }
+
+    // ---- Добавление ----
+    saveDealTypeBtn.addEventListener('click', async () => {
+        const name = newDealTypeName.value.trim();
+        if (!name) return showToast('Введите название', true);
+        try {
+            await apiFetch('/api/sandbox/deal-types', {
+                method: 'POST',
+                body: JSON.stringify({ name })
+            });
+            showToast('Тип сделки добавлен');
+            newDealTypeName.value = '';
+            loadDealTypes();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    saveIPBtn.addEventListener('click', async () => {
+        const name = newIPName.value.trim();
+        if (!name) return showToast('Введите название', true);
+        try {
+            await apiFetch('/api/sandbox/ips', {
+                method: 'POST',
+                body: JSON.stringify({ name })
+            });
+            showToast('ИП добавлен');
+            newIPName.value = '';
+            loadIPs();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    saveMPBtn.addEventListener('click', async () => {
+        const name = newMPName.value.trim();
+        if (!name) return showToast('Введите название', true);
+        try {
+            await apiFetch('/api/sandbox/mps', {
+                method: 'POST',
+                body: JSON.stringify({ name })
+            });
+            showToast('МП добавлен');
+            newMPName.value = '';
+            loadMPs();
+        } catch (err) {
+            showToast(err.message, true);
+        }
+    });
+
+    // ---- Обновить всё ----
+    refreshCounterpartiesBtn.addEventListener('click', loadAllCounterparties);
 }
 </script>
 </body>
