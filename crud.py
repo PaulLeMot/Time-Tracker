@@ -4,10 +4,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from datetime import datetime, time, timedelta, date
 from models import (
-    Employee, TimeEntry, SystemSetting, TaskType, Task,
-    Deal, DealProduct, DealProductStage, DealType, Client, Role,
-    EmployeeRole, DealEmployeeRole, DealHistory, Notification,
-    Product, IP, MP
+    Employee,
+    TimeEntry,
+    SystemSetting,
+    Notification,
+    NotificationType,
+    NotificationStatus,
+    DealType,
+    Client,
+    Role,
+    Deal,
+    DealProduct,
+    DealProductStage,
+    TaskType,
+    Task,
+    EmployeeRole,
+    DealEmployeeRole,
+    IP,
+    MP,
+    DealHistory,
+    DayStatus,
+    DayType
 )
 import secrets
 import string
@@ -232,7 +249,6 @@ async def auto_close_shifts(db: AsyncSession):
         await notify_monitor_clients()
         
         if forced_end and admin:
-            # Ищем уведомление за этот рабочий день по extra_data
             notif_stmt = select(Notification).where(
                 Notification.employee_id == emp.id,
                 Notification.type == NotificationType.WARNING,
@@ -341,7 +357,7 @@ def get_workday_date(dt: datetime) -> datetime.date:
         return dt.date() - timedelta(days=1)
 
 
-# ========== ДОПОЛНЕНИЯ ДЛЯ ПЕСОЧНИЦЫ (БЕЗ STAGE) ==========
+# ========== ДОПОЛНЕНИЯ ДЛЯ ПЕСОЧНИЦЫ ==========
 
 # ---------- Справочники ----------
 async def get_deal_types(db: AsyncSession):
@@ -367,9 +383,12 @@ async def create_deal(
     client_id: int,
     planned_date: date,
     created_by: int,
-    products_data: list,          # list of {"product_id": int, "quantity": int}
-    product_tasks_map: dict       # {product_id: [task_id, ...]}
+    products: list  # list of {"name": str, "tech_card": list or None}
 ) -> Deal:
+    """
+    Создаёт сделку с товарами. Товары хранятся в DealProduct.
+    products: [{"name": "Товар 1", "tech_card": ["этап1", "этап2"]}, ...]
+    """
     deal = Deal(
         title=title,
         deal_type_id=deal_type_id,
@@ -382,26 +401,13 @@ async def create_deal(
     db.add(deal)
     await db.flush()
 
-    for prod in products_data:
+    for prod in products:
         deal_product = DealProduct(
             deal_id=deal.id,
-            product_id=prod["product_id"],
-            quantity=prod["quantity"]
+            name=prod["name"],
+            tech_card=prod.get("tech_card")  # может быть None
         )
         db.add(deal_product)
-        await db.flush()
-
-        task_ids = product_tasks_map.get(prod["product_id"], [])
-        for seq, task_id in enumerate(task_ids, start=1):
-            stage = DealProductStage(
-                deal_product_id=deal_product.id,
-                task_id=task_id,
-                sequence=seq,
-                status="pending",
-                completed_quantity=0,
-                defect_quantity=0
-            )
-            db.add(stage)
 
     await db.commit()
     await db.refresh(deal)
@@ -422,10 +428,7 @@ async def get_deal_with_details(db: AsyncSession, deal_id: int):
             joinedload(Deal.client),
             joinedload(Deal.creator),
             joinedload(Deal.updater),
-            joinedload(Deal.deal_products).joinedload(DealProduct.product),
-            joinedload(Deal.deal_products).joinedload(DealProduct.stages).joinedload(DealProductStage.task),
-            joinedload(Deal.deal_products).joinedload(DealProduct.stages).joinedload(DealProductStage.assigned_role),
-            joinedload(Deal.deal_products).joinedload(DealProduct.stages).joinedload(DealProductStage.assigned_employee),
+            joinedload(Deal.deal_products)  # загружаем товары
         )
         .where(Deal.id == deal_id)
     )
@@ -455,7 +458,27 @@ async def delete_deal(db: AsyncSession, deal_id: int):
     await db.commit()
 
 
-# ---------- Этапы (теперь задачи) ----------
+# ---------- Если нужны этапы (опционально) ----------
+async def add_stage_to_product(db: AsyncSession, deal_product_id: int, task_id: int, sequence: int):
+    stage = DealProductStage(
+        deal_product_id=deal_product_id,
+        task_id=task_id,
+        sequence=sequence,
+        status="pending"
+    )
+    db.add(stage)
+    await db.commit()
+    await db.refresh(stage)
+    return stage
+
+
+async def get_stages_for_product(db: AsyncSession, deal_product_id: int):
+    stmt = select(DealProductStage).where(DealProductStage.deal_product_id == deal_product_id).order_by(DealProductStage.sequence)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+# ---------- Управление этапами (если нужны) ----------
 async def update_task(db: AsyncSession, task_stage_id: int, **kwargs):
     stmt = update(DealProductStage).where(DealProductStage.id == task_stage_id).values(**kwargs).returning(DealProductStage)
     result = await db.execute(stmt)
@@ -474,8 +497,7 @@ async def get_employee_tasks(db: AsyncSession, employee_id: int, status: str | N
         select(DealProductStage)
         .options(
             joinedload(DealProductStage.deal_product).joinedload(DealProduct.deal),
-            joinedload(DealProductStage.task),
-            joinedload(DealProductStage.deal_product).joinedload(DealProduct.product)
+            joinedload(DealProductStage.task)
         )
         .where(DealProductStage.assigned_employee_id == employee_id)
     )
@@ -569,26 +591,6 @@ async def delete_task(db: AsyncSession, task_id: int):
     await db.execute(stmt)
     await db.commit()
 
-# ---------- Products ----------
-async def create_product(db: AsyncSession, name: str, default_stages: list = None):
-    if default_stages is None:
-        default_stages = []
-    import time
-    # Генерируем уникальный code
-    code = name.lower().replace(' ', '_') + '_' + str(int(time.time()))
-    # Проверяем уникальность (если коллизия, добавим суффикс)
-    existing = await db.execute(select(Product).where(Product.code == code))
-    if existing.scalar_one_or_none():
-        code = code + '_' + str(int(time.time() * 1000))
-    product = Product(name=name, code=code, default_stages=default_stages)
-    db.add(product)
-    await db.commit()
-    await db.refresh(product)
-    return product
-
-async def get_product_by_id(db: AsyncSession, product_id: int):
-    result = await db.execute(select(Product).where(Product.id == product_id))
-    return result.scalar_one_or_none()
 
 # ---------- IP ----------
 async def get_ips(db: AsyncSession):
@@ -607,6 +609,7 @@ async def delete_ip(db: AsyncSession, ip_id: int):
     await db.execute(stmt)
     await db.commit()
 
+
 # ---------- MP ----------
 async def get_mps(db: AsyncSession):
     result = await db.execute(select(MP).order_by(MP.name))
@@ -624,15 +627,14 @@ async def delete_mp(db: AsyncSession, mp_id: int):
     await db.execute(stmt)
     await db.commit()
 
+
 # ---------- Deal Types ----------
 async def delete_deal_type(db: AsyncSession, type_id: int):
     stmt = delete(DealType).where(DealType.id == type_id)
     await db.execute(stmt)
     await db.commit()
 
-# ---------- Deal Types ----------
 async def create_deal_type(db: AsyncSession, name: str):
-    # name должен быть одним из значений Enum: FBS, FBP, FSK
     deal_type = DealType(name=name, code=name.upper())
     db.add(deal_type)
     await db.commit()

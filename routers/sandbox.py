@@ -6,7 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from database import get_db
 import crud
-from models import Deal, DealProduct, DealProductStage, Notification, NotificationType, NotificationStatus, Employee, TaskType, Task, Product, DealType
+from models import Deal, DealProduct, Notification, NotificationType, NotificationStatus, Employee, TaskType, Task, DealType
 from routers.auth import get_current_admin, get_current_employee
 from sse import notify_admin_clients, notify_employee
 
@@ -28,49 +28,22 @@ class RoleResponse(BaseModel):
     name: str
     description: Optional[str]
 
-class StageResponse(BaseModel):
-    id: int
-    name: str
-    description: Optional[str]
-
-class ProductResponse(BaseModel):
-    id: int
-    name: str
-    code: str
-    tech_card: Optional[str]
-
+# Новые схемы для товаров сделки
 class DealProductCreate(BaseModel):
-    product_id: int
-    quantity: int
+    name: str
+    tech_card: Optional[List[str]] = []   # список этапов
+
+class DealProductResponse(BaseModel):
+    id: int
+    name: str
+    tech_card: Optional[List[str]]
 
 class DealCreate(BaseModel):
     title: str
     deal_type_id: int
     client_id: int
     planned_date: date
-    products: List[DealProductCreate]
-    product_stages: dict  # {product_id: [stage_id, ...]}
-
-class DealProductStageResponse(BaseModel):
-    id: int
-    stage_id: int
-    stage_name: str
-    sequence: int
-    assigned_role_id: Optional[int]
-    assigned_role_name: Optional[str]
-    assigned_employee_id: Optional[int]
-    assigned_employee_name: Optional[str]
-    status: str
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    completed_quantity: int
-    defect_quantity: int
-
-class DealProductResponse(BaseModel):
-    id: int
-    product_id: int
-    product_name: str
-    quantity: int
+    products: List[DealProductCreate]   # теперь товары без привязки к глобальному каталогу
 
 class DealResponse(BaseModel):
     id: int
@@ -83,21 +56,12 @@ class DealResponse(BaseModel):
     updated_at: datetime
     created_by: Optional[int]
     updated_by: Optional[int]
-    products: List[DealProductResponse]
-    stages: List[DealProductStageResponse]
+    products: List[DealProductResponse]   # товары сделки
     logistics_status: str
     logistics_address: Optional[str]
     logistics_departure: Optional[datetime]
     logistics_arrival: Optional[datetime]
     logistics_route: Optional[str]
-
-class ProductCreate(BaseModel):
-    name: str
-    default_stages: Optional[List[int]] = []
-
-class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    default_stages: Optional[List[int]] = None
 
 # ==================== ЭНДПОИНТЫ ====================
 
@@ -119,7 +83,8 @@ async def create_deal(
     admin: Employee = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    product_stages_map = {int(k): v for k, v in data.product_stages.items()}
+    # Преобразуем продукты в формат, который ждёт crud.create_deal
+    products_data = [{"name": p.name, "tech_card": p.tech_card} for p in data.products]
     deal = await crud.create_deal(
         db=db,
         title=data.title,
@@ -127,8 +92,7 @@ async def create_deal(
         client_id=data.client_id,
         planned_date=data.planned_date,
         created_by=admin.id,
-        products_data=[p.dict() for p in data.products],
-        product_stages_map=product_stages_map
+        products=products_data
     )
     return await get_deal_response(deal.id, db)
 
@@ -176,164 +140,7 @@ async def delete_deal(
     await crud.delete_deal(db, deal_id)
     return None
 
-@router.post("/deals/{deal_id}/launch")
-async def launch_deal(
-    deal_id: int,
-    admin: Employee = Depends(get_current_admin),
-    db: AsyncSession = Depends(get_db)
-):
-    deal = await crud.get_deal_by_id(db, deal_id)
-    if not deal:
-        raise HTTPException(404, "Сделка не найдена")
-    if deal.status != "draft":
-        raise HTTPException(400, "Сделку можно запустить только из черновика")
-
-    await crud.update_deal(db, deal_id, status="active", updated_by=admin.id)
-
-    stages_stmt = select(DealProductStage).join(DealProduct).where(
-        DealProduct.deal_id == deal_id,
-        DealProductStage.assigned_role_id.isnot(None),
-        DealProductStage.assigned_employee_id.is_(None),
-        DealProductStage.status == "pending"
-    )
-    result = await db.execute(stages_stmt)
-    stages = result.scalars().all()
-
-    for stage in stages:
-        employees = await crud.get_employees_with_role(db, stage.assigned_role_id, deal_id)
-        if not employees:
-            continue
-        employee = employees[0]
-        await crud.update_stage(db, stage.id, assigned_employee_id=employee.id)
-
-        notif = Notification(
-            employee_id=employee.id,
-            admin_id=admin.id,
-            type=NotificationType.COMMENDATION,
-            message=f"Вам назначена задача: этап '{stage.stage.name}' в сделке '{deal.title}'",
-            status=NotificationStatus.SENT,
-            source="auto",
-            deal_product_stage_id=stage.id,
-            task_type="assignment"
-        )
-        db.add(notif)
-        await db.commit()
-        await notify_employee(employee.id)
-
-    await notify_admin_clients()
-    return {"status": "ok", "message": "Сделка запущена"}
-
-@router.post("/deals/{deal_id}/cancel")
-async def cancel_deal(
-    deal_id: int,
-    admin: Employee = Depends(get_current_admin),
-    db: AsyncSession = Depends(get_db)
-):
-    await crud.update_deal(db, deal_id, status="cancelled", updated_by=admin.id)
-    await notify_admin_clients()
-    return {"status": "ok"}
-
-@router.get("/my-tasks")
-async def get_my_tasks(
-    status: Optional[str] = None,
-    employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db)
-):
-    tasks = await crud.get_employee_tasks(db, employee.id, status)
-    return [
-        {
-            "id": t.id,
-            "stage_name": t.stage.name,
-            "deal_title": t.deal_product.deal.title,
-            "product_name": t.deal_product.product.name,
-            "quantity": t.deal_product.quantity,
-            "completed_quantity": t.completed_quantity,
-            "defect_quantity": t.defect_quantity,
-            "status": t.status.value,
-            "started_at": t.started_at,
-            "completed_at": t.completed_at,
-            "sequence": t.sequence
-        }
-        for t in tasks
-    ]
-
-@router.post("/tasks/{stage_id}/start")
-async def start_task(
-    stage_id: int,
-    employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db)
-):
-    stage = await crud.get_stage_by_id(db, stage_id)
-    if not stage:
-        raise HTTPException(404, "Этап не найден")
-    if stage.assigned_employee_id != employee.id:
-        raise HTTPException(403, "Вы не назначены на этот этап")
-    if stage.status != "pending":
-        raise HTTPException(400, "Этап уже запущен или завершён")
-
-    await crud.update_stage(db, stage_id, status="in_progress", started_at=datetime.now())
-    return {"status": "ok", "started_at": stage.started_at}
-
-@router.post("/tasks/{stage_id}/complete")
-async def complete_task(
-    stage_id: int,
-    completed_quantity: int = Query(..., gt=0),
-    defect_quantity: int = Query(0, ge=0),
-    employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db)
-):
-    stage = await crud.get_stage_by_id(db, stage_id)
-    if not stage:
-        raise HTTPException(404, "Этап не найден")
-    if stage.assigned_employee_id != employee.id:
-        raise HTTPException(403, "Вы не назначены на этот этап")
-    if stage.status != "in_progress":
-        raise HTTPException(400, "Этап не в процессе выполнения")
-
-    deal_product = stage.deal_product
-    total_quantity = deal_product.quantity
-    if completed_quantity > total_quantity:
-        raise HTTPException(400, "Завершённое количество не может превышать общее")
-
-    await crud.update_stage(
-        db,
-        stage_id,
-        completed_quantity=completed_quantity,
-        defect_quantity=defect_quantity,
-        status="completed",
-        completed_at=datetime.now()
-    )
-
-    if completed_quantity >= total_quantity:
-        next_stage_stmt = select(DealProductStage).where(
-            DealProductStage.deal_product_id == stage.deal_product_id,
-            DealProductStage.sequence > stage.sequence
-        ).order_by(DealProductStage.sequence).limit(1)
-        result = await db.execute(next_stage_stmt)
-        next_stage = result.scalar_one_or_none()
-        if next_stage:
-            if not next_stage.assigned_employee_id:
-                employees = await crud.get_employees_with_role(db, next_stage.assigned_role_id, deal_product.deal_id)
-                if employees:
-                    emp = employees[0]
-                    await crud.update_stage(db, next_stage.id, assigned_employee_id=emp.id)
-                    notif = Notification(
-                        employee_id=emp.id,
-                        admin_id=employee.id,
-                        type=NotificationType.COMMENDATION,
-                        message=f"Новый этап '{next_stage.stage.name}' в сделке '{deal_product.deal.title}'",
-                        status=NotificationStatus.SENT,
-                        source="auto",
-                        deal_product_stage_id=next_stage.id,
-                        task_type="assignment"
-                    )
-                    db.add(notif)
-                    await db.commit()
-                    await notify_employee(emp.id)
-
-    await db.commit()
-    await notify_admin_clients()
-    return {"status": "ok"}
+# ==================== ЛОГИСТИКА (оставлена) ====================
 
 @router.post("/deals/{deal_id}/logistics/depart")
 async def logistics_depart(
@@ -385,30 +192,12 @@ async def get_deal_response(deal_id: int, db: AsyncSession):
         raise HTTPException(404, "Сделка не найдена")
 
     products = []
-    stages = []
     for dp in deal.deal_products:
         products.append({
             "id": dp.id,
-            "product_id": dp.product_id,
-            "product_name": dp.product.name,
-            "quantity": dp.quantity
+            "name": dp.name,
+            "tech_card": dp.tech_card if dp.tech_card else []
         })
-        for st in dp.stages:
-            stages.append({
-                "id": st.id,
-                "stage_id": st.stage_id,
-                "stage_name": st.stage.name,
-                "sequence": st.sequence,
-                "assigned_role_id": st.assigned_role_id,
-                "assigned_role_name": st.assigned_role.name if st.assigned_role else None,
-                "assigned_employee_id": st.assigned_employee_id,
-                "assigned_employee_name": st.assigned_employee.full_name if st.assigned_employee else None,
-                "status": st.status.value,
-                "started_at": st.started_at,
-                "completed_at": st.completed_at,
-                "completed_quantity": st.completed_quantity,
-                "defect_quantity": st.defect_quantity
-            })
 
     return DealResponse(
         id=deal.id,
@@ -422,7 +211,6 @@ async def get_deal_response(deal_id: int, db: AsyncSession):
         created_by=deal.created_by,
         updated_by=deal.updated_by,
         products=products,
-        stages=stages,
         logistics_status=deal.logistics_status.value,
         logistics_address=deal.logistics_address,
         logistics_departure=deal.logistics_departure,
@@ -430,7 +218,7 @@ async def get_deal_response(deal_id: int, db: AsyncSession):
         logistics_route=deal.logistics_route
     )
 
-# ==================== ТИПЫ ЗАДАЧ ====================
+# ==================== ТИПЫ ЗАДАЧ (оставлены) ====================
 
 @router.get("/task-types", response_model=List[dict])
 async def get_task_types(db: AsyncSession = Depends(get_db)):
@@ -453,7 +241,7 @@ async def delete_task_type(
     await crud.delete_task_type(db, type_id)
     return None
 
-# ==================== ЗАДАЧИ ====================
+# ==================== ЗАДАЧИ (оставлены) ====================
 
 @router.get("/tasks", response_model=List[dict])
 async def get_tasks(db: AsyncSession = Depends(get_db)):
@@ -485,62 +273,7 @@ async def delete_task(
     await crud.delete_task(db, task_id)
     return None
 
-# ==================== ПРОДУКТЫ ====================
-
-@router.get("/products")
-async def get_products(db: AsyncSession = Depends(get_db)):
-    stmt = select(Product)
-    result = await db.execute(stmt)
-    return result.scalars().all()
-
-@router.post("/products", status_code=201)
-async def create_product(
-    data: ProductCreate,
-    db: AsyncSession = Depends(get_db)
-):
-    product = await crud.create_product(db, data.name, data.default_stages or [])
-    return {
-        "id": product.id,
-        "name": product.name,
-        "code": product.code,
-        "default_stages": product.default_stages
-    }
-
-@router.put("/products/{product_id}")
-async def update_product(
-    product_id: int,
-    data: ProductUpdate,
-    db: AsyncSession = Depends(get_db)
-):
-    product = await crud.get_product_by_id(db, product_id)
-    if not product:
-        raise HTTPException(404, "Product not found")
-    if data.name is not None:
-        product.name = data.name
-    if data.default_stages is not None:
-        product.default_stages = data.default_stages
-    await db.commit()
-    await db.refresh(product)
-    return {
-        "id": product.id,
-        "name": product.name,
-        "code": product.code,
-        "default_stages": product.default_stages
-    }
-
-@router.delete("/products/{product_id}", status_code=204)
-async def delete_product(
-    product_id: int,
-    db: AsyncSession = Depends(get_db)
-):
-    product = await crud.get_product_by_id(db, product_id)
-    if not product:
-        raise HTTPException(404, "Product not found")
-    await db.delete(product)
-    await db.commit()
-    return None
-
-# ==================== ИП ====================
+# ==================== ИП и МП (оставлены) ====================
 class IPResponse(BaseModel):
     id: int
     name: str
@@ -563,7 +296,6 @@ async def delete_ip(ip_id: int, db: AsyncSession = Depends(get_db)):
     await crud.delete_ip(db, ip_id)
     return None
 
-# ==================== МП ====================
 class MPResponse(BaseModel):
     id: int
     name: str
@@ -592,12 +324,11 @@ async def delete_deal_type(type_id: int, db: AsyncSession = Depends(get_db)):
     return None
 
 class DealTypeCreate(BaseModel):
-    name: str   # например, "FBS"
+    name: str
 
 class DealTypeUpdate(BaseModel):
     name: str
 
-# --- Эндпоинты ---
 @router.post("/deal-types", status_code=201, response_model=DealTypeResponse)
 async def create_deal_type(data: DealTypeCreate, db: AsyncSession = Depends(get_db)):
     try:
@@ -613,3 +344,58 @@ async def update_deal_type(type_id: int, data: DealTypeUpdate, db: AsyncSession 
     except Exception as e:
         raise HTTPException(400, str(e))
     return deal_type
+
+# Схемы для справочника товаров
+class CatalogProductCreate(BaseModel):
+    name: str
+    tech_card: Optional[List[str]] = []
+
+class CatalogProductUpdate(BaseModel):
+    name: Optional[str] = None
+    tech_card: Optional[List[str]] = None
+
+# Эндпоинты
+@router.get("/deal-products", response_model=List[DealProductResponse])
+async def get_deal_products(db: AsyncSession = Depends(get_db)):
+    stmt = select(DealProduct)
+    result = await db.execute(stmt)
+    products = result.scalars().all()
+    return [{"id": p.id, "name": p.name, "tech_card": p.tech_card or []} for p in products]
+
+@router.post("/deal-products", status_code=201, response_model=DealProductResponse)
+async def create_deal_product(data: CatalogProductCreate, db: AsyncSession = Depends(get_db)):
+    product = DealProduct(name=data.name, tech_card=data.tech_card)
+    db.add(product)
+    await db.commit()
+    await db.refresh(product)
+    return {"id": product.id, "name": product.name, "tech_card": product.tech_card or []}
+
+@router.put("/deal-products/{product_id}", response_model=DealProductResponse)
+async def update_deal_product(
+    product_id: int,
+    data: CatalogProductUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(DealProduct).where(DealProduct.id == product_id)
+    result = await db.execute(stmt)
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(404, "Product not found")
+    if data.name is not None:
+        product.name = data.name
+    if data.tech_card is not None:
+        product.tech_card = data.tech_card
+    await db.commit()
+    await db.refresh(product)
+    return {"id": product.id, "name": product.name, "tech_card": product.tech_card or []}
+
+@router.delete("/deal-products/{product_id}", status_code=204)
+async def delete_deal_product(product_id: int, db: AsyncSession = Depends(get_db)):
+    stmt = select(DealProduct).where(DealProduct.id == product_id)
+    result = await db.execute(stmt)
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(404, "Product not found")
+    await db.delete(product)
+    await db.commit()
+    return None

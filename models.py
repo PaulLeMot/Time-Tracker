@@ -20,10 +20,10 @@ class NotificationStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 class DayType(str, Enum):
-    WORK = "work"
-    OFF = "off"
-    VACATION = "vacation"
-    SICK = "sick"
+    WORK = "WORK"
+    OFF = "OFF"
+    VACATION = "VACATION"
+    SICK = "SICK"
 
 class DealStatus(str, enum.Enum):
     DRAFT = "draft"
@@ -71,7 +71,6 @@ class Employee(Base):
     is_monitor = Column(Integer, default=0)
     schedule_data = Column(JSON, nullable=True)
 
-    # Связи для песочницы
     deals_created = relationship("Deal", foreign_keys="Deal.created_by", back_populates="creator")
     deals_updated = relationship("Deal", foreign_keys="Deal.updated_by", back_populates="updater")
     assigned_tasks = relationship("DealProductStage", foreign_keys="DealProductStage.assigned_employee_id", back_populates="assigned_employee")
@@ -127,11 +126,9 @@ class Notification(Base):
     source = Column(String(20), default="admin")
     extra_data = Column(JSON, nullable=True)
 
-    # Связь с задачей (новое поле)
     deal_product_stage_id = Column(Integer, ForeignKey("deal_product_stages.id"), nullable=True)
     task_type = Column(String(20), default="assignment")
 
-    # Отношения
     employee = relationship("Employee", foreign_keys=[employee_id], back_populates="notifications")
     admin = relationship("Employee", foreign_keys=[admin_id], back_populates="admin_notifications")
     deal_stage = relationship("DealProductStage", back_populates="notifications")
@@ -149,14 +146,12 @@ class Explanation(Base):
 class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True)
-    code = Column(String, unique=True, nullable=True)      # nullable, генерируется автоматически
+    code = Column(String, unique=True, nullable=True)
     product_type = Column(String, nullable=True)
     fandom = Column(String, nullable=True)
     name = Column(String, nullable=False)
     tech_card = Column(Text, nullable=True)
-    default_stages = Column(JSON, nullable=True)          # массив ID задач (Task.id)
-
-    deal_products = relationship("DealProduct", back_populates="product")
+    default_stages = Column(JSON, nullable=True)
 
 
 class DayStatus(Base):
@@ -269,14 +264,11 @@ class Deal(Base):
 class DealProduct(Base):
     __tablename__ = "deal_products"
     id = Column(Integer, primary_key=True)
-    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"), nullable=False)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    quantity = Column(Integer, nullable=False, default=0)
-
-    __table_args__ = (UniqueConstraint('deal_id', 'product_id', name='uix_deal_product'),)
+    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"), nullable=True)
+    name = Column(String, nullable=False)
+    tech_card = Column(JSON, nullable=True)   # список этапов (например, ["раскрой", "сварка", "окраска"])
 
     deal = relationship("Deal", back_populates="deal_products")
-    product = relationship("Product", back_populates="deal_products")
     stages = relationship("DealProductStage", back_populates="deal_product", cascade="all, delete-orphan")
 
 
@@ -284,7 +276,7 @@ class DealProductStage(Base):
     __tablename__ = "deal_product_stages"
     id = Column(Integer, primary_key=True)
     deal_product_id = Column(Integer, ForeignKey("deal_products.id", ondelete="CASCADE"), nullable=False)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)   # ссылка на Task
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
     sequence = Column(Integer, nullable=False)
 
     assigned_role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
@@ -342,10 +334,12 @@ class DealHistory(Base):
     deal = relationship("Deal", back_populates="history")
     changer = relationship("Employee")
 
+
 class IP(Base):
     __tablename__ = "ip_list"
     id = Column(Integer, primary_key=True)
     name = Column(String(20), unique=True, nullable=False)
+
 
 class MP(Base):
     __tablename__ = "mp_list"
