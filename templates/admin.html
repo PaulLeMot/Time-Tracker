@@ -5899,17 +5899,45 @@ function getAverageTimeColor(timeStr) {
     return '';
 }
 function initProcsetsTab() {
-    // ---- Глобальные переменные для песочницы ----
+    // ---- Глобальные переменные ----
     let deals = [];
-    let dealProducts = [];      // товары из справочника DealProduct
-    let allTasks = [];
     let dealTypes = [];
-    let clients = [];
+    let ips = [];
+    let mps = [];
 
-    // Ссылки на элементы внутри вкладки
+    // ---- Переменные для задач ----
+    let taskTypes = [];
+    let allTasks = [];
+
+    // ---- Переменные для товаров ----
+    let products = [];
+    let techCards = [];
+
+    // ---- Переменные для ролей ----
+    let roles = [];
+    let allEmployees = []; // все активные сотрудники для выбора
+
+    // ---- Переменные для конструктора ----
+    let constructorMode = 'techcard'; // 'techcard' или 'role'
+    let constructorTasks = [];
+    let currentTechCardId = null;
+    let currentRoleId = null;
+
+    // Элементы конструктора
+    let techCardNameInput = null;
+    let techCardSelect = null;
+    let roleNameInput = null;
+    let roleDescriptionInput = null;
+    let roleSelect = null;
+    let constructorListEl = null;
+    let saveConstructorBtn = null;
+    let deleteConstructorBtn = null;
+    let clearConstructorBtn = null;
+    let toggleModeBtn = null;
+    let constructorInitialized = false;
+
     const container = document.getElementById('procsets-tab');
     const dealsListEl = container.querySelector('#dealsList');
-    const statusFilter = container.querySelector('#statusFilter');
     const refreshBtn = container.querySelector('#refreshDealsBtn');
     const createBtn = container.querySelector('#createDealBtn');
     const modalCreate = container.querySelector('#createDealModal');
@@ -5932,53 +5960,49 @@ function initProcsetsTab() {
         });
         if (!resp.ok) {
             let detail = '';
+            let rawText = '';
             try {
-                const err = await resp.json();
-                detail = err.detail || resp.statusText;
+                const errData = await resp.json();
+                detail = errData.detail || resp.statusText;
+                console.error('Ошибка API (JSON):', errData);
             } catch (e) {
-                detail = resp.statusText;
+                try {
+                    rawText = await resp.text();
+                    detail = rawText || resp.statusText;
+                    console.error('Ошибка API (текст):', rawText);
+                } catch (e2) {
+                    detail = resp.statusText;
+                }
             }
             throw new Error(`Ошибка ${resp.status}: ${detail}`);
         }
         return resp;
     }
 
-    // ---- Загрузка справочников (без глобальных товаров) ----
-    async function loadDictionaries() {
+    // ---- Загрузка типов сделок ----
+    async function loadDealTypes() {
         try {
-            const [typesResp, clientsResp, tasksResp] = await Promise.all([
-                apiFetch('/api/sandbox/deal-types'),
-                apiFetch('/api/sandbox/clients'),
-                apiFetch('/api/sandbox/tasks')
-            ]);
-            dealTypes = await typesResp.json();
-            clients = await clientsResp.json();
-            allTasks = await tasksResp.json();
-            populateSelects();
+            const resp = await apiFetch('/api/sandbox/deal-types');
+            dealTypes = await resp.json();
+            renderList('dealTypesList', dealTypes);
+            populateDealTypeSelect();
         } catch (err) {
-            console.error('Ошибка загрузки справочников:', err);
-            showToast('Не удалось загрузить справочники', true);
+            console.error('Ошибка загрузки типов сделок:', err);
+            showToast('Не удалось загрузить типы сделок', true);
         }
     }
 
-    function populateSelects() {
+    function populateDealTypeSelect() {
         const typeSelect = container.querySelector('#dealType');
-        const clientSelect = container.querySelector('#dealClient');
         if (typeSelect) {
-            typeSelect.innerHTML = dealTypes.map(t => `<option value="${t.id}">${t.name} (${t.code})</option>`).join('');
-        }
-        if (clientSelect) {
-            clientSelect.innerHTML = clients.map(c => `<option value="${c.id}">${c.name} (${c.code})</option>`).join('');
+            typeSelect.innerHTML = dealTypes.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
         }
     }
 
     // ---- Загрузка списка сделок ----
     async function loadDeals() {
-        const status = statusFilter.value;
-        let url = '/api/sandbox/deals?limit=100';
-        if (status) url += `&status=${status}`;
         try {
-            const resp = await apiFetch(url);
+            const resp = await apiFetch('/api/sandbox/deals?limit=100');
             deals = await resp.json();
             renderDeals(deals);
         } catch (err) {
@@ -6001,37 +6025,19 @@ function initProcsetsTab() {
                     <th>ID</th>
                     <th>Название</th>
                     <th>Тип</th>
-                    <th>Клиент</th>
-                    <th>Плановая дата</th>
-                    <th>Статус</th>
-                    <th>Логистика</th>
                     <th>Действия</th>
                 </tr>
             </thead>
             <tbody>`;
         for (const deal of dealsList) {
-            const statusClass = `status-${deal.status}`;
-            const logisticsStatus = deal.logistics_status || 'pending';
-            const logisticsLabel = {
-                'pending': 'Ожидание',
-                'in_transit': 'В пути',
-                'delivered': 'Доставлено'
-            }[logisticsStatus] || logisticsStatus;
-
+            const typeName = dealTypes.find(t => t.id === deal.deal_type_id)?.name || '—';
             html += `<tr>
                 <td>${deal.id}</td>
                 <td><strong>${escapeHtml(deal.title)}</strong></td>
-                <td>${deal.deal_type?.name || '—'}</td>
-                <td>${deal.client?.name || '—'}</td>
-                <td>${deal.planned_date || '—'}</td>
-                <td><span class="status-badge ${statusClass}">${deal.status}</span></td>
-                <td><span style="font-size:0.8rem;">${logisticsLabel}</span></td>
+                <td>${escapeHtml(typeName)}</td>
                 <td>
                     <button class="view-deal-btn" data-id="${deal.id}" style="background:#3b82f6; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">👁️</button>
-                    ${deal.status === 'draft' ? `<button class="launch-deal-btn" data-id="${deal.id}" style="background:#22c55e; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">▶️ Запустить</button>` : ''}
-                    ${deal.status === 'active' ? `<button class="cancel-deal-btn" data-id="${deal.id}" style="background:#ef4444; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">⛔ Отменить</button>` : ''}
-                    ${deal.status === 'active' && deal.logistics_status === 'pending' ? `<button class="logistics-depart-btn" data-id="${deal.id}" style="background:#f59e0b; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">🚛 Отправить</button>` : ''}
-                    ${deal.logistics_status === 'in_transit' ? `<button class="logistics-arrive-btn" data-id="${deal.id}" style="background:#8b5cf6; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">🏁 Доставить</button>` : ''}
+                    <button class="delete-deal-btn" data-id="${deal.id}" style="background:#ef4444; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">🗑️</button>
                 </td>
             </tr>`;
         }
@@ -6041,21 +6047,12 @@ function initProcsetsTab() {
         dealsListEl.querySelectorAll('.view-deal-btn').forEach(btn => {
             btn.addEventListener('click', () => viewDeal(parseInt(btn.dataset.id)));
         });
-        dealsListEl.querySelectorAll('.launch-deal-btn').forEach(btn => {
-            btn.addEventListener('click', () => launchDeal(parseInt(btn.dataset.id)));
-        });
-        dealsListEl.querySelectorAll('.cancel-deal-btn').forEach(btn => {
-            btn.addEventListener('click', () => cancelDeal(parseInt(btn.dataset.id)));
-        });
-        dealsListEl.querySelectorAll('.logistics-depart-btn').forEach(btn => {
-            btn.addEventListener('click', () => logisticsDepart(parseInt(btn.dataset.id)));
-        });
-        dealsListEl.querySelectorAll('.logistics-arrive-btn').forEach(btn => {
-            btn.addEventListener('click', () => logisticsArrive(parseInt(btn.dataset.id)));
+        dealsListEl.querySelectorAll('.delete-deal-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteDeal(parseInt(btn.dataset.id)));
         });
     }
 
-    // ---- Операции со сделками ----
+    // ---- Просмотр сделки ----
     async function viewDeal(dealId) {
         try {
             const resp = await apiFetch(`/api/sandbox/deals/${dealId}`);
@@ -6070,197 +6067,1148 @@ function initProcsetsTab() {
         detailTitle.textContent = `Сделка #${deal.id}: ${deal.title}`;
         let html = `
             <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:16px;">
-                <div><strong>Тип:</strong> ${deal.deal_type?.name || '—'}</div>
-                <div><strong>Клиент:</strong> ${deal.client?.name || '—'}</div>
-                <div><strong>Плановая дата:</strong> ${deal.planned_date || '—'}</div>
-                <div><strong>Статус:</strong> <span class="status-badge status-${deal.status}">${deal.status}</span></div>
-                <div><strong>Логистика:</strong> ${deal.logistics_status}${deal.logistics_address ? ` (${deal.logistics_address})` : ''}</div>
+                <div><strong>Тип:</strong> ${deal.deal_type || '—'}</div>
+                <div><strong>ID:</strong> ${deal.id}</div>
             </div>
         `;
-
-        if (deal.products && deal.products.length) {
-            html += `<div class="detail-section"><h4>📦 Товары</h4><ul>`;
-            for (const p of deal.products) {
-                const techCardStr = p.tech_card ? p.tech_card.join(', ') : 'нет этапов';
-                html += `<li><strong>${escapeHtml(p.name)}</strong> — техкарта: ${escapeHtml(techCardStr)}</li>`;
-            }
-            html += `</ul></div>`;
-        }
-
-        if (deal.stages && deal.stages.length) {
-            html += `<div class="detail-section"><h4>⚙️ Этапы</h4><div class="stage-progress">`;
-            for (const st of deal.stages) {
-                const statusClass = st.status;
-                const assigned = st.assigned_employee_name || 'не назначен';
-                const totalQty = deal.products.find(p => p.id === st.deal_product_id)?.quantity || '?';
-                const progress = st.completed_quantity > 0 ? `${st.completed_quantity} / ${totalQty}` : '0';
-                html += `<div class="stage-item ${statusClass}">
-                    <strong>${st.stage_name}</strong> (шаг ${st.sequence})<br>
-                    <span style="font-size:0.7rem;">Исполнитель: ${assigned}</span><br>
-                    <span style="font-size:0.7rem;">Выполнено: ${progress} | Брак: ${st.defect_quantity || 0}</span>
-                    <span style="font-size:0.7rem; color:${st.status === 'completed' ? '#22c55e' : st.status === 'in_progress' ? '#f59e0b' : '#94a3b8'};">${st.status}</span>
-                </div>`;
-            }
-            html += `</div></div>`;
-        }
-
-        html += `<div class="detail-section"><h4>🚛 Логистика</h4>
-            <div><strong>Статус:</strong> ${deal.logistics_status}</div>
-            ${deal.logistics_address ? `<div><strong>Адрес:</strong> ${deal.logistics_address}</div>` : ''}
-            ${deal.logistics_route ? `<div><strong>Маршрут:</strong> ${deal.logistics_route}</div>` : ''}
-            ${deal.logistics_departure ? `<div><strong>Отправление:</strong> ${new Date(deal.logistics_departure).toLocaleString()}</div>` : ''}
-            ${deal.logistics_arrival ? `<div><strong>Прибытие:</strong> ${new Date(deal.logistics_arrival).toLocaleString()}</div>` : ''}
-        </div>`;
-
         detailBody.innerHTML = html;
         detailModal.style.display = 'block';
     }
 
-    async function launchDeal(dealId) {
-        if (!confirm('Запустить сделку? Будут отправлены уведомления сотрудникам.')) return;
+    // ---- Удаление сделки ----
+    async function deleteDeal(dealId) {
+        if (!confirm('Удалить эту сделку?')) return;
         try {
-            const resp = await apiFetch(`/api/sandbox/deals/${dealId}/launch`, { method: 'POST' });
-            const data = await resp.json();
-            showToast(data.message || 'Сделка запущена');
+            await apiFetch(`/api/sandbox/deals/${dealId}`, { method: 'DELETE' });
+            showToast('Сделка удалена');
             loadDeals();
         } catch (err) {
             showToast(err.message, true);
         }
     }
 
-    async function cancelDeal(dealId) {
-        if (!confirm('Отменить сделку?')) return;
-        try {
-            const resp = await apiFetch(`/api/sandbox/deals/${dealId}/cancel`, { method: 'POST' });
-            const data = await resp.json();
-            showToast(data.message || 'Сделка отменена');
-            loadDeals();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    }
-
-    async function logisticsDepart(dealId) {
-        const address = prompt('Введите адрес склада:');
-        if (address === null) return;
-        const route = prompt('Введите маршрут (опционально):') || '';
-        try {
-            const resp = await apiFetch(`/api/sandbox/deals/${dealId}/logistics/depart?address=${encodeURIComponent(address)}&route=${encodeURIComponent(route)}`, { method: 'POST' });
-            const data = await resp.json();
-            showToast('Логистика отправлена');
-            loadDeals();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    }
-
-    async function logisticsArrive(dealId) {
-        if (!confirm('Подтвердить прибытие на склад?')) return;
-        try {
-            const resp = await apiFetch(`/api/sandbox/deals/${dealId}/logistics/arrive`, { method: 'POST' });
-            const data = await resp.json();
-            showToast('Сделка завершена, товары доставлены');
-            loadDeals();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    }
-
-    // ---- Создание сделки (с DealProduct) ----
-    function openCreateModal() {
+    // ---- Создание сделки ----
+    async function openCreateModal() {
         modalCreate.style.display = 'block';
         container.querySelector('#dealTitle').value = '';
-        container.querySelector('#dealPlannedDate').value = new Date().toISOString().split('T')[0];
         createError.textContent = '';
-        container.querySelector('#productList').innerHTML = '';
-        populateSelects();
+        populateDealTypeSelect();
+
+        // Загружаем IP и MP
+        try {
+            const [ipsResp, mpsResp] = await Promise.all([
+                apiFetch('/api/sandbox/ips'),
+                apiFetch('/api/sandbox/mps')
+            ]);
+            const ips = await ipsResp.json();
+            const mps = await mpsResp.json();
+
+            const ipSelect = container.querySelector('#dealIp');
+            ipSelect.innerHTML = '<option value="">Выберите ИП</option>' + ips.map(ip => `<option value="${ip.id}">${escapeHtml(ip.name)}</option>`).join('');
+
+            const mpSelect = container.querySelector('#dealMp');
+            mpSelect.innerHTML = '<option value="">Выберите МП</option>' + mps.map(mp => `<option value="${mp.id}">${escapeHtml(mp.name)}</option>`).join('');
+        } catch (err) {
+            showToast('Не удалось загрузить ИП/МП', true);
+        }
     }
 
     function closeCreateModal() {
         modalCreate.style.display = 'none';
     }
 
-    function addProductRow(name = '', techCard = '') {
-        const list = container.querySelector('#productList');
-        const containerDiv = document.createElement('div');
-        containerDiv.className = 'product-entry';
-        containerDiv.style.cssText = 'display:flex; gap:8px; align-items:center; margin-bottom:8px;';
+    // ---- Загрузка ИП и МП ----
+    async function loadIPs() {
+        try {
+            const resp = await apiFetch('/api/sandbox/ips');
+            ips = await resp.json();
+            renderList('ipsList', ips);
+        } catch (err) {
+            showToast('Ошибка загрузки ИП: ' + err.message, true);
+        }
+    }
 
-        const nameInput = document.createElement('input');
-        nameInput.type = 'text';
-        nameInput.placeholder = 'Название товара';
-        nameInput.value = name;
-        nameInput.style.cssText = 'flex:1; padding:6px 12px; border-radius:20px; border:1px solid #cbd5e1;';
+    async function loadMPs() {
+        try {
+            const resp = await apiFetch('/api/sandbox/mps');
+            mps = await resp.json();
+            renderList('mpsList', mps);
+        } catch (err) {
+            showToast('Ошибка загрузки МП: ' + err.message, true);
+        }
+    }
 
-        const techInput = document.createElement('input');
-        techInput.type = 'text';
-        techInput.placeholder = 'Этапы через запятую';
-        techInput.value = techCard;
-        techInput.style.cssText = 'flex:1; padding:6px 12px; border-radius:20px; border:1px solid #cbd5e1;';
+    // Общая функция рендеринга списка с кнопками удаления
+    function renderList(elementId, items) {
+        const containerEl = document.getElementById(elementId);
+        if (!containerEl) return;
+        if (!items || items.length === 0) {
+            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет записей</p>';
+            return;
+        }
+        let html = `<table><thead><tr><th>Название</th><th>Действия</th></tr></thead><tbody>`;
+        for (const item of items) {
+            html += `<tr>
+                <td><strong>${escapeHtml(item.name)}</strong></td>
+                <td>
+                    <button class="delete-item" data-id="${item.id}" data-list="${elementId}" style="background:none; border:none; cursor:pointer; color:#ef4444;">🗑️</button>
+                </td>
+            </tr>`;
+        }
+        html += `</tbody></table>`;
+        containerEl.innerHTML = html;
 
-        const removeBtn = document.createElement('span');
-        removeBtn.textContent = '✖';
-        removeBtn.style.cssText = 'cursor:pointer; color:#ef4444; font-size:1.2rem; padding:0 8px;';
-        removeBtn.addEventListener('click', () => containerDiv.remove());
+        containerEl.querySelectorAll('.delete-item').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = parseInt(btn.dataset.id);
+                const listType = btn.dataset.list;
+                if (!confirm('Удалить?')) return;
+                try {
+                    let url = '';
+                    if (listType === 'ipsList') url = `/api/sandbox/ips/${id}`;
+                    else if (listType === 'mpsList') url = `/api/sandbox/mps/${id}`;
+                    else if (listType === 'dealTypesList') url = `/api/sandbox/deal-types/${id}`;
+                    if (url) {
+                        await apiFetch(url, { method: 'DELETE' });
+                        showToast('Удалено');
+                        if (listType === 'ipsList') loadIPs();
+                        else if (listType === 'mpsList') loadMPs();
+                        else if (listType === 'dealTypesList') loadDealTypes();
+                    }
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
 
-        containerDiv.appendChild(nameInput);
-        containerDiv.appendChild(techInput);
-        containerDiv.appendChild(removeBtn);
-        list.appendChild(containerDiv);
+    // Добавление ИП и МП
+    function initCounterpartiesHandlers() {
+        const saveDealTypeBtn = document.getElementById('saveDealTypeBtn');
+        if (saveDealTypeBtn) {
+            saveDealTypeBtn.addEventListener('click', async () => {
+                const nameInput = document.getElementById('newDealTypeName');
+                const name = nameInput?.value.trim();
+                if (!name) return showToast('Введите название', true);
+                try {
+                    await apiFetch('/api/sandbox/deal-types', { method: 'POST', body: JSON.stringify({ name }) });
+                    showToast('Тип сделки добавлен');
+                    if (nameInput) nameInput.value = '';
+                    loadDealTypes();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        }
+        const saveIPBtn = document.getElementById('saveIPBtn');
+        if (saveIPBtn) {
+            saveIPBtn.addEventListener('click', async () => {
+                const nameInput = document.getElementById('newIPName');
+                const name = nameInput?.value.trim();
+                if (!name) return showToast('Введите название', true);
+                try {
+                    await apiFetch('/api/sandbox/ips', { method: 'POST', body: JSON.stringify({ name }) });
+                    showToast('ИП добавлен');
+                    if (nameInput) nameInput.value = '';
+                    loadIPs();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        }
+        const saveMPBtn = document.getElementById('saveMPBtn');
+        if (saveMPBtn) {
+            saveMPBtn.addEventListener('click', async () => {
+                const nameInput = document.getElementById('newMPName');
+                const name = nameInput?.value.trim();
+                if (!name) return showToast('Введите название', true);
+                try {
+                    await apiFetch('/api/sandbox/mps', { method: 'POST', body: JSON.stringify({ name }) });
+                    showToast('МП добавлен');
+                    if (nameInput) nameInput.value = '';
+                    loadMPs();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        }
+        const refreshBtn = document.getElementById('refreshCounterpartiesBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                loadDealTypes();
+                loadIPs();
+                loadMPs();
+            });
+        }
+    }
+
+    // ---- Товары ----
+    const addProductGlobalBtn = document.getElementById('addProductGlobalBtn');
+    if (addProductGlobalBtn) {
+        addProductGlobalBtn.addEventListener('click', async () => {
+            const name = prompt('Введите название нового товара:');
+            if (name === null || name.trim() === '') return;
+            const techCardIdInput = prompt('Введите ID техкарты (оставьте пустым, если без техкарты):');
+            let techCardId = null;
+            if (techCardIdInput !== null && techCardIdInput.trim() !== '') {
+                const parsed = parseInt(techCardIdInput.trim());
+                if (!isNaN(parsed)) techCardId = parsed;
+                else showToast('ID техкарты должен быть числом. Товар будет создан без техкарты.', true);
+            }
+            try {
+                const response = await apiFetch('/api/sandbox/product-types', {
+                    method: 'POST',
+                    body: JSON.stringify({ name: name.trim(), tech_card_id: techCardId })
+                });
+                const data = await response.json();
+                showToast(`Товар "${data.name}" создан`);
+                loadProducts();
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        });
+    }
+
+    async function loadProducts() {
+        let productsData = [];
+        let techCardsData = [];
+        try {
+            const productsResp = await apiFetch('/api/sandbox/product-types');
+            productsData = await productsResp.json();
+        } catch (err) {
+            console.error('Ошибка загрузки товаров:', err);
+            showToast('Не удалось загрузить товары: ' + err.message, true);
+        }
+        try {
+            const techCardsResp = await apiFetch('/api/sandbox/tech-cards');
+            techCardsData = await techCardsResp.json();
+        } catch (err) {
+            console.error('Ошибка загрузки техкарт:', err);
+            showToast('Не удалось загрузить техкарты: ' + err.message, true);
+        }
+        products = productsData;
+        techCards = techCardsData;
+        renderProductsGrouped();
+        populateTechCardSelect();
+    }
+
+    function groupProductsByTechCard(products, techCards) {
+        const groups = {};
+        techCards.forEach(tc => { groups[tc.id] = { tech_card: tc, products: [] }; });
+        groups['no_tech'] = { tech_card: null, products: [] };
+        products.forEach(p => {
+            if (p.tech_card_id && groups[p.tech_card_id]) {
+                groups[p.tech_card_id].products.push(p);
+            } else {
+                groups['no_tech'].products.push(p);
+            }
+        });
+        const sorted = Object.values(groups);
+        sorted.sort((a, b) => {
+            if (a.tech_card === null) return 1;
+            if (b.tech_card === null) return -1;
+            return a.tech_card.name.localeCompare(b.tech_card.name);
+        });
+        return sorted;
+    }
+
+    function renderProductsGrouped() {
+        const containerEl = document.getElementById('productsList');
+        if (!containerEl) return;
+        if (!products.length) {
+            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет товаров. Создайте товары в справочнике.</p>';
+            return;
+        }
+        const groups = groupProductsByTechCard(products, techCards);
+        if (groups.length === 0) {
+            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет товаров с техкартами.</p>';
+            return;
+        }
+        let html = '<div class="product-groups-container">';
+        for (const group of groups) {
+            const isNoTech = group.tech_card === null;
+            const groupName = isNoTech ? '📦 Без техкарты' : escapeHtml(group.tech_card.name);
+            html += `<div class="product-group" data-group-id="${isNoTech ? 'no_tech' : group.tech_card.id}">
+                <div class="product-group-header">
+                    <span class="product-group-title">${groupName}</span>
+                    <span class="product-group-actions">
+                        <button class="add-product-btn" data-tech-id="${isNoTech ? '' : group.tech_card.id}" title="Добавить товар">➕</button>
+                        ${!isNoTech ? `<button class="edit-techcard-btn" data-id="${group.tech_card.id}" title="Редактировать техкарту">✏️</button>` : ''}
+                        ${!isNoTech ? `<button class="delete-techcard-btn" data-id="${group.tech_card.id}" title="Удалить техкарту">🗑️</button>` : ''}
+                    </span>
+                </div>
+                <div class="product-group-body">`;
+            for (const product of group.products) {
+                html += `<div class="product-item" data-id="${product.id}">
+                    <span class="product-name">${escapeHtml(product.name)}</span>
+                    <span class="product-actions">
+                        <button class="edit-product-btn" data-id="${product.id}" title="Редактировать">✏️</button>
+                        <button class="delete-product-btn" data-id="${product.id}" title="Удалить">🗑️</button>
+                    </span>
+                </div>`;
+            }
+            html += `</div></div>`;
+        }
+        containerEl.innerHTML = html;
+
+        containerEl.querySelectorAll('.add-product-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const techCardId = btn.dataset.techId ? parseInt(btn.dataset.techId) : null;
+                const name = prompt('Введите название нового товара:');
+                if (name === null || name.trim() === '') return;
+                try {
+                    const response = await apiFetch('/api/sandbox/product-types', {
+                        method: 'POST',
+                        body: JSON.stringify({ name: name.trim(), tech_card_id: techCardId })
+                    });
+                    const data = await response.json();
+                    showToast(`Товар "${data.name}" создан`);
+                    loadProducts();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        containerEl.querySelectorAll('.edit-product-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const productId = parseInt(btn.dataset.id);
+                const product = products.find(p => p.id === productId);
+                if (!product) return;
+                const newName = prompt('Введите новое название товара:', product.name);
+                if (newName === null || newName.trim() === '') return;
+                try {
+                    await apiFetch(`/api/sandbox/product-types/${productId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ name: newName.trim() })
+                    });
+                    showToast('Товар обновлён');
+                    loadProducts();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        containerEl.querySelectorAll('.delete-product-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const productId = parseInt(btn.dataset.id);
+                if (!confirm('Удалить товар?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/product-types/${productId}`, { method: 'DELETE' });
+                    showToast('Товар удалён');
+                    loadProducts();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        containerEl.querySelectorAll('.edit-techcard-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const techCardId = parseInt(btn.dataset.id);
+                document.querySelector('.sandbox-sidebar .nav-btn[data-target="tasks"]').click();
+                setTimeout(() => {
+                    if (techCardSelect) {
+                        techCardSelect.value = techCardId;
+                        techCardSelect.dispatchEvent(new Event('change'));
+                    }
+                }, 300);
+            });
+        });
+
+        containerEl.querySelectorAll('.delete-techcard-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const techCardId = parseInt(btn.dataset.id);
+                if (!confirm('Удалить техкарту? Все товары, привязанные к ней, потеряют техкарту.')) return;
+                try {
+                    await apiFetch(`/api/sandbox/tech-cards/${techCardId}`, { method: 'DELETE' });
+                    showToast('Техкарта удалена');
+                    loadProducts();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    // ======================== ЗАДАЧИ И КОНСТРУКТОР ========================
+
+    // ---- Загрузка ролей ----
+    async function loadRoles() {
+        try {
+            const resp = await apiFetch('/api/sandbox/roles');
+            roles = await resp.json();
+            populateRoleSelect();
+            renderRoles(); // рендерим вкладку ролей
+        } catch (err) {
+            console.error('Ошибка загрузки ролей:', err);
+            showToast('Не удалось загрузить роли: ' + err.message, true);
+        }
+    }
+
+    // Заполнение селекта ролей
+    function populateRoleSelect() {
+        if (!roleSelect) return;
+        const currentVal = roleSelect.value;
+        roleSelect.innerHTML = '<option value="">-- Создать новую --</option>';
+        roles.forEach(r => {
+            roleSelect.innerHTML += `<option value="${r.id}">${escapeHtml(r.name)}</option>`;
+        });
+        if (currentVal) roleSelect.value = currentVal;
+    }
+
+    // ---- Загрузка всех сотрудников (для выбора в ролях) ----
+    async function loadAllEmployees() {
+        try {
+            const resp = await fetch('/api/employees?active_only=true', { credentials: 'include' });
+            if (!resp.ok) throw new Error('Ошибка загрузки сотрудников');
+            allEmployees = await resp.json();
+            allEmployees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+        } catch (err) {
+            console.error('Ошибка загрузки сотрудников:', err);
+            showToast('Не удалось загрузить сотрудников', true);
+        }
+    }
+
+    // ---- Рендеринг вкладки "Роли" ----
+    function renderRoles() {
+        const containerEl = document.getElementById('rolesList');
+        if (!containerEl) return;
+
+        if (!roles || roles.length === 0) {
+            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет ролей. Создайте их в конструкторе задач.</p>';
+            return;
+        }
+
+        let html = '<div class="roles-grid">';
+        for (const role of roles) {
+            const taskNames = role.tasks.map(t => escapeHtml(t.name)).join(', ') || '—';
+            const employeeNames = (role.employees || []).map(e => escapeHtml(e.full_name)).join(', ') || '—';
+
+            html += `<div class="role-card" data-role-id="${role.id}">
+                <div class="role-card-header">
+                    <div class="role-title">${escapeHtml(role.name)}</div>
+                    <div class="role-actions">
+                        <button class="role-add-employee-btn" data-role-id="${role.id}" title="Добавить сотрудника">➕</button>
+                    </div>
+                </div>
+                ${role.description ? `<div class="role-description">${escapeHtml(role.description)}</div>` : ''}
+                <div class="role-tasks"><strong>Задачи:</strong> ${taskNames}</div>
+                <div class="role-employees">
+                    <strong>Сотрудники:</strong>
+                    <span class="employee-list">
+                        ${(role.employees || []).map(e => `
+                            <span class="employee-tag">
+                                ${escapeHtml(e.full_name)}
+                                <button class="remove-employee-btn" data-role-id="${role.id}" data-employee-id="${e.id}" title="Удалить">✖</button>
+                            </span>
+                        `).join('')}
+                        ${(!role.employees || role.employees.length === 0) ? '—' : ''}
+                    </span>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+        containerEl.innerHTML = html;
+
+        // ---- Обработчики кнопок добавления сотрудника ----
+        containerEl.querySelectorAll('.role-add-employee-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const roleId = parseInt(btn.dataset.roleId);
+                await showEmployeeSelectionModal(roleId);
+            });
+        });
+
+        // ---- Обработчики удаления сотрудников ----
+        containerEl.querySelectorAll('.remove-employee-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const roleId = parseInt(btn.dataset.roleId);
+                const employeeId = parseInt(btn.dataset.employeeId);
+                if (!confirm('Удалить этого сотрудника из роли?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/roles/${roleId}/employees/${employeeId}`, { method: 'DELETE' });
+                    showToast('Сотрудник удалён из роли');
+                    await loadRoles(); // перезагружаем список ролей
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    // ---- Модальное окно для выбора сотрудника ----
+    async function showEmployeeSelectionModal(roleId) {
+        // Загружаем сотрудников, если они ещё не загружены
+        if (!allEmployees || allEmployees.length === 0) {
+            await loadAllEmployees();
+        }
+
+        // Находим роль, чтобы исключить уже назначенных
+        const role = roles.find(r => r.id === roleId);
+        if (!role) {
+            showToast('Роль не найдена', true);
+            return;
+        }
+        const assignedIds = (role.employees || []).map(e => e.id);
+        const available = allEmployees.filter(e => !assignedIds.includes(e.id));
+
+        if (available.length === 0) {
+            showToast('Все сотрудники уже назначены на эту роль', true);
+            return;
+        }
+
+        // Строим простой выбор (можно использовать модалку, но для быстроты – выпадающий список)
+        const selected = await new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'block';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 400px;">
+                    <span class="modal-close" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
+                    <h3>Добавить сотрудника в роль</h3>
+                    <select id="employeeSelect" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1;">
+                        ${available.map(e => `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`).join('')}
+                    </select>
+                    <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
+                        <button id="cancelSelectBtn" style="background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Отмена</button>
+                        <button id="confirmSelectBtn" style="background:#22c55e; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Добавить</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            const closeModal = () => {
+                modal.remove();
+                resolve(null);
+            };
+
+            modal.querySelector('.modal-close').addEventListener('click', closeModal);
+            modal.querySelector('#cancelSelectBtn').addEventListener('click', closeModal);
+            window.addEventListener('click', (e) => {
+                if (e.target === modal) closeModal();
+            });
+
+            modal.querySelector('#confirmSelectBtn').addEventListener('click', () => {
+                const select = modal.querySelector('#employeeSelect');
+                const empId = parseInt(select.value);
+                modal.remove();
+                resolve(empId);
+            });
+        });
+
+        if (selected) {
+            try {
+                await apiFetch(`/api/sandbox/roles/${roleId}/employees`, {
+                    method: 'POST',
+                    body: JSON.stringify({ employee_id: selected })
+                });
+                showToast('Сотрудник добавлен в роль');
+                await loadRoles();
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        }
+    }
+
+    // ---- Остальные функции для задач и конструктора (без изменений) ----
+    async function loadTaskTypes() {
+        try {
+            const resp = await apiFetch('/api/sandbox/task-types');
+            taskTypes = await resp.json();
+            renderTasksGrouped();
+        } catch (err) {
+            console.error('Ошибка загрузки типов задач:', err);
+            showToast('Не удалось загрузить типы задач', true);
+        }
+    }
+
+    async function loadTasks() {
+        try {
+            const resp = await apiFetch('/api/sandbox/tasks');
+            allTasks = await resp.json();
+            renderTasksGrouped();
+        } catch (err) {
+            console.error('Ошибка загрузки задач:', err);
+            showToast('Не удалось загрузить задачи', true);
+        }
+    }
+
+    function groupTasksByType(tasks, types) {
+        const groups = {};
+        types.forEach(t => { groups[t.id] = { type: t, tasks: [] }; });
+        groups['other'] = { type: { id: 'other', name: 'Без типа' }, tasks: [] };
+        tasks.forEach(task => {
+            if (task.task_type_id && groups[task.task_type_id]) {
+                groups[task.task_type_id].tasks.push(task);
+            } else {
+                groups['other'].tasks.push(task);
+            }
+        });
+        return Object.values(groups).sort((a, b) => a.type.name.localeCompare(b.type.name));
+    }
+
+    function renderTasksGrouped() {
+        const leftPanel = document.getElementById('tasksLeftPanel');
+        if (!leftPanel) return;
+        if (!allTasks.length && !taskTypes.length) {
+            leftPanel.innerHTML = '<p style="color:#94a3b8;">Нет задач. Создайте типы и задачи.</p>';
+            return;
+        }
+        let groups = groupTasksByType(allTasks, taskTypes);
+        groups = groups.filter(g => g.type.id !== 'other');
+        if (groups.length === 0) {
+            leftPanel.innerHTML = '<p style="color:#94a3b8;">Нет задач с типами. Создайте типы и задачи.</p>';
+            return;
+        }
+
+        let html = '<div class="task-groups-container">';
+        for (const group of groups) {
+            const typeId = group.type.id;
+            const typeName = group.type.name;
+            html += `<div class="task-group" data-type-id="${typeId}">
+                <div class="task-group-header" data-id="${typeId}">
+                    <span class="task-group-title">${escapeHtml(typeName)}</span>
+                    <span class="task-group-actions">
+                        <button class="edit-type-btn" data-id="${typeId}" title="Редактировать тип">✏️</button>
+                        <button class="delete-type-btn" data-id="${typeId}" title="Удалить тип">🗑️</button>
+                    </span>
+                </div>
+                <div class="task-group-body">`;
+            for (const task of group.tasks) {
+                html += `<div class="task-item" data-id="${task.id}" draggable="true">
+                    <span class="task-name">${escapeHtml(task.name)}</span>
+                    <span class="task-actions">
+                        <button class="edit-task-btn" data-id="${task.id}" title="Редактировать задачу">✏️</button>
+                        <button class="delete-task-btn" data-id="${task.id}" title="Удалить задачу">🗑️</button>
+                    </span>
+                </div>`;
+            }
+            html += `
+                <div class="add-task-area">
+                    <input type="text" class="new-task-input" placeholder="Название новой задачи" data-type-id="${typeId}">
+                    <button class="add-task-btn" data-type-id="${typeId}">➕</button>
+                </div>
+            </div>`;
+            html += `</div></div>`;
+        }
+        leftPanel.innerHTML = html;
+
+        leftPanel.querySelectorAll('.task-item[draggable="true"]').forEach(el => {
+            el.removeEventListener('dragstart', handleDragStart);
+            el.removeEventListener('dragend', handleDragEnd);
+            el.addEventListener('dragstart', handleDragStart);
+            el.addEventListener('dragend', handleDragEnd);
+        });
+
+        leftPanel.querySelectorAll('.edit-task-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const taskId = parseInt(btn.dataset.id);
+                const task = allTasks.find(t => t.id === taskId);
+                if (!task) return;
+                const newName = prompt('Введите новое название задачи:', task.name);
+                if (newName !== null && newName.trim() !== '') {
+                    try {
+                        await apiFetch(`/api/sandbox/tasks/${taskId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ name: newName.trim() })
+                        });
+                        showToast('Задача обновлена');
+                        loadTasks();
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.delete-task-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const taskId = parseInt(btn.dataset.id);
+                if (!confirm('Удалить задачу?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/tasks/${taskId}`, { method: 'DELETE' });
+                    showToast('Задача удалена');
+                    loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.add-task-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const typeId = parseInt(btn.dataset.typeId);
+                const input = btn.closest('.add-task-area').querySelector('.new-task-input');
+                const name = input?.value.trim();
+                if (!name) return showToast('Введите название задачи', true);
+                try {
+                    await apiFetch('/api/sandbox/tasks', {
+                        method: 'POST',
+                        body: JSON.stringify({ name, task_type_id: typeId })
+                    });
+                    showToast('Задача создана');
+                    if (input) input.value = '';
+                    loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.edit-type-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const typeId = parseInt(btn.dataset.id);
+                const type = taskTypes.find(t => t.id === typeId);
+                if (!type) return;
+                const newName = prompt('Введите новое название типа:', type.name);
+                if (newName !== null && newName.trim() !== '') {
+                    try {
+                        await apiFetch(`/api/sandbox/task-types/${typeId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ name: newName.trim() })
+                        });
+                        showToast('Тип обновлён');
+                        loadTaskTypes();
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.delete-type-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const typeId = parseInt(btn.dataset.id);
+                if (!confirm('Удалить тип задач? Все задачи этого типа останутся без типа.')) return;
+                try {
+                    await apiFetch(`/api/sandbox/task-types/${typeId}`, { method: 'DELETE' });
+                    showToast('Тип удалён');
+                    loadTaskTypes();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    // ----- Обработчики drag-and-drop -----
+    let draggedTaskId = null;
+
+    function handleDragStart(e) {
+        const item = e.target.closest('.task-item');
+        if (!item) return;
+        const taskId = item.dataset.id;
+        if (!taskId) {
+            console.warn('dragstart: нет data-id у элемента');
+            return;
+        }
+        console.log('dragstart taskId:', taskId);
+        e.dataTransfer.setData('text/plain', String(taskId));
+        e.dataTransfer.effectAllowed = 'copy';
+        draggedTaskId = taskId;
+    }
+
+    function handleDragEnd(e) {
+        console.log('dragend');
+        draggedTaskId = null;
+    }
+
+    // ----- Инициализация конструктора (новая версия с поддержкой режимов) -----
+    function initConstructorUI() {
+        const rightPanel = document.getElementById('tasksRightPanel');
+        if (!rightPanel) return;
+
+        techCardNameInput = document.getElementById('techCardNameInput');
+        techCardSelect = document.getElementById('techCardSelect');
+        roleNameInput = document.getElementById('roleNameInput');
+        roleDescriptionInput = document.getElementById('roleDescriptionInput');
+        roleSelect = document.getElementById('roleSelect');
+        constructorListEl = document.getElementById('constructorTasksList');
+        saveConstructorBtn = document.getElementById('saveConstructorBtn');
+        deleteConstructorBtn = document.getElementById('deleteConstructorBtn');
+        clearConstructorBtn = document.getElementById('clearConstructorBtn');
+        toggleModeBtn = document.getElementById('toggleModeBtn');
+
+        if (!constructorListEl) {
+            console.warn('Не найден constructorTasksList');
+            return;
+        }
+
+        if (constructorInitialized) {
+            console.log('Конструктор уже инициализирован');
+            return;
+        }
+
+        populateTechCardSelect();
+        populateRoleSelect();
+
+        if (toggleModeBtn) {
+            toggleModeBtn.addEventListener('click', function() {
+                if (constructorMode === 'techcard') {
+                    constructorMode = 'role';
+                    this.textContent = '🔄 Переключить на Техкарту';
+                    showRoleMode();
+                } else {
+                    constructorMode = 'techcard';
+                    this.textContent = '🔄 Переключить на Роль';
+                    showTechCardMode();
+                }
+                clearConstructor();
+            });
+            toggleModeBtn.textContent = '🔄 Переключить на Роль';
+        }
+
+        if (techCardSelect) {
+            techCardSelect.addEventListener('change', async function() {
+                if (constructorMode !== 'techcard') return;
+                const val = this.value;
+                if (val === '') {
+                    clearConstructor();
+                    return;
+                }
+                const techCardId = parseInt(val);
+                await loadTechCardToConstructor(techCardId);
+            });
+        }
+
+        if (roleSelect) {
+            roleSelect.addEventListener('change', async function() {
+                if (constructorMode !== 'role') return;
+                const val = this.value;
+                if (val === '') {
+                    clearConstructor();
+                    return;
+                }
+                const roleId = parseInt(val);
+                await loadRoleToConstructor(roleId);
+            });
+        }
+
+        if (saveConstructorBtn) {
+            saveConstructorBtn.addEventListener('click', saveConstructor);
+        }
+        if (deleteConstructorBtn) {
+            deleteConstructorBtn.addEventListener('click', deleteCurrentObject);
+        }
+        if (clearConstructorBtn) {
+            clearConstructorBtn.addEventListener('click', clearConstructor);
+        }
+
+        constructorListEl.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            constructorListEl.style.borderColor = '#3b82f6';
+        });
+        constructorListEl.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            constructorListEl.style.borderColor = '#cbd5e1';
+        });
+        constructorListEl.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            constructorListEl.style.borderColor = '#cbd5e1';
+            const data = e.dataTransfer.getData('text/plain');
+            console.log('drop on constructorListEl, data:', data);
+            if (!data) {
+                console.warn('Нет данных при drop');
+                return;
+            }
+
+            if (constructorMode === 'techcard' && data.startsWith('reorder:')) {
+                const fromIndex = parseInt(data.split(':')[1]);
+                const items = constructorListEl.querySelectorAll('.constructor-task-item');
+                let toIndex = items.length;
+                for (let i = 0; i < items.length; i++) {
+                    const rect = items[i].getBoundingClientRect();
+                    if (e.clientY < rect.top + rect.height / 2) {
+                        toIndex = i;
+                        break;
+                    }
+                }
+                if (fromIndex === toIndex) return;
+                const [moved] = constructorTasks.splice(fromIndex, 1);
+                constructorTasks.splice(toIndex, 0, moved);
+                renderConstructorTasks();
+                showToast(`Задача перемещена на позицию ${toIndex+1}`);
+                return;
+            }
+
+            const taskId = parseInt(data, 10);
+            if (isNaN(taskId)) {
+                console.warn('Невалидный ID задачи:', data);
+                return;
+            }
+            if (constructorTasks.some(t => t.id === taskId)) {
+                showToast('Эта задача уже добавлена в конструктор', true);
+                return;
+            }
+            const task = allTasks.find(t => t.id === taskId);
+            if (!task) {
+                showToast('Задача не найдена', true);
+                console.warn('Задача с ID', taskId, 'не найдена в allTasks');
+                return;
+            }
+            constructorTasks.push({ id: task.id, name: task.name });
+            renderConstructorTasks();
+            showToast(`Задача "${task.name}" добавлена в конструктор`);
+            console.log('Текущий конструктор:', constructorTasks);
+        });
+
+        showTechCardMode();
+        constructorInitialized = true;
+        console.log('Конструктор инициализирован');
+    }
+
+    function showTechCardMode() {
+        const techContainer = document.getElementById('techcard-fields');
+        const roleContainer = document.getElementById('role-fields');
+        if (techContainer) techContainer.style.display = '';
+        if (roleContainer) roleContainer.style.display = 'none';
+    }
+
+    function showRoleMode() {
+        const techContainer = document.getElementById('techcard-fields');
+        const roleContainer = document.getElementById('role-fields');
+        if (techContainer) techContainer.style.display = 'none';
+        if (roleContainer) roleContainer.style.display = '';
+    }
+
+    function populateTechCardSelect() {
+        if (!techCardSelect) return;
+        const currentVal = techCardSelect.value;
+        techCardSelect.innerHTML = '<option value="">-- Создать новую --</option>';
+        techCards.forEach(tc => {
+            techCardSelect.innerHTML += `<option value="${tc.id}">${escapeHtml(tc.name)}</option>`;
+        });
+        if (currentVal) techCardSelect.value = currentVal;
+    }
+
+    async function loadTechCardToConstructor(techCardId) {
+        try {
+            const resp = await apiFetch(`/api/sandbox/tech-cards/${techCardId}`);
+            const data = await resp.json();
+            if (!data) {
+                showToast('Техкарта не найдена', true);
+                return;
+            }
+            if (techCardNameInput) techCardNameInput.value = data.name || '';
+            constructorTasks = data.tasks.map(t => ({ id: t.id, name: t.name }));
+            currentTechCardId = techCardId;
+            currentRoleId = null;
+            renderConstructorTasks();
+        } catch (err) {
+            showToast('Ошибка загрузки техкарты: ' + err.message, true);
+        }
+    }
+
+    async function loadRoleToConstructor(roleId) {
+        try {
+            const resp = await apiFetch(`/api/sandbox/roles/${roleId}`);
+            const data = await resp.json();
+            if (!data) {
+                showToast('Роль не найдена', true);
+                return;
+            }
+            if (roleNameInput) roleNameInput.value = data.name || '';
+            if (roleDescriptionInput) roleDescriptionInput.value = data.description || '';
+            constructorTasks = data.tasks.map(t => ({ id: t.id, name: t.name }));
+            currentRoleId = roleId;
+            currentTechCardId = null;
+            renderConstructorTasks();
+        } catch (err) {
+            showToast('Ошибка загрузки роли: ' + err.message, true);
+        }
+    }
+
+    function renderConstructorTasks() {
+        if (!constructorListEl) return;
+        if (constructorTasks.length === 0) {
+            constructorListEl.innerHTML = '<p style="color:#94a3b8; text-align:center;">Перетащите сюда задачи</p>';
+            return;
+        }
+        let html = '';
+        constructorTasks.forEach((task, index) => {
+            const prefix = constructorMode === 'techcard' ? `${index+1}. ` : '';
+            html += `<div class="constructor-task-item" draggable="${constructorMode === 'techcard' ? 'true' : 'false'}" data-index="${index}" style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:white; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:4px; cursor:${constructorMode === 'techcard' ? 'grab' : 'default'};">
+                <span>${prefix}${escapeHtml(task.name)}</span>
+                <button class="remove-constructor-task" data-index="${index}" style="background:none; border:none; cursor:pointer; color:#ef4444;">✖</button>
+            </div>`;
+        });
+        constructorListEl.innerHTML = html;
+
+        if (constructorMode === 'techcard') {
+            constructorListEl.querySelectorAll('.constructor-task-item').forEach(el => {
+                el.addEventListener('dragstart', (e) => {
+                    const idx = el.dataset.index;
+                    e.dataTransfer.setData('text/plain', `reorder:${idx}`);
+                    e.dataTransfer.effectAllowed = 'move';
+                    console.log('dragstart constructor item, index:', idx);
+                });
+            });
+        }
+
+        constructorListEl.querySelectorAll('.remove-constructor-task').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.index);
+                constructorTasks.splice(idx, 1);
+                renderConstructorTasks();
+            });
+        });
+    }
+
+    function clearConstructor() {
+        constructorTasks = [];
+        currentTechCardId = null;
+        currentRoleId = null;
+        if (techCardNameInput) techCardNameInput.value = '';
+        if (roleNameInput) roleNameInput.value = '';
+        if (roleDescriptionInput) roleDescriptionInput.value = '';
+        if (techCardSelect) techCardSelect.value = '';
+        if (roleSelect) roleSelect.value = '';
+        renderConstructorTasks();
+    }
+
+    async function deleteCurrentObject() {
+        if (constructorMode === 'techcard') {
+            if (!currentTechCardId) {
+                showToast('Нет открытой техкарты для удаления', true);
+                return;
+            }
+            const name = techCardNameInput ? techCardNameInput.value.trim() : 'без названия';
+            if (!confirm(`Удалить техкарту "${name}" (ID: ${currentTechCardId})? Все товары, привязанные к ней, потеряют техкарту.`)) return;
+            try {
+                await apiFetch(`/api/sandbox/tech-cards/${currentTechCardId}`, { method: 'DELETE' });
+                showToast('Техкарта удалена');
+                await loadProducts();
+                clearConstructor();
+            } catch (err) {
+                showToast('Ошибка удаления: ' + err.message, true);
+            }
+        } else {
+            if (!currentRoleId) {
+                showToast('Нет открытой роли для удаления', true);
+                return;
+            }
+            const name = roleNameInput ? roleNameInput.value.trim() : 'без названия';
+            if (!confirm(`Удалить роль "${name}" (ID: ${currentRoleId})?`)) return;
+            try {
+                await apiFetch(`/api/sandbox/roles/${currentRoleId}`, { method: 'DELETE' });
+                showToast('Роль удалена');
+                await loadRoles();
+                clearConstructor();
+            } catch (err) {
+                showToast('Ошибка удаления: ' + err.message, true);
+            }
+        }
+    }
+
+    async function saveConstructor() {
+        if (constructorMode === 'techcard') {
+            await saveTechCard();
+        } else {
+            await saveRole();
+        }
+    }
+
+    async function saveTechCard() {
+        const name = techCardNameInput ? techCardNameInput.value.trim() : '';
+        if (!name) {
+            showToast('Введите название техкарты', true);
+            return;
+        }
+        if (constructorTasks.length === 0) {
+            showToast('Добавьте хотя бы одну задачу в конструктор', true);
+            return;
+        }
+        const taskIds = constructorTasks.map(t => t.id);
+        console.log('Сохраняем техкарту:', { name, taskIds, currentTechCardId });
+
+        try {
+            let resp;
+            if (currentTechCardId) {
+                resp = await apiFetch(`/api/sandbox/tech-cards/${currentTechCardId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ name, task_ids: taskIds })
+                });
+            } else {
+                resp = await apiFetch('/api/sandbox/tech-cards', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, task_ids: taskIds })
+                });
+            }
+            const data = await resp.json();
+            showToast(`Техкарта "${data.name}" сохранена`);
+            await loadProducts();
+            clearConstructor();
+        } catch (err) {
+            showToast('Ошибка сохранения: ' + err.message, true);
+            console.error('Ошибка сохранения техкарты:', err);
+        }
+    }
+
+    async function saveRole() {
+        const name = roleNameInput ? roleNameInput.value.trim() : '';
+        if (!name) {
+            showToast('Введите название роли', true);
+            return;
+        }
+        if (constructorTasks.length === 0) {
+            showToast('Добавьте хотя бы одну задачу в конструктор', true);
+            return;
+        }
+        const description = roleDescriptionInput ? roleDescriptionInput.value.trim() : null;
+        const taskIds = constructorTasks.map(t => t.id);
+
+        try {
+            let resp;
+            if (currentRoleId) {
+                resp = await apiFetch(`/api/sandbox/roles/${currentRoleId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ name, description, task_ids: taskIds })
+                });
+            } else {
+                resp = await apiFetch('/api/sandbox/roles', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, description, task_ids: taskIds })
+                });
+            }
+            const data = await resp.json();
+            showToast(`Роль "${data.name}" сохранена`);
+            await loadRoles();
+            clearConstructor();
+        } catch (err) {
+            showToast('Ошибка сохранения: ' + err.message, true);
+            console.error('Ошибка сохранения роли:', err);
+        }
     }
 
     // ---- Инициализация ----
     function init() {
-        const addBtn = container.querySelector('.add-product-btn');
-        if (addBtn) {
-            addBtn.addEventListener('click', () => addProductRow());
-        }
-
         if (createForm) {
             createForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const title = container.querySelector('#dealTitle').value.trim();
                 const dealTypeId = parseInt(container.querySelector('#dealType').value);
-                const clientId = parseInt(container.querySelector('#dealClient').value);
-                const plannedDate = container.querySelector('#dealPlannedDate').value;
-
-                if (!title || !dealTypeId || !clientId || !plannedDate) {
-                    createError.textContent = 'Заполните все обязательные поля';
+                const ipSelect = container.querySelector('#dealIp');
+                const mpSelect = container.querySelector('#dealMp');
+                const ipId = ipSelect ? parseInt(ipSelect.value) || null : null;
+                const mpId = mpSelect ? parseInt(mpSelect.value) || null : null;
+                if (!title || !dealTypeId) {
+                    createError.textContent = 'Заполните все поля';
                     return;
                 }
-
-                const productEntries = container.querySelectorAll('#productList .product-entry');
-                if (productEntries.length === 0) {
-                    createError.textContent = 'Добавьте хотя бы один товар';
-                    return;
-                }
-
-                const products = [];
-                for (const entry of productEntries) {
-                    const nameInput = entry.querySelector('input[placeholder="Название товара"]');
-                    const techInput = entry.querySelector('input[placeholder="Этапы через запятую"]');
-                    const name = nameInput.value.trim();
-                    const techCardStr = techInput.value.trim();
-                    if (!name) {
-                        createError.textContent = 'Укажите название товара';
-                        return;
-                    }
-                    const techCard = techCardStr ? techCardStr.split(',').map(s => s.trim()).filter(Boolean) : [];
-                    products.push({ name, tech_card: techCard });
-                }
-
-                const payload = {
-                    title,
-                    deal_type_id: dealTypeId,
-                    client_id: clientId,
-                    planned_date: plannedDate,
-                    products: products
-                };
-
                 try {
                     const resp = await apiFetch('/api/sandbox/deals', {
                         method: 'POST',
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({ title, deal_type_id: dealTypeId, ip_id: ipId, mp_id: mpId})
                     });
                     const data = await resp.json();
                     showToast(`Сделка создана, ID: ${data.id}`);
@@ -6272,7 +7220,6 @@ function initProcsetsTab() {
                 }
             });
         }
-
         if (createBtn) {
             createBtn.addEventListener('click', openCreateModal);
         }
@@ -6286,389 +7233,67 @@ function initProcsetsTab() {
             if (e.target === modalCreate) closeCreateModal();
             if (e.target === detailModal) detailModal.style.display = 'none';
         });
-
         if (closeDetail) {
             closeDetail.addEventListener('click', () => detailModal.style.display = 'none');
         }
-
         if (refreshBtn) {
             refreshBtn.addEventListener('click', loadDeals);
         }
-        if (statusFilter) {
-            statusFilter.addEventListener('change', loadDeals);
+        initCounterpartiesHandlers();
+
+        // ---- НАВИГАЦИЯ ПО ВКЛАДКАМ ----
+        document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const target = this.dataset.target;
+                document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                document.querySelectorAll('.sandbox-panel').forEach(p => p.classList.remove('active'));
+                const panel = document.getElementById(`panel-${target}`);
+                if (panel) panel.classList.add('active');
+
+                if (target === 'deals') {
+                    loadDeals();
+                } else if (target === 'counterparties') {
+                    loadDealTypes();
+                    loadIPs();
+                    loadMPs();
+                } else if (target === 'tasks') {
+                    loadTaskTypes();
+                    loadTasks();
+                    if (!constructorInitialized) {
+                        initConstructorUI();
+                    } else {
+                        populateTechCardSelect();
+                        populateRoleSelect();
+                    }
+                } else if (target === 'products') {
+                    loadProducts();
+                } else if (target === 'roles') {
+                    // Загружаем роли (и сотрудников, если надо)
+                    if (!allEmployees.length) loadAllEmployees();
+                    loadRoles();
+                }
+            });
+        });
+
+        // Первоначальная загрузка
+        loadDealTypes().then(() => loadDeals());
+        loadIPs();
+        loadMPs();
+        loadTaskTypes();
+        loadTasks();
+        loadProducts();
+        loadAllEmployees();
+        loadRoles(); // загружаем роли
+
+        if (!constructorInitialized) {
+            initConstructorUI();
         }
 
         setInterval(loadDeals, 30000);
-        loadDictionaries().then(() => loadDeals());
     }
 
     init();
-
-    // ======== ВКЛАДКА "ЗАДАЧИ" (без изменений) ========
-    const taskTypeList = document.getElementById('taskTypeList');
-    const taskTypeName = document.getElementById('taskTypeName');
-    const saveTaskTypeBtn = document.getElementById('saveTaskTypeBtn');
-    const taskName = document.getElementById('taskName');
-    const taskTypeSelect = document.getElementById('taskTypeSelect');
-    const saveTaskBtn = document.getElementById('saveTaskBtn');
-    const tasksList = document.getElementById('tasksList');
-
-    let taskTypes = [];
-    let tasks = [];
-
-    async function loadTaskTypes() {
-        try {
-            const resp = await apiFetch('/api/sandbox/task-types');
-            taskTypes = await resp.json();
-            renderTaskTypes();
-            populateTaskTypeSelect();
-        } catch (err) {
-            taskTypeList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
-        }
-    }
-
-    function renderTaskTypes() {
-        if (!taskTypes.length) {
-            taskTypeList.innerHTML = '<p style="color:#94a3b8;">Нет типов задач</p>';
-            return;
-        }
-        let html = '';
-        for (const t of taskTypes) {
-            html += `<span class="task-type-item">
-                        ${escapeHtml(t.name)}
-                        <span class="remove-type" data-id="${t.id}">✖</span>
-                    </span>`;
-        }
-        taskTypeList.innerHTML = html;
-        taskTypeList.querySelectorAll('.remove-type').forEach(el => {
-            el.addEventListener('click', async () => {
-                const id = parseInt(el.dataset.id);
-                if (!confirm('Удалить тип задачи?')) return;
-                try {
-                    await apiFetch(`/api/sandbox/task-types/${id}`, { method: 'DELETE' });
-                    showToast('Тип удалён');
-                    loadTaskTypes();
-                    loadTasks();
-                } catch (err) {
-                    showToast(err.message, true);
-                }
-            });
-        });
-    }
-
-    function populateTaskTypeSelect() {
-        const select = taskTypeSelect;
-        select.innerHTML = '<option value="">Выберите тип</option>';
-        for (const t of taskTypes) {
-            select.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`;
-        }
-    }
-
-    saveTaskTypeBtn.addEventListener('click', async () => {
-        const name = taskTypeName.value.trim();
-        if (!name) return showToast('Введите название типа', true);
-        try {
-            const resp = await apiFetch('/api/sandbox/task-types', {
-                method: 'POST',
-                body: JSON.stringify({ name })
-            });
-            const data = await resp.json();
-            showToast('Тип создан');
-            taskTypeName.value = '';
-            loadTaskTypes();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    });
-
-    async function loadTasks() {
-        try {
-            const resp = await apiFetch('/api/sandbox/tasks');
-            tasks = await resp.json();
-            renderTasks();
-        } catch (err) {
-            tasksList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
-        }
-    }
-
-    function renderTasks() {
-        if (!tasks.length) {
-            tasksList.innerHTML = '<p style="color:#94a3b8;">Нет задач</p>';
-            return;
-        }
-        let html = '';
-        for (const t of tasks) {
-            const typeName = taskTypes.find(tt => tt.id === t.type_id)?.name || 'Без типа';
-            html += `<div class="task-item">
-                        <span class="task-name">${escapeHtml(t.name)}</span>
-                        <span class="task-type">Тип: ${escapeHtml(typeName)}</span>
-                        <span class="task-actions">
-                            <button class="delete-task" data-id="${t.id}" title="Удалить">🗑️</button>
-                        </span>
-                    </div>`;
-        }
-        tasksList.innerHTML = html;
-        tasksList.querySelectorAll('.delete-task').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const id = parseInt(btn.dataset.id);
-                if (!confirm('Удалить задачу?')) return;
-                try {
-                    await apiFetch(`/api/sandbox/tasks/${id}`, { method: 'DELETE' });
-                    showToast('Задача удалена');
-                    loadTasks();
-                } catch (err) {
-                    showToast(err.message, true);
-                }
-            });
-        });
-    }
-
-    saveTaskBtn.addEventListener('click', async () => {
-        const name = taskName.value.trim();
-        const typeId = parseInt(taskTypeSelect.value);
-        if (!name) return showToast('Введите название задачи', true);
-        if (!typeId) return showToast('Выберите тип задачи', true);
-        try {
-            const resp = await apiFetch('/api/sandbox/tasks', {
-                method: 'POST',
-                body: JSON.stringify({ name, type_id: typeId })
-            });
-            showToast('Задача создана');
-            taskName.value = '';
-            loadTasks();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    });
-
-    // ======== ВКЛАДКА "ТОВАРЫ" (переделана под DealProduct) ========
-    const productNameInput = document.getElementById('productName');
-    const saveProductBtn = document.getElementById('saveProductBtn');
-    const productsList = document.getElementById('productsList');
-
-    // Загрузка товаров из DealProduct
-    async function loadDealProducts() {
-        try {
-            const resp = await apiFetch('/api/sandbox/deal-products');
-            dealProducts = await resp.json();
-            renderProducts();
-        } catch (err) {
-            productsList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
-        }
-    }
-
-    function renderProducts() {
-        if (!dealProducts.length) {
-            productsList.innerHTML = '<p style="color:#94a3b8;">Нет товаров</p>';
-            return;
-        }
-        let html = '';
-        for (const p of dealProducts) {
-            const techCardStr = p.tech_card ? p.tech_card.join(', ') : 'нет этапов';
-            html += `<div class="product-item" data-id="${p.id}">
-                        <div class="product-header">
-                            <span class="product-name">${escapeHtml(p.name)}</span>
-                            <span style="color:#64748b; font-size:0.85rem;">Техкарта: ${escapeHtml(techCardStr)}</span>
-                            <button class="delete-product" data-id="${p.id}" style="background:none; border:none; cursor:pointer;">🗑️</button>
-                        </div>
-                    </div>`;
-        }
-        productsList.innerHTML = html;
-
-        // Удаление товара
-        document.querySelectorAll('.delete-product').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const id = parseInt(btn.dataset.id);
-                if (!confirm('Удалить этот товар из справочника?')) return;
-                try {
-                    await apiFetch(`/api/sandbox/deal-products/${id}`, { method: 'DELETE' });
-                    showToast('Товар удалён');
-                    loadDealProducts();
-                } catch (err) {
-                    showToast(err.message, true);
-                }
-            });
-        });
-    }
-
-    // Добавление товара в справочник
-    saveProductBtn.addEventListener('click', async () => {
-        const name = productNameInput.value.trim();
-        if (!name) return showToast('Введите название товара', true);
-        // Можно добавить поле для техкарты, но пока оставим пустую
-        try {
-            const resp = await apiFetch('/api/sandbox/deal-products', {
-                method: 'POST',
-                body: JSON.stringify({ name, tech_card: [] })
-            });
-            showToast('Товар добавлен');
-            productNameInput.value = '';
-            loadDealProducts();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    });
-
-    // ======== ВКЛАДКА "ИП/МП" (без изменений) ========
-    const dealTypesList = document.getElementById('dealTypesList');
-    const ipsList = document.getElementById('ipsList');
-    const mpsList = document.getElementById('mpsList');
-    const refreshCounterpartiesBtn = document.getElementById('refreshCounterpartiesBtn');
-
-    const newDealTypeName = document.getElementById('newDealTypeName');
-    const saveDealTypeBtn = document.getElementById('saveDealTypeBtn');
-    const newIPName = document.getElementById('newIPName');
-    const saveIPBtn = document.getElementById('saveIPBtn');
-    const newMPName = document.getElementById('newMPName');
-    const saveMPBtn = document.getElementById('saveMPBtn');
-
-    async function loadDealTypes() {
-        try {
-            const resp = await apiFetch('/api/sandbox/deal-types');
-            const data = await resp.json();
-            renderList(dealTypesList, data, 'id', 'name', 'deal-type');
-        } catch (err) {
-            dealTypesList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
-        }
-    }
-
-    async function loadIPs() {
-        try {
-            const resp = await apiFetch('/api/sandbox/ips');
-            const data = await resp.json();
-            renderList(ipsList, data, 'id', 'name', 'ip');
-        } catch (err) {
-            ipsList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
-        }
-    }
-
-    async function loadMPs() {
-        try {
-            const resp = await apiFetch('/api/sandbox/mps');
-            const data = await resp.json();
-            renderList(mpsList, data, 'id', 'name', 'mp');
-        } catch (err) {
-            mpsList.innerHTML = `<p style="color:red;">Ошибка: ${err.message}</p>`;
-        }
-    }
-
-    function renderList(container, items, idField, nameField, type) {
-        if (!items || items.length === 0) {
-            container.innerHTML = '<p style="color:#94a3b8;">Нет записей</p>';
-            return;
-        }
-        let html = `<table>
-            <thead><tr><th>Название</th><th>Действия</th></tr></thead>
-            <tbody>`;
-        for (const item of items) {
-            html += `<tr>
-                <td><strong>${escapeHtml(item[nameField])}</strong></td>
-                <td>
-                    <button class="delete-counterparty" data-id="${item[idField]}" data-type="${type}" style="background:none; border:none; cursor:pointer; color:#ef4444; font-size:1.1rem;">🗑️</button>
-                </td>
-            </tr>`;
-        }
-        html += `</tbody></table>`;
-        container.innerHTML = html;
-
-        container.querySelectorAll('.delete-counterparty').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const id = parseInt(btn.dataset.id);
-                const type = btn.dataset.type;
-                if (!confirm('Удалить эту запись?')) return;
-                try {
-                    let url;
-                    if (type === 'deal-type') url = `/api/sandbox/deal-types/${id}`;
-                    else if (type === 'ip') url = `/api/sandbox/ips/${id}`;
-                    else if (type === 'mp') url = `/api/sandbox/mps/${id}`;
-                    else return;
-                    await apiFetch(url, { method: 'DELETE' });
-                    showToast('Запись удалена');
-                    loadAllCounterparties();
-                } catch (err) {
-                    showToast(err.message, true);
-                }
-            });
-        });
-    }
-
-    async function loadAllCounterparties() {
-        await Promise.all([loadDealTypes(), loadIPs(), loadMPs()]);
-    }
-
-    saveDealTypeBtn.addEventListener('click', async () => {
-        const name = newDealTypeName.value.trim();
-        if (!name) return showToast('Введите название', true);
-        try {
-            await apiFetch('/api/sandbox/deal-types', {
-                method: 'POST',
-                body: JSON.stringify({ name })
-            });
-            showToast('Тип сделки добавлен');
-            newDealTypeName.value = '';
-            loadDealTypes();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    });
-
-    saveIPBtn.addEventListener('click', async () => {
-        const name = newIPName.value.trim();
-        if (!name) return showToast('Введите название', true);
-        try {
-            await apiFetch('/api/sandbox/ips', {
-                method: 'POST',
-                body: JSON.stringify({ name })
-            });
-            showToast('ИП добавлен');
-            newIPName.value = '';
-            loadIPs();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    });
-
-    saveMPBtn.addEventListener('click', async () => {
-        const name = newMPName.value.trim();
-        if (!name) return showToast('Введите название', true);
-        try {
-            await apiFetch('/api/sandbox/mps', {
-                method: 'POST',
-                body: JSON.stringify({ name })
-            });
-            showToast('МП добавлен');
-            newMPName.value = '';
-            loadMPs();
-        } catch (err) {
-            showToast(err.message, true);
-        }
-    });
-
-    refreshCounterpartiesBtn.addEventListener('click', loadAllCounterparties);
-
-    // ---- Обработчики навигации ----
-    document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const target = this.dataset.target;
-            document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            document.querySelectorAll('.sandbox-panel').forEach(p => p.classList.remove('active'));
-            const panel = document.getElementById(`panel-${target}`);
-            if (panel) panel.classList.add('active');
-            if (target === 'products') loadDealProducts();
-            if (target === 'tasks') {
-                loadTaskTypes();
-                loadTasks();
-            }
-            if (target === 'counterparties') loadAllCounterparties();
-        });
-    });
-
-    // ---- Загрузка данных при первом открытии ----
-    loadAllCounterparties();
-    loadTaskTypes();
-    loadTasks();
-    loadDealProducts();   // загружаем товары при старте
 }
 </script>
 </body>

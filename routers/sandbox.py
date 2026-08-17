@@ -1,135 +1,186 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
-from datetime import datetime, date
 from typing import List, Optional
 from pydantic import BaseModel
 from database import get_db
 import crud
-from models import Deal, DealProduct, Notification, NotificationType, NotificationStatus, Employee, TaskType, Task, DealType
-from routers.auth import get_current_admin, get_current_employee
-from sse import notify_admin_clients, notify_employee
+from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role
+from routers.auth import get_current_admin
 
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
 # ==================== СХЕМЫ ====================
 class DealTypeResponse(BaseModel):
     id: int
-    code: str
     name: str
 
-class ClientResponse(BaseModel):
-    id: int
-    code: str
+class DealTypeCreate(BaseModel):
     name: str
 
-class RoleResponse(BaseModel):
-    id: int
+class DealTypeUpdate(BaseModel):
     name: str
-    description: Optional[str]
-
-# Новые схемы для товаров сделки
-class DealProductCreate(BaseModel):
-    name: str
-    tech_card: Optional[List[str]] = []   # список этапов
-
-class DealProductResponse(BaseModel):
-    id: int
-    name: str
-    tech_card: Optional[List[str]]
 
 class DealCreate(BaseModel):
     title: str
     deal_type_id: int
-    client_id: int
-    planned_date: date
-    products: List[DealProductCreate]   # теперь товары без привязки к глобальному каталогу
+    ip_id: Optional[int] = None
+    mp_id: Optional[int] = None
 
-class DealResponse(BaseModel):
+class IPResponse(BaseModel):
     id: int
-    title: str
-    deal_type: DealTypeResponse
-    client: ClientResponse
-    planned_date: date
-    status: str
-    created_at: datetime
-    updated_at: datetime
-    created_by: Optional[int]
-    updated_by: Optional[int]
-    products: List[DealProductResponse]   # товары сделки
-    logistics_status: str
-    logistics_address: Optional[str]
-    logistics_departure: Optional[datetime]
-    logistics_arrival: Optional[datetime]
-    logistics_route: Optional[str]
+    name: str
 
-# ==================== ЭНДПОИНТЫ ====================
+class IPCreate(BaseModel):
+    name: str
 
+class IPUpdate(BaseModel):
+    name: str
+
+class MPResponse(BaseModel):
+    id: int
+    name: str
+
+class MPCreate(BaseModel):
+    name: str
+
+class MPUpdate(BaseModel):
+    name: str
+
+class TechCardCreate(BaseModel):
+    name: str
+    task_ids: Optional[List[int]] = None
+
+class TechCardUpdate(BaseModel):
+    name: Optional[str] = None
+    task_ids: Optional[List[int]] = None
+
+class TechCardTaskResponse(BaseModel):
+    id: int
+    name: str
+    sequence: int
+
+class TechCardResponse(BaseModel):
+    id: int
+    name: str
+    tasks: List[TechCardTaskResponse] = []
+
+class ProductTypeCreate(BaseModel):
+    name: str
+    tech_card_id: Optional[int] = None
+
+class ProductTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    tech_card_id: Optional[int] = None
+
+class ProductTypeResponse(BaseModel):
+    id: int
+    name: str
+    tech_card_id: Optional[int]
+    tech_card_name: Optional[str]
+
+class RoleTaskResponse(BaseModel):
+    id: int
+    name: str
+
+class EmployeeBrief(BaseModel):
+    id: int
+    full_name: str
+
+class RoleResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    tasks: List[RoleTaskResponse] = []
+    employees: List[EmployeeBrief] = []
+
+class RoleCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    task_ids: Optional[List[int]] = None
+
+class RoleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    task_ids: Optional[List[int]] = None
+
+class RoleEmployeeAdd(BaseModel):
+    employee_id: int
+
+# ==================== ЭНДПОИНТЫ ДЛЯ ТИПОВ СДЕЛОК ====================
 @router.get("/deal-types", response_model=List[DealTypeResponse])
 async def get_deal_types(db: AsyncSession = Depends(get_db)):
     return await crud.get_deal_types(db)
 
-@router.get("/clients", response_model=List[ClientResponse])
-async def get_clients(db: AsyncSession = Depends(get_db)):
-    return await crud.get_clients(db)
+@router.post("/deal-types", status_code=201, response_model=DealTypeResponse)
+async def create_deal_type(data: DealTypeCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        deal_type = await crud.create_deal_type(db, data.name)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return deal_type
 
-@router.get("/roles", response_model=List[RoleResponse])
-async def get_roles(db: AsyncSession = Depends(get_db)):
-    return await crud.get_roles(db)
+@router.put("/deal-types/{type_id}", response_model=DealTypeResponse)
+async def update_deal_type(type_id: int, data: DealTypeUpdate, db: AsyncSession = Depends(get_db)):
+    try:
+        deal_type = await crud.update_deal_type(db, type_id, data.name)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return deal_type
 
-@router.post("/deals", response_model=DealResponse, status_code=201)
-async def create_deal(
-    data: DealCreate,
-    admin: Employee = Depends(get_current_admin),
-    db: AsyncSession = Depends(get_db)
-):
-    # Преобразуем продукты в формат, который ждёт crud.create_deal
-    products_data = [{"name": p.name, "tech_card": p.tech_card} for p in data.products]
-    deal = await crud.create_deal(
-        db=db,
-        title=data.title,
-        deal_type_id=data.deal_type_id,
-        client_id=data.client_id,
-        planned_date=data.planned_date,
-        created_by=admin.id,
-        products=products_data
-    )
-    return await get_deal_response(deal.id, db)
+@router.delete("/deal-types/{type_id}", status_code=204)
+async def delete_deal_type(type_id: int, db: AsyncSession = Depends(get_db)):
+    await crud.delete_deal_type(db, type_id)
+    return None
 
-@router.get("/deals", response_model=List[DealResponse])
-async def list_deals(
-    status: Optional[str] = None,
-    skip: int = 0,
-    limit: int = 100,
-    db: AsyncSession = Depends(get_db)
-):
-    deals = await crud.get_deals(db, status, skip, limit)
-    result = []
-    for d in deals:
-        result.append(await get_deal_response(d.id, db))
-    return result
+# ==================== ЭНДПОИНТЫ ДЛЯ СДЕЛОК ====================
+@router.post("/deals", response_model=dict, status_code=201)
+async def create_deal(data: DealCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        deal = await crud.create_deal(
+            db,
+            title=data.title,
+            deal_type_id=data.deal_type_id,
+            ip_id=data.ip_id,
+            mp_id=data.mp_id
+        )
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {
+        "id": deal.id,
+        "title": deal.title,
+        "deal_type_id": deal.deal_type_id,
+        "ip_id": deal.ip_id,
+        "mp_id": deal.mp_id
+    }
 
-@router.get("/deals/{deal_id}", response_model=DealResponse)
+@router.get("/deals", response_model=List[dict])
+async def list_deals(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
+    deals = await crud.get_deals(db, skip, limit)
+    return [
+        {
+            "id": d.id,
+            "title": d.title,
+            "deal_type_id": d.deal_type_id,
+            "ip_id": d.ip_id,
+            "ip_name": d.ip.name if d.ip else None,
+            "mp_id": d.mp_id,
+            "mp_name": d.mp.name if d.mp else None,
+            "deal_type": d.deal_type.name if d.deal_type else None
+        }
+        for d in deals
+    ]
+
+@router.get("/deals/{deal_id}", response_model=dict)
 async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
-    return await get_deal_response(deal_id, db)
-
-@router.put("/deals/{deal_id}")
-async def update_deal(
-    deal_id: int,
-    title: Optional[str] = None,
-    planned_date: Optional[date] = None,
-    admin: Employee = Depends(get_current_admin),
-    db: AsyncSession = Depends(get_db)
-):
-    updates = {}
-    if title is not None:
-        updates["title"] = title
-    if planned_date is not None:
-        updates["planned_date"] = planned_date
-    if updates:
-        updates["updated_by"] = admin.id
-        await crud.update_deal(db, deal_id, **updates)
-    return {"status": "ok"}
+    deal = await crud.get_deal_by_id(db, deal_id)
+    if not deal:
+        raise HTTPException(404, "Deal not found")
+    return {
+        "id": deal.id,
+        "title": deal.title,
+        "deal_type_id": deal.deal_type_id,
+        "deal_type": deal.deal_type.name if deal.deal_type else None
+    }
 
 @router.delete("/deals/{deal_id}", status_code=204)
 async def delete_deal(
@@ -140,86 +191,58 @@ async def delete_deal(
     await crud.delete_deal(db, deal_id)
     return None
 
-# ==================== ЛОГИСТИКА (оставлена) ====================
+# ==================== ЭНДПОИНТЫ ДЛЯ ИП ====================
+@router.get("/ips", response_model=List[IPResponse])
+async def get_ips(db: AsyncSession = Depends(get_db)):
+    ips = await crud.get_all_ips(db)
+    return [{"id": i.id, "name": i.name} for i in ips]
 
-@router.post("/deals/{deal_id}/logistics/depart")
-async def logistics_depart(
-    deal_id: int,
-    address: str,
-    route: str,
-    employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db)
-):
-    deal = await crud.get_deal_by_id(db, deal_id)
-    if not deal:
-        raise HTTPException(404, "Сделка не найдена")
-    await crud.update_deal_logistics(
-        db,
-        deal_id,
-        logistics_status="in_transit",
-        logistics_address=address,
-        logistics_route=route,
-        logistics_departure=datetime.now()
-    )
-    await notify_admin_clients()
-    return {"status": "ok"}
+@router.post("/ips", status_code=201, response_model=IPResponse)
+async def create_ip(data: IPCreate, db: AsyncSession = Depends(get_db)):
+    ip = await crud.create_ip(db, data.name)
+    return {"id": ip.id, "name": ip.name}
 
-@router.post("/deals/{deal_id}/logistics/arrive")
-async def logistics_arrive(
-    deal_id: int,
-    employee: Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db)
-):
-    deal = await crud.get_deal_by_id(db, deal_id)
-    if not deal:
-        raise HTTPException(404, "Сделка не найдена")
-    if deal.logistics_status != "in_transit":
-        raise HTTPException(400, "Логистика не в пути")
-    await crud.update_deal_logistics(
-        db,
-        deal_id,
-        logistics_status="delivered",
-        logistics_arrival=datetime.now(),
-        status="completed"
-    )
-    await notify_admin_clients()
-    return {"status": "ok"}
+@router.put("/ips/{ip_id}", response_model=IPResponse)
+async def update_ip(ip_id: int, data: IPUpdate, db: AsyncSession = Depends(get_db)):
+    try:
+        ip = await crud.update_ip(db, ip_id, data.name)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {"id": ip.id, "name": ip.name}
 
-# ==================== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ====================
-async def get_deal_response(deal_id: int, db: AsyncSession):
-    deal = await crud.get_deal_with_details(db, deal_id)
-    if not deal:
-        raise HTTPException(404, "Сделка не найдена")
+@router.delete("/ips/{ip_id}", status_code=204)
+async def delete_ip(ip_id: int, db: AsyncSession = Depends(get_db)):
+    await crud.delete_ip(db, ip_id)
+    return None
 
-    products = []
-    for dp in deal.deal_products:
-        products.append({
-            "id": dp.id,
-            "name": dp.name,
-            "tech_card": dp.tech_card if dp.tech_card else []
-        })
+# ==================== ЭНДПОИНТЫ ДЛЯ МП ====================
+@router.get("/mps", response_model=List[MPResponse])
+async def get_mps(db: AsyncSession = Depends(get_db)):
+    mps = await crud.get_all_mps(db)
+    return [{"id": m.id, "name": m.name} for m in mps]
 
-    return DealResponse(
-        id=deal.id,
-        title=deal.title,
-        deal_type={"id": deal.deal_type.id, "code": deal.deal_type.code, "name": deal.deal_type.name},
-        client={"id": deal.client.id, "code": deal.client.code, "name": deal.client.name},
-        planned_date=deal.planned_date,
-        status=deal.status.value,
-        created_at=deal.created_at,
-        updated_at=deal.updated_at,
-        created_by=deal.created_by,
-        updated_by=deal.updated_by,
-        products=products,
-        logistics_status=deal.logistics_status.value,
-        logistics_address=deal.logistics_address,
-        logistics_departure=deal.logistics_departure,
-        logistics_arrival=deal.logistics_arrival,
-        logistics_route=deal.logistics_route
-    )
+@router.post("/mps", status_code=201, response_model=MPResponse)
+async def create_mp(data: MPCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        mp = await crud.create_mp(db, data.name)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {"id": mp.id, "name": mp.name}
 
-# ==================== ТИПЫ ЗАДАЧ (оставлены) ====================
+@router.put("/mps/{mp_id}", response_model=MPResponse)
+async def update_mp(mp_id: int, data: MPUpdate, db: AsyncSession = Depends(get_db)):
+    try:
+        mp = await crud.update_mp(db, mp_id, data.name)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {"id": mp.id, "name": mp.name}
 
+@router.delete("/mps/{mp_id}", status_code=204)
+async def delete_mp(mp_id: int, db: AsyncSession = Depends(get_db)):
+    await crud.delete_mp(db, mp_id)
+    return None
+
+# ==================== ЭНДПОИНТЫ ДЛЯ ТИПОВ ЗАДАЧ ====================
 @router.get("/task-types", response_model=List[dict])
 async def get_task_types(db: AsyncSession = Depends(get_db)):
     types = await crud.get_task_types(db)
@@ -233,6 +256,30 @@ async def create_task_type(
     task_type = await crud.create_task_type(db, name)
     return {"id": task_type.id, "name": task_type.name}
 
+@router.put("/task-types/{type_id}", response_model=dict)
+async def update_task_type(
+    type_id: int,
+    data: DealTypeUpdate,  # можно переиспользовать схему с name
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        task_type = await crud.update_task_type(db, type_id, data.name)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {"id": task_type.id, "name": task_type.name}
+
+@router.put("/tasks/{task_id}", response_model=dict)
+async def update_task(
+    task_id: int,
+    name: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        task = await crud.update_task(db, task_id, name=name)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {"id": task.id, "name": task.name, "task_type_id": task.task_type_id}
+
 @router.delete("/task-types/{type_id}", status_code=204)
 async def delete_task_type(
     type_id: int,
@@ -241,8 +288,7 @@ async def delete_task_type(
     await crud.delete_task_type(db, type_id)
     return None
 
-# ==================== ЗАДАЧИ (оставлены) ====================
-
+# ==================== ЭНДПОИНТЫ ДЛЯ ЗАДАЧ ====================
 @router.get("/tasks", response_model=List[dict])
 async def get_tasks(db: AsyncSession = Depends(get_db)):
     tasks = await crud.get_tasks(db)
@@ -250,20 +296,20 @@ async def get_tasks(db: AsyncSession = Depends(get_db)):
         {
             "id": t.id,
             "name": t.name,
-            "type_id": t.type_id,
-            "type_name": t.type.name if t.type else None
+            "task_type_id": t.task_type_id,
+            "task_type_name": t.task_type.name if t.task_type else None
         }
         for t in tasks
     ]
 
 @router.post("/tasks", status_code=201, response_model=dict)
 async def create_task(
-    name: str = Body(..., embed=True),
-    type_id: int = Body(..., embed=True),
+    name: str = Body(...),
+    task_type_id: Optional[int] = Body(None),
     db: AsyncSession = Depends(get_db)
 ):
-    task = await crud.create_task(db, name, type_id)
-    return {"id": task.id, "name": task.name, "type_id": task.type_id}
+    task = await crud.create_task(db, name, task_type_id)
+    return {"id": task.id, "name": task.name, "task_type_id": task.task_type_id}
 
 @router.delete("/tasks/{task_id}", status_code=204)
 async def delete_task(
@@ -273,129 +319,272 @@ async def delete_task(
     await crud.delete_task(db, task_id)
     return None
 
-# ==================== ИП и МП (оставлены) ====================
-class IPResponse(BaseModel):
-    id: int
-    name: str
+# ==================== ЭНДПОИНТЫ ДЛЯ ТЕХКАРТ ====================
+@router.get("/tech-cards", response_model=List[TechCardResponse])
+async def get_tech_cards(db: AsyncSession = Depends(get_db)):
+    tech_cards = await crud.get_tech_cards(db)
+    result = []
+    for tc in tech_cards:
+        tasks = [
+            {"id": tct.task.id, "name": tct.task.name, "sequence": tct.sequence}
+            for tct in tc.tech_card_tasks
+            if tct.task is not None
+        ]
+        result.append({"id": tc.id, "name": tc.name, "tasks": tasks})
+    return result
 
-class IPCreate(BaseModel):
-    name: str
+@router.post("/tech-cards", status_code=201, response_model=TechCardResponse)
+async def create_tech_card(data: TechCardCreate, db: AsyncSession = Depends(get_db)):
+    tech_card = await crud.create_tech_card(db, data.name)
+    if data.task_ids:
+        await crud.reorder_tech_card_tasks(db, tech_card.id, data.task_ids)
+        tech_card = await crud.get_tech_card(db, tech_card.id)
+    tech_card = await crud.get_tech_card(db, tech_card.id)
+    tasks = [
+        {"id": tct.task.id, "name": tct.task.name, "sequence": tct.sequence}
+        for tct in tech_card.tech_card_tasks
+        if tct.task is not None
+    ]
+    return {"id": tech_card.id, "name": tech_card.name, "tasks": tasks}
 
-@router.get("/ips", response_model=List[IPResponse])
-async def get_ips(db: AsyncSession = Depends(get_db)):
-    ips = await crud.get_ips(db)
-    return [{"id": i.id, "name": i.name} for i in ips]
-
-@router.post("/ips", status_code=201, response_model=IPResponse)
-async def create_ip(data: IPCreate, db: AsyncSession = Depends(get_db)):
-    ip = await crud.create_ip(db, data.name)
-    return {"id": ip.id, "name": ip.name}
-
-@router.delete("/ips/{ip_id}", status_code=204)
-async def delete_ip(ip_id: int, db: AsyncSession = Depends(get_db)):
-    await crud.delete_ip(db, ip_id)
+@router.delete("/tech-cards/{tech_card_id}", status_code=204)
+async def delete_tech_card(tech_card_id: int, db: AsyncSession = Depends(get_db)):
+    await crud.delete_tech_card(db, tech_card_id)
     return None
 
-class MPResponse(BaseModel):
-    id: int
-    name: str
-
-class MPCreate(BaseModel):
-    name: str
-
-@router.get("/mps", response_model=List[MPResponse])
-async def get_mps(db: AsyncSession = Depends(get_db)):
-    mps = await crud.get_mps(db)
-    return [{"id": m.id, "name": m.name} for m in mps]
-
-@router.post("/mps", status_code=201, response_model=MPResponse)
-async def create_mp(data: MPCreate, db: AsyncSession = Depends(get_db)):
-    mp = await crud.create_mp(db, data.name)
-    return {"id": mp.id, "name": mp.name}
-
-@router.delete("/mps/{mp_id}", status_code=204)
-async def delete_mp(mp_id: int, db: AsyncSession = Depends(get_db)):
-    await crud.delete_mp(db, mp_id)
-    return None
-
-@router.delete("/deal-types/{type_id}", status_code=204)
-async def delete_deal_type(type_id: int, db: AsyncSession = Depends(get_db)):
-    await crud.delete_deal_type(db, type_id)
-    return None
-
-class DealTypeCreate(BaseModel):
-    name: str
-
-class DealTypeUpdate(BaseModel):
-    name: str
-
-@router.post("/deal-types", status_code=201, response_model=DealTypeResponse)
-async def create_deal_type(data: DealTypeCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        deal_type = await crud.create_deal_type(db, data.name)
-    except Exception as e:
-        raise HTTPException(400, str(e))
-    return deal_type
-
-@router.put("/deal-types/{type_id}", response_model=DealTypeResponse)
-async def update_deal_type(type_id: int, data: DealTypeUpdate, db: AsyncSession = Depends(get_db)):
-    try:
-        deal_type = await crud.update_deal_type(db, type_id, data.name)
-    except Exception as e:
-        raise HTTPException(400, str(e))
-    return deal_type
-
-# Схемы для справочника товаров
-class CatalogProductCreate(BaseModel):
-    name: str
-    tech_card: Optional[List[str]] = []
-
-class CatalogProductUpdate(BaseModel):
-    name: Optional[str] = None
-    tech_card: Optional[List[str]] = None
-
-# Эндпоинты
-@router.get("/deal-products", response_model=List[DealProductResponse])
-async def get_deal_products(db: AsyncSession = Depends(get_db)):
-    stmt = select(DealProduct)
-    result = await db.execute(stmt)
-    products = result.scalars().all()
-    return [{"id": p.id, "name": p.name, "tech_card": p.tech_card or []} for p in products]
-
-@router.post("/deal-products", status_code=201, response_model=DealProductResponse)
-async def create_deal_product(data: CatalogProductCreate, db: AsyncSession = Depends(get_db)):
-    product = DealProduct(name=data.name, tech_card=data.tech_card)
-    db.add(product)
-    await db.commit()
-    await db.refresh(product)
-    return {"id": product.id, "name": product.name, "tech_card": product.tech_card or []}
-
-@router.put("/deal-products/{product_id}", response_model=DealProductResponse)
-async def update_deal_product(
-    product_id: int,
-    data: CatalogProductUpdate,
+@router.put("/tech-cards/{tech_card_id}", response_model=TechCardResponse)
+async def update_tech_card(
+    tech_card_id: int,
+    data: TechCardUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(DealProduct).where(DealProduct.id == product_id)
-    result = await db.execute(stmt)
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(404, "Product not found")
+    # Обновляем название, если передано
     if data.name is not None:
-        product.name = data.name
-    if data.tech_card is not None:
-        product.tech_card = data.tech_card
-    await db.commit()
-    await db.refresh(product)
-    return {"id": product.id, "name": product.name, "tech_card": product.tech_card or []}
+        await crud.update_tech_card(db, tech_card_id, data.name)
+    # Если передан список задач – перестраиваем порядок
+    if data.task_ids is not None:
+        await crud.reorder_tech_card_tasks(db, tech_card_id, data.task_ids)
+    # Получаем обновлённую техкарту
+    tech_card = await crud.get_tech_card(db, tech_card_id)
+    if not tech_card:
+        raise HTTPException(404, "Tech card not found")
+    tasks = [
+        {"id": tct.task.id, "name": tct.task.name, "sequence": tct.sequence}
+        for tct in tech_card.tech_card_tasks
+        if tct.task is not None
+    ]
+    return {"id": tech_card.id, "name": tech_card.name, "tasks": tasks}
 
-@router.delete("/deal-products/{product_id}", status_code=204)
-async def delete_deal_product(product_id: int, db: AsyncSession = Depends(get_db)):
-    stmt = select(DealProduct).where(DealProduct.id == product_id)
-    result = await db.execute(stmt)
-    product = result.scalar_one_or_none()
+@router.get("/tech-cards/{tech_card_id}", response_model=TechCardResponse)
+async def get_tech_card(tech_card_id: int, db: AsyncSession = Depends(get_db)):
+    tech_card = await crud.get_tech_card(db, tech_card_id)
+    if not tech_card:
+        raise HTTPException(404, "Tech card not found")
+    tasks = [
+        {"id": tct.task.id, "name": tct.task.name, "sequence": tct.sequence}
+        for tct in tech_card.tech_card_tasks
+        if tct.task is not None
+    ]
+    return {"id": tech_card.id, "name": tech_card.name, "tasks": tasks}
+
+@router.get("/product-types", response_model=List[ProductTypeResponse])
+async def get_product_types(db: AsyncSession = Depends(get_db)):
+    products = await crud.get_product_types(db)
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "tech_card_id": p.tech_card_id,
+            "tech_card_name": p.tech_card.name if p.tech_card else None
+        }
+        for p in products
+    ]
+
+@router.get("/product-types/{product_id}", response_model=ProductTypeResponse)
+async def get_product_type(product_id: int, db: AsyncSession = Depends(get_db)):
+    product = await crud.get_product_type(db, product_id)
     if not product:
         raise HTTPException(404, "Product not found")
-    await db.delete(product)
-    await db.commit()
+    return {
+        "id": product.id,
+        "name": product.name,
+        "tech_card_id": product.tech_card_id,
+        "tech_card_name": product.tech_card.name if product.tech_card else None
+    }
+
+@router.post("/product-types", status_code=201, response_model=ProductTypeResponse)
+async def create_product_type(
+    data: ProductTypeCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        product = await crud.create_product_type(db, data.name, data.tech_card_id)
+        product = await crud.get_product_type(db, product.id)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {
+        "id": product.id,
+        "name": product.name,
+        "tech_card_id": product.tech_card_id,
+        "tech_card_name": product.tech_card.name if product.tech_card else None
+    }
+
+@router.put("/product-types/{product_id}", response_model=ProductTypeResponse)
+async def update_product_type(
+    product_id: int,
+    data: ProductTypeUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        product = await crud.update_product_type(
+            db, product_id, data.name, data.tech_card_id
+        )
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return {
+        "id": product.id,
+        "name": product.name,
+        "tech_card_id": product.tech_card_id,
+        "tech_card_name": product.tech_card.name if product.tech_card else None
+    }
+
+@router.delete("/product-types/{product_id}", status_code=204)
+async def delete_product_type(product_id: int, db: AsyncSession = Depends(get_db)):
+    await crud.delete_product_type(db, product_id)
+    return None
+
+# ==================== ЭНДПОИНТЫ ДЛЯ РОЛЕЙ ====================
+
+@router.get("/roles", response_model=List[RoleResponse])
+async def get_roles(db: AsyncSession = Depends(get_db)):
+    roles = await crud.get_roles(db)
+    result = []
+    for role in roles:
+        tasks = [{"id": rt.task.id, "name": rt.task.name} for rt in role.role_tasks if rt.task]
+        employees = [{"id": er.employee.id, "full_name": er.employee.full_name} for er in role.employee_roles if er.employee]
+        result.append({
+            "id": role.id,
+            "name": role.name,
+            "description": role.description,
+            "tasks": tasks,
+            "employees": employees
+        })
+    return result
+
+@router.get("/roles/{role_id}", response_model=RoleResponse)
+async def get_role(role_id: int, db: AsyncSession = Depends(get_db)):
+    role = await crud.get_role(db, role_id)
+    if not role:
+        raise HTTPException(404, "Role not found")
+    tasks = [
+        {"id": rt.task.id, "name": rt.task.name}
+        for rt in role.role_tasks
+        if rt.task is not None
+    ]
+    return {
+        "id": role.id,
+        "name": role.name,
+        "description": role.description,
+        "tasks": tasks
+    }
+
+
+@router.post("/roles", status_code=201, response_model=RoleResponse)
+async def create_role(data: RoleCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        role = await crud.create_role(
+            db,
+            name=data.name,
+            description=data.description,
+            task_ids=data.task_ids
+        )
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    # Перезагружаем роль, чтобы подгрузить задачи
+    role = await crud.get_role(db, role.id)
+    tasks = [
+        {"id": rt.task.id, "name": rt.task.name}
+        for rt in role.role_tasks
+        if rt.task is not None
+    ]
+    return {
+        "id": role.id,
+        "name": role.name,
+        "description": role.description,
+        "tasks": tasks
+    }
+
+
+@router.put("/roles/{role_id}", response_model=RoleResponse)
+async def update_role(
+    role_id: int,
+    data: RoleUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        role = await crud.update_role(
+            db,
+            role_id,
+            name=data.name,
+            description=data.description,
+            task_ids=data.task_ids
+        )
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    # Перезагружаем роль, чтобы подгрузить задачи
+    role = await crud.get_role(db, role_id)
+    tasks = [
+        {"id": rt.task.id, "name": rt.task.name}
+        for rt in role.role_tasks
+        if rt.task is not None
+    ]
+    return {
+        "id": role.id,
+        "name": role.name,
+        "description": role.description,
+        "tasks": tasks
+    }
+
+
+@router.delete("/roles/{role_id}", status_code=204)
+async def delete_role(role_id: int, db: AsyncSession = Depends(get_db)):
+    try:
+        await crud.delete_role(db, role_id)
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
+    return None
+
+# ==================== НАЗНАЧЕНИЕ СОТРУДНИКОВ НА РОЛИ ====================
+
+@router.post("/roles/{role_id}/employees", status_code=201, response_model=EmployeeBrief)
+async def add_employee_to_role(
+    role_id: int,
+    data: RoleEmployeeAdd,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        link = await crud.add_employee_to_role(db, role_id, data.employee_id)
+        # Возвращаем данные сотрудника
+        employee = await crud.get_employee_by_id(db, data.employee_id)
+        if not employee:
+            raise HTTPException(404, "Employee not found")
+        return {"id": employee.id, "full_name": employee.full_name}
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+
+
+@router.delete("/roles/{role_id}/employees/{employee_id}", status_code=204)
+async def remove_employee_from_role(
+    role_id: int,
+    employee_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        await crud.remove_employee_from_role(db, role_id, employee_id)
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
     return None
