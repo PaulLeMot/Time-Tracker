@@ -6596,14 +6596,14 @@ function initProcsetsTab() {
 
         const role = roles.find(r => r.id === roleId);
         if (!role) {
-            showToast('Роль не найдена', true);
+            showToast('Должность не найдена', true);
             return;
         }
         const assignedIds = (role.employees || []).map(e => e.id);
         const available = allEmployees.filter(e => !assignedIds.includes(e.id));
 
         if (available.length === 0) {
-            showToast('Все сотрудники уже назначены на эту роль', true);
+            showToast('Все сотрудники уже назначены на эту должность', true);
             return;
         }
 
@@ -6614,7 +6614,7 @@ function initProcsetsTab() {
             modal.innerHTML = `
                 <div class="modal-content" style="max-width: 400px;">
                     <span class="modal-close" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
-                    <h3>Добавить сотрудника в роль</h3>
+                    <h3>Назначить сотрудника на должность</h3>
                     <select id="employeeSelect" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1;">
                         ${available.map(e => `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`).join('')}
                     </select>
@@ -6651,7 +6651,7 @@ function initProcsetsTab() {
                     method: 'POST',
                     body: JSON.stringify({ employee_id: selected })
                 });
-                showToast('Сотрудник добавлен в роль');
+                showToast('Сотрудник назначен на должность');
                 await loadRoles();
             } catch (err) {
                 showToast(err.message, true);
@@ -6711,7 +6711,7 @@ function initProcsetsTab() {
                     body: JSON.stringify({ employee_id: employeeId })
                 });
                 const data = await resp.json();
-                showToast(`Сотрудник назначен на задачу "${taskName}" (роль "${data.role_name}")`);
+                showToast(`Сотрудник назначен на задачу "${taskName}" (должность "${data.role_name}")`);
                 closeModal();
                 await loadRoles();
             } catch (err) {
@@ -6786,7 +6786,7 @@ function initProcsetsTab() {
                 const employeeId = parseInt(this.dataset.employeeId);
                 const roleId = parseInt(this.dataset.roleId);
                 if (!roleId) {
-                    showToast('Роль не найдена', true);
+                    showToast('Должность не найдена', true);
                     return;
                 }
                 if (!confirm('Удалить этого сотрудника из задачи?')) return;
@@ -6895,7 +6895,7 @@ function initProcsetsTab() {
                 let employeesHtml = '';
                 if (role && role.employees && role.employees.length > 0) {
                     const names = role.employees.map(e => escapeHtml(e.full_name)).join(', ');
-                    employeesHtml = `<div class="assigned-employees">👤 ${names}</div>`;
+                    employeesHtml = `<div class="assigned-employees">${escapeHtml(task.name)} — ${names}</div>`;
                 }
 
                 html += `<div class="task-item" data-id="${task.id}" draggable="true">
@@ -7092,12 +7092,12 @@ function initProcsetsTab() {
                     showRoleMode();
                 } else {
                     constructorMode = 'techcard';
-                    this.textContent = '🔄 Переключить на Роль';
+                    this.textContent = '🔄 Переключить на должность';
                     showTechCardMode();
                 }
                 clearConstructor();
             });
-            toggleModeBtn.textContent = '🔄 Переключить на Роль';
+            toggleModeBtn.textContent = '🔄 Переключить на должность';
         }
 
         if (techCardSelect) {
@@ -7248,7 +7248,7 @@ function initProcsetsTab() {
             const resp = await apiFetch(`/api/sandbox/roles/${roleId}`);
             const data = await resp.json();
             if (!data) {
-                showToast('Роль не найдена', true);
+                showToast('Должность не найдена', true);
                 return;
             }
             if (roleNameInput) roleNameInput.value = data.name || '';
@@ -7332,10 +7332,10 @@ function initProcsetsTab() {
                 return;
             }
             const name = roleNameInput ? roleNameInput.value.trim() : 'без названия';
-            if (!confirm(`Удалить роль "${name}" (ID: ${currentRoleId})?`)) return;
+            if (!confirm(`Удалить должность "${name}" (ID: ${currentRoleId})?`)) return;
             try {
                 await apiFetch(`/api/sandbox/roles/${currentRoleId}`, { method: 'DELETE' });
-                showToast('Роль удалена');
+                showToast('Должность удалена');
                 await loadRoles();
                 clearConstructor();
             } catch (err) {
@@ -7415,7 +7415,7 @@ function initProcsetsTab() {
                 });
             }
             const data = await resp.json();
-            showToast(`Роль "${data.name}" сохранена`);
+            showToast(`Должность "${data.name}" сохранена`);
             await loadRoles();
             clearConstructor();
         } catch (err) {

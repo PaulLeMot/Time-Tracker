@@ -437,7 +437,7 @@
         .constructor-task-item .remove-constructor-task:hover {
             color: #b91c1c;
         }
-        /* ----- Вкладка "Роли" ----- */
+        /* ----- Вкладка "Должности" ----- */
         .roles-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -567,7 +567,7 @@
             <button class="nav-btn" data-target="counterparties"><span class="icon">🏢</span> ИП/МП</button>
             <button class="nav-btn" data-target="products"><span class="icon">📦</span> Товары</button>
             <button class="nav-btn" data-target="tasks"><span class="icon">⚙️</span> Задачи</button>
-            <button class="nav-btn" data-target="roles"><span class="icon">👥</span> Роли</button>
+            <button class="nav-btn" data-target="roles"><span class="icon">👥</span>Должности</button>
         </div>
 
         <!-- Основная область -->
@@ -649,12 +649,12 @@
                     <div class="tasks-left" id="tasksLeftPanel">
                         <p style="color:#94a3b8;">Загрузка...</p>
                     </div>
-                    <!-- Правая колонка: конструктор техкарт / ролей -->
+                    <!-- Правая колонка: конструктор техкарт / должностей -->
                     <div class="tasks-right" id="tasksRightPanel">
                         <div style="padding:16px; background:#f8fafc; border-radius:12px; height:100%;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                                 <h4 style="margin:0;">🧩 Конструктор</h4>
-                                <button id="toggleModeBtn" style="padding:6px 12px; border:none; border-radius:20px; background:#3b82f6; color:white; cursor:pointer;">🔄 Переключить на Роль</button>
+                                <button id="toggleModeBtn" style="padding:6px 12px; border:none; border-radius:20px; background:#3b82f6; color:white; cursor:pointer;">🔄 Переключить на должность</button>
                             </div>
 
                             <!-- Поля для техкарты -->
@@ -667,9 +667,9 @@
                                 </select>
                             </div>
 
-                            <!-- Поля для роли (скрыты по умолчанию) -->
+                            <!-- Поля для должности (скрыты по умолчанию) -->
                             <div id="role-fields" style="margin-bottom:12px; display:none;">
-                                <label style="font-weight:500; font-size:0.85rem;">Название роли</label>
+                                <label style="font-weight:500; font-size:0.85rem;">Название должности</label>
                                 <input type="text" id="roleNameInput" placeholder="Введите название" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:20px; margin-top:4px;">
                                 <label style="font-weight:500; font-size:0.85rem; display:block; margin-top:8px;">Описание (опционально)</label>
                                 <input type="text" id="roleDescriptionInput" placeholder="Описание" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:20px; margin-top:4px;">
@@ -695,13 +695,13 @@
                 </div>
             </div>
 
-            <!-- ==================== ПАНЕЛЬ: РОЛИ ==================== -->
+            <!-- ==================== ПАНЕЛЬ: ДОЛЖНОСТИ ==================== -->
             <div class="sandbox-panel" id="panel-roles">
                 <div class="toolbar">
                     <button id="refreshRolesBtn">🔄 Обновить</button>
-                    <button id="addRoleBtn" class="success">➕ Добавить роль</button>
+                    <button id="addRoleBtn" class="success">➕ Добавить должность</button>
                 </div>
-                <div id="rolesList"><p style="color:#94a3b8;">Загрузка ролей...</p></div>
+                <div id="rolesList"><p style="color:#94a3b8;">Загрузка должностей...</p></div>
             </div>
 
         </div>
