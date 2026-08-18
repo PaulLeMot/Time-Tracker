@@ -1,4 +1,4 @@
-    <style>
+<style>
         /* Стили для песочницы (уже были, дополним немного) */
         .sandbox-container {
             display: flex;
@@ -538,18 +538,10 @@
         <!-- Основная область -->
         <div class="sandbox-content">
 
-            <!-- ==================== ПАНЕЛЬ: СДЕЛКИ (оставлена как есть) ==================== -->
+            <!-- ==================== ПАНЕЛЬ: СДЕЛКИ ==================== -->
             <div class="sandbox-panel active" id="panel-deals">
                 <div class="toolbar">
-                    <button id="refreshDealsBtn">🔄 Обновить</button>
                     <button id="createDealBtn" class="success">➕ Создать сделку</button>
-                    <select id="statusFilter" style="padding:8px 12px; border-radius:20px; border:1px solid #cbd5e1; height:38px;">
-                        <option value="">Все статусы</option>
-                        <option value="draft">Черновик</option>
-                        <option value="active">Активна</option>
-                        <option value="completed">Завершена</option>
-                        <option value="cancelled">Отменена</option>
-                    </select>
                     <span style="margin-left:auto; color:#64748b; font-size:0.9rem;" id="dealsCount">Загрузка...</span>
                 </div>
                 <div id="dealsList"><p style="color:#94a3b8;">Загрузка сделок...</p></div>
@@ -604,12 +596,19 @@
                     <h3 style="margin:0;">📦 Товары</h3>
                     <button id="addProductGlobalBtn" class="success" style="padding:6px 16px;">➕ Добавить товар</button>
                 </div>
-                <!-- Список товаров с группировкой -->
                 <div id="productsList"><p style="color:#94a3b8;">Загрузка товаров...</p></div>
             </div>
 
-            <!-- ==================== ПАНЕЛЬ: ЗАДАЧИ ==================== -->
+            <!-- ==================== ПАНЕЛЬ: ЗАДАЧИ (исправлена) ==================== -->
             <div class="sandbox-panel" id="panel-tasks">
+                <!-- Блок управления типами задач (перенесён наружу из .tasks-layout) -->
+                <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <input type="text" id="taskTypeName" placeholder="Название типа (например, Печать)" style="flex:1; min-width:200px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:20px;">
+                    <button id="saveTaskTypeBtn" class="success" style="padding:8px 20px;">➕ Добавить тип</button>
+                </div>
+                <!-- Список типов задач (будет заполняться JS) -->
+                <div id="taskTypeList" class="task-type-list"><p style="color:#94a3b8;">Загрузка...</p></div>
+
                 <div class="tasks-layout">
                     <!-- Левая колонка: блоки задач, сгруппированные по типам -->
                     <div class="tasks-left" id="tasksLeftPanel">

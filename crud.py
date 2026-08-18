@@ -1259,3 +1259,60 @@ async def set_role_tasks(db: AsyncSession, role_id: int, task_ids: list[int]) ->
     # Возвращаем обновлённый список задач
     return await get_tasks_for_role(db, role_id)
 
+# ---------- Получить или создать роль по имени (для назначения сотрудника на задачу) ----------
+async def get_or_create_role_by_name(
+    db: AsyncSession,
+    name: str,
+    description: str = None
+) -> Role:
+    # Ищем роль с таким именем
+    stmt = select(Role).where(Role.name == name)
+    result = await db.execute(stmt)
+    role = result.scalar_one_or_none()
+    if role:
+        return role
+    # Если не найдена – создаём новую
+    new_role = Role(name=name, description=description or f"Автоматически создана из задачи '{name}'")
+    db.add(new_role)
+    await db.flush()  # чтобы получить id
+    await db.commit()
+    await db.refresh(new_role)
+    return new_role
+
+
+# ---------- Назначить сотрудника на задачу (с автоматическим созданием роли) ----------
+async def assign_employee_to_task(
+    db: AsyncSession,
+    task_id: int,
+    employee_id: int
+) -> dict:
+    # 1. Получаем задачу
+    task = await get_task(db, task_id)
+    if not task:
+        raise ValueError("Task not found")
+    # 2. Получаем или создаём роль с именем = название задачи
+    role = await get_or_create_role_by_name(db, task.name)
+    # 3. Добавляем задачу в роль (если ещё не добавлена)
+    # Проверяем, есть ли связь RoleTask
+    stmt = select(RoleTask).where(
+        RoleTask.role_id == role.id,
+        RoleTask.task_id == task_id
+    )
+    result = await db.execute(stmt)
+    if not result.scalar_one_or_none():
+        db.add(RoleTask(role_id=role.id, task_id=task_id))
+    # 4. Добавляем сотрудника в роль (если ещё не добавлен)
+    stmt = select(EmployeeRole).where(
+        EmployeeRole.role_id == role.id,
+        EmployeeRole.employee_id == employee_id
+    )
+    result = await db.execute(stmt)
+    if not result.scalar_one_or_none():
+        db.add(EmployeeRole(role_id=role.id, employee_id=employee_id))
+    await db.commit()
+    return {
+        "role_id": role.id,
+        "role_name": role.name,
+        "task_id": task_id,
+        "employee_id": employee_id
+    }
