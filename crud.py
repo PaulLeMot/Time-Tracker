@@ -1267,29 +1267,8 @@ async def set_role_tasks(db: AsyncSession, role_id: int, task_ids: list[int]) ->
     # Возвращаем обновлённый список задач
     return await get_tasks_for_role(db, role_id)
 
-# ---------- Получить или создать роль по имени (для назначения сотрудника на задачу) ----------
-async def get_or_create_role_by_name(
-    db: AsyncSession,
-    name: str,
-    description: str = None
-) -> Role:
-    # Ищем роль с таким именем
-    stmt = select(Role).where(Role.name == name)
-    result = await db.execute(stmt)
-    role = result.scalar_one_or_none()
-    if role:
-        return role
-    # Если не найдена – создаём новую
-    new_role = Role(name=name, description=description or f"Автоматически создана из задачи '{name}'")
-    db.add(new_role)
-    await db.flush()  # чтобы получить id
-    await db.commit()
-    await db.refresh(new_role)
-    return new_role
-
-
-# ---------- Назначить сотрудника на задачу (с автоматическим созданием роли) ----------
-async def assign_employee_to_task(
+# ---------- Добавить сотрудника в роль задачи (без создания новой роли) ----------
+async def add_employee_to_task_role(
     db: AsyncSession,
     task_id: int,
     employee_id: int
@@ -1298,10 +1277,13 @@ async def assign_employee_to_task(
     task = await get_task(db, task_id)
     if not task:
         raise ValueError("Task not found")
-    # 2. Получаем или создаём роль с именем = название задачи
-    role = await get_or_create_role_by_name(db, task.name)
+    # 2. Ищем роль с именем = название задачи
+    stmt = select(Role).where(Role.name == task.name)
+    result = await db.execute(stmt)
+    role = result.scalar_one_or_none()
+    if not role:
+        raise ValueError(f"Роль с названием '{task.name}' не найдена. Сначала создайте роль вручную.")
     # 3. Добавляем задачу в роль (если ещё не добавлена)
-    # Проверяем, есть ли связь RoleTask
     stmt = select(RoleTask).where(
         RoleTask.role_id == role.id,
         RoleTask.task_id == task_id

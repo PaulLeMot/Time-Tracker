@@ -616,7 +616,7 @@ async def assign_employee_to_task(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        result = await crud.assign_employee_to_task(db, task_id, data.employee_id)
+        result = await crud.add_employee_to_task_role(db, task_id, data.employee_id)
         return result
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
