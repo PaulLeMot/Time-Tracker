@@ -948,26 +948,26 @@
         .daily-traffic-table td.last-cell {
             padding-right: 20px;
         }
-.product-info {
-    display: flex;
-    align-items: center;
-    flex: 1;
-}
-.product-name {
-    font-weight: 500;
-    font-size: 1rem;
-    width: 200px;
-    text-align: left;
-    flex-shrink: 0;
-}
-.product-fullname {
-    font-weight: 500;
-    font-size: 1rem;
-    width: 200px;
-    text-align: left;
-    margin-left: 40px;
-    flex-shrink: 0;
-}
+        .product-info {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+        .product-name {
+            font-weight: 500;
+            font-size: 1rem;
+            width: 200px;
+            text-align: left;
+            flex-shrink: 0;
+        }
+        .product-fullname {
+            font-weight: 500;
+            font-size: 1rem;
+            width: 200px;
+            text-align: left;
+            margin-left: 40px;
+            flex-shrink: 0;
+        }
     </style>
 
 
@@ -5935,16 +5935,16 @@ function initProcsetsTab() {
 
     // ---- Переменные для ролей ----
     let roles = [];
-    let allEmployees = []; // все активные сотрудники для выбора
-    let currentTaskIdForAssignment = null; // ID задачи, для которой открыто модальное окно
+    let allEmployees = [];
+    let currentTaskIdForAssignment = null;
 
     // ---- Переменные для конструктора ----
-    let constructorMode = 'techcard'; // 'techcard' или 'role'
+    let constructorMode = 'techcard';
     let constructorTasks = [];
     let currentTechCardId = null;
     let currentRoleId = null;
 
-    // Элементы конструктора
+    // ---- Элементы конструктора ----
     let techCardNameInput = null;
     let techCardSelect = null;
     let roleNameInput = null;
@@ -5956,6 +5956,18 @@ function initProcsetsTab() {
     let clearConstructorBtn = null;
     let toggleModeBtn = null;
     let constructorInitialized = false;
+
+    // ---- Элементы модального окна товаров ----
+    const productModal = document.getElementById('productModal');
+    const productForm = document.getElementById('productForm');
+    const productNameInput = document.getElementById('productNameInput');
+    const productFullNameInput = document.getElementById('productFullNameInput');
+    const productTechCardSelect = document.getElementById('productTechCardSelect');
+    const productModalTitle = document.getElementById('productModalTitle');
+    const productFormError = document.getElementById('productFormError');
+    const closeProductModalBtn = document.querySelector('.close-product-modal');
+    const cancelProductBtn = document.getElementById('cancelProductBtn');
+    let editingProductId = null;
 
     const container = document.getElementById('procsets-tab');
     const dealsListEl = container.querySelector('#dealsList');
@@ -6262,45 +6274,38 @@ function initProcsetsTab() {
         }
     }
 
+    // ---- Функции модального окна товаров ----
+    function openProductModal(product = null, defaultTechCardId = null) {
+        editingProductId = product ? product.id : null;
+        productFormError.textContent = '';
+        productNameInput.value = product ? product.name : '';
+        productFullNameInput.value = product ? (product.full_name || '') : '';
+        populateProductTechCardSelect(product ? product.tech_card_id : defaultTechCardId);
+        productModalTitle.textContent = product ? 'Редактирование товара' : 'Создание товара';
+        productModal.style.display = 'block';
+    }
+
+    function closeProductModal() {
+        productModal.style.display = 'none';
+        editingProductId = null;
+    }
+
+    function populateProductTechCardSelect(selectedId) {
+        const select = productTechCardSelect;
+        select.innerHTML = '<option value="">Без техкарты</option>';
+        techCards.forEach(tc => {
+            const opt = document.createElement('option');
+            opt.value = tc.id;
+            opt.textContent = tc.name;
+            if (tc.id === selectedId) opt.selected = true;
+            select.appendChild(opt);
+        });
+    }
+
     // ---- Товары ----
     const addProductGlobalBtn = document.getElementById('addProductGlobalBtn');
     if (addProductGlobalBtn) {
-        addProductGlobalBtn.addEventListener('click', async () => {
-            const name = prompt('Введите название нового товара:');
-            if (name === null || name.trim() === '') return;
-
-            const fullName = prompt('Введите полное наименование товара (оставьте пустым, если не нужно):');
-            const fullNameValue = fullName && fullName.trim() !== '' ? fullName.trim() : null;
-
-            const techCardName = prompt('Введите название техкарты (оставьте пустым, если без техкарты):');
-            let techCardId = null;
-
-            if (techCardName !== null && techCardName.trim() !== '') {
-                const found = techCards.find(tc => tc.name.toLowerCase() === techCardName.trim().toLowerCase());
-                if (found) {
-                    techCardId = found.id;
-                } else {
-                    const continueWithout = confirm(`Техкарта "${techCardName.trim()}" не найдена. Создать товар без техкарты?`);
-                    if (!continueWithout) return;
-                }
-            }
-
-            try {
-                const response = await apiFetch('/api/sandbox/product-types', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        name: name.trim(),
-                        full_name: fullNameValue,
-                        tech_card_id: techCardId
-                    })
-                });
-                const data = await response.json();
-                showToast(`Товар "${data.name}" создан${techCardId ? ` с техкартой "${techCardName.trim()}"` : ''}`);
-                loadProducts();
-            } catch (err) {
-                showToast(err.message, true);
-            }
-        });
+        addProductGlobalBtn.addEventListener('click', () => openProductModal());
     }
 
     async function loadProducts() {
@@ -6376,7 +6381,7 @@ function initProcsetsTab() {
                 html += `<div class="product-item" data-id="${product.id}">
                     <div class="product-info">
                         <span class="product-name">${escapeHtml(product.name)}</span>
-                        <span class="product-fullname">${product.full_name ? escapeHtml(product.full_name) : ''}</span>
+                        ${product.full_name ? `<span class="product-fullname">${escapeHtml(product.full_name)}</span>` : ''}
                     </div>
                     <span class="product-actions">
                         <button class="edit-product-btn" data-id="${product.id}" title="Редактировать">✏️</button>
@@ -6388,66 +6393,25 @@ function initProcsetsTab() {
         }
         containerEl.innerHTML = html;
 
+        // ---- Обработчики событий для товаров (кнопки) ----
         containerEl.querySelectorAll('.add-product-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const techCardId = btn.dataset.techId ? parseInt(btn.dataset.techId) : null;
-                const name = prompt('Введите название нового товара:');
-                if (name === null || name.trim() === '') return;
-                const fullName = prompt('Введите полное наименование товара (опционально):');
-                const fullNameValue = fullName && fullName.trim() !== '' ? fullName.trim() : null;
-                try {
-                    const response = await apiFetch('/api/sandbox/product-types', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            name: name.trim(),
-                            full_name: fullNameValue,
-                            tech_card_id: techCardId
-                        })
-                    });
-                    const data = await response.json();
-                    showToast(`Товар "${data.name}" создан`);
-                    loadProducts();
-                } catch (err) {
-                    showToast(err.message, true);
-                }
+            btn.addEventListener('click', function() {
+                const techCardId = this.dataset.techId ? parseInt(this.dataset.techId) : null;
+                openProductModal(null, techCardId);
             });
         });
 
         containerEl.querySelectorAll('.edit-product-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const productId = parseInt(btn.dataset.id);
+            btn.addEventListener('click', function() {
+                const productId = parseInt(this.dataset.id);
                 const product = products.find(p => p.id === productId);
-                if (!product) return;
-                const newName = prompt('Введите новое название товара:', product.name);
-                if (newName === null) return;
-                const newFullName = prompt('Введите новое полное наименование (оставьте пустым для удаления):', product.full_name || '');
-                const fullNameValue = newFullName !== null && newFullName.trim() !== '' ? newFullName.trim() : null;
-                const newTechId = prompt('Введите ID техкарты (оставьте пустым для удаления привязки):', product.tech_card_id || '');
-                const techId = newTechId === '' ? null : parseInt(newTechId);
-                if (newName.trim() === '') {
-                    showToast('Название не может быть пустым', true);
-                    return;
-                }
-                try {
-                    await apiFetch(`/api/sandbox/product-types/${productId}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({
-                            name: newName.trim(),
-                            full_name: fullNameValue,
-                            tech_card_id: techId
-                        })
-                    });
-                    showToast('Товар обновлён');
-                    loadProducts();
-                } catch (err) {
-                    showToast(err.message, true);
-                }
+                if (product) openProductModal(product);
             });
         });
 
         containerEl.querySelectorAll('.delete-product-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const productId = parseInt(btn.dataset.id);
+            btn.addEventListener('click', async function() {
+                const productId = parseInt(this.dataset.id);
                 if (!confirm('Удалить товар?')) return;
                 try {
                     await apiFetch(`/api/sandbox/product-types/${productId}`, { method: 'DELETE' });
@@ -6460,8 +6424,8 @@ function initProcsetsTab() {
         });
 
         containerEl.querySelectorAll('.edit-techcard-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const techCardId = parseInt(btn.dataset.id);
+            btn.addEventListener('click', function() {
+                const techCardId = parseInt(this.dataset.id);
                 document.querySelector('.sandbox-sidebar .nav-btn[data-target="tasks"]').click();
                 setTimeout(() => {
                     if (techCardSelect) {
@@ -6473,8 +6437,8 @@ function initProcsetsTab() {
         });
 
         containerEl.querySelectorAll('.delete-techcard-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const techCardId = parseInt(btn.dataset.id);
+            btn.addEventListener('click', async function() {
+                const techCardId = parseInt(this.dataset.id);
                 if (!confirm('Удалить техкарту? Все товары, привязанные к ней, потеряют техкарту.')) return;
                 try {
                     await apiFetch(`/api/sandbox/tech-cards/${techCardId}`, { method: 'DELETE' });
@@ -6489,7 +6453,7 @@ function initProcsetsTab() {
 
     // ======================== ЗАДАЧИ И КОНСТРУКТОР ========================
 
-    // ---- Функция рендеринга списка типов задач (добавлена) ----
+    // ---- Функция рендеринга списка типов задач ----
     function renderTaskTypes() {
         const container = document.getElementById('taskTypeList');
         if (!container) return;
@@ -6528,13 +6492,13 @@ function initProcsetsTab() {
             roles = await resp.json();
             populateRoleSelect();
             renderRoles();
+            renderTasksGrouped();  // <-- обновляем задачи, чтобы отобразить сотрудников
         } catch (err) {
             console.error('Ошибка загрузки ролей:', err);
             showToast('Не удалось загрузить роли: ' + err.message, true);
         }
     }
 
-    // Заполнение селекта ролей
     function populateRoleSelect() {
         if (!roleSelect) return;
         const currentVal = roleSelect.value;
@@ -6756,12 +6720,117 @@ function initProcsetsTab() {
         });
     }
 
+    // ---- Новая функция для управления сотрудниками задачи (модальное окно) ----
+    async function openTaskEmployeeModal(taskId, taskName) {
+        if (!allEmployees || allEmployees.length === 0) {
+            await loadAllEmployees();
+        }
+
+        const role = roles.find(r => r.name === taskName);
+        const roleId = role ? role.id : null;
+        const assignedEmployees = role ? (role.employees || []) : [];
+
+        const assignedIds = assignedEmployees.map(e => e.id);
+        const availableEmployees = allEmployees.filter(e => !assignedIds.includes(e.id));
+
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px;">
+                <span class="modal-close" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
+                <h3>Управление сотрудниками задачи</h3>
+                <p><strong>Задача:</strong> ${escapeHtml(taskName)}</p>
+                <div style="margin-top:12px;">
+                    <h4>Назначенные сотрудники</h4>
+                    <div id="assignedEmployeesList">
+                        ${assignedEmployees.length === 0 ? '<p style="color:#94a3b8;">Нет назначенных сотрудников</p>' : ''}
+                        ${assignedEmployees.map(e => `
+                            <div class="employee-item" data-employee-id="${e.id}">
+                                <span>${escapeHtml(e.full_name)}</span>
+                                <button class="remove-employee-from-task" data-role-id="${roleId}" data-employee-id="${e.id}" style="background:red; color:white; border:none; border-radius:12px; padding:2px 8px; cursor:pointer;">✖</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div style="margin-top:16px;">
+                    <h4>Добавить сотрудника</h4>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <select id="addEmployeeSelect" style="flex:1; padding:8px; border-radius:20px; border:1px solid #cbd5e1;">
+                            <option value="">-- Выберите сотрудника --</option>
+                            ${availableEmployees.map(e => `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`).join('')}
+                        </select>
+                        <button id="addEmployeeToTaskBtn" class="success" style="padding:6px 16px; border:none; border-radius:20px; background:#22c55e; color:white; cursor:pointer;">➕ Добавить</button>
+                    </div>
+                    ${availableEmployees.length === 0 ? '<p style="color:#94a3b8; margin-top:4px;">Все сотрудники уже назначены</p>' : ''}
+                </div>
+                <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+                    <button id="closeTaskEmployeeModalBtn" style="background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Закрыть</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const closeModal = () => {
+            modal.remove();
+        };
+
+        modal.querySelector('.modal-close').addEventListener('click', closeModal);
+        modal.querySelector('#closeTaskEmployeeModalBtn').addEventListener('click', closeModal);
+        window.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+
+        modal.querySelectorAll('.remove-employee-from-task').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const employeeId = parseInt(this.dataset.employeeId);
+                const roleId = parseInt(this.dataset.roleId);
+                if (!roleId) {
+                    showToast('Роль не найдена', true);
+                    return;
+                }
+                if (!confirm('Удалить этого сотрудника из задачи?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/roles/${roleId}/employees/${employeeId}`, { method: 'DELETE' });
+                    showToast('Сотрудник удалён из задачи');
+                    await loadRoles();
+                    closeModal();
+                    openTaskEmployeeModal(taskId, taskName);
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        modal.querySelector('#addEmployeeToTaskBtn').addEventListener('click', async function() {
+            const select = modal.querySelector('#addEmployeeSelect');
+            const employeeId = parseInt(select.value);
+            if (!employeeId) {
+                showToast('Выберите сотрудника', true);
+                return;
+            }
+            try {
+                const resp = await apiFetch(`/api/sandbox/tasks/${taskId}/assign-employee`, {
+                    method: 'POST',
+                    body: JSON.stringify({ employee_id: employeeId })
+                });
+                const data = await resp.json();
+                showToast(`Сотрудник добавлен в задачу "${taskName}"`);
+                await loadRoles();
+                closeModal();
+                openTaskEmployeeModal(taskId, taskName);
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        });
+    }
+
     // ---- Загрузка задач и типов ----
     async function loadTaskTypes() {
         try {
             const resp = await apiFetch('/api/sandbox/task-types');
             taskTypes = await resp.json();
-            renderTaskTypes();   // <-- добавлен вызов
+            renderTaskTypes();
             renderTasksGrouped();
         } catch (err) {
             console.error('Ошибка загрузки типов задач:', err);
@@ -6822,8 +6891,18 @@ function initProcsetsTab() {
                 </div>
                 <div class="task-group-body">`;
             for (const task of group.tasks) {
+                const role = roles.find(r => r.name === task.name);
+                let employeesHtml = '';
+                if (role && role.employees && role.employees.length > 0) {
+                    const names = role.employees.map(e => escapeHtml(e.full_name)).join(', ');
+                    employeesHtml = `<div class="assigned-employees">👤 ${names}</div>`;
+                }
+
                 html += `<div class="task-item" data-id="${task.id}" draggable="true">
-                    <span class="task-name">${escapeHtml(task.name)}</span>
+                    <div class="task-info">
+                        <span class="task-name">${escapeHtml(task.name)}</span>
+                        ${employeesHtml}
+                    </div>
                     <span class="task-actions">
                         <button class="edit-task-btn" data-id="${task.id}" title="Редактировать задачу">✏️</button>
                         <button class="delete-task-btn" data-id="${task.id}" title="Удалить задачу">🗑️</button>
@@ -6943,12 +7022,13 @@ function initProcsetsTab() {
             });
         });
 
+        // ---- Обработчики кнопок назначения сотрудника на задачу ----
         leftPanel.querySelectorAll('.assign-employee-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const taskId = parseInt(btn.dataset.id);
                 const taskName = btn.dataset.name;
-                openEmployeeSelectionModal(taskId, taskName);
+                openTaskEmployeeModal(taskId, taskName);
             });
         });
     }
@@ -6975,7 +7055,7 @@ function initProcsetsTab() {
         draggedTaskId = null;
     }
 
-    // ----- Инициализация конструктора (новая версия с поддержкой режимов) -----
+    // ----- Инициализация конструктора -----
     function initConstructorUI() {
         const rightPanel = document.getElementById('tasksRightPanel');
         if (!rightPanel) return;
@@ -7377,6 +7457,37 @@ function initProcsetsTab() {
 
     // ---- Инициализация ----
     function init() {
+        // Обработчики модального окна товаров
+        productForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const name = productNameInput.value.trim();
+            if (!name) {
+                productFormError.textContent = 'Название обязательно';
+                return;
+            }
+            const fullName = productFullNameInput.value.trim() || null;
+            const techCardId = parseInt(productTechCardSelect.value) || null;
+            const payload = { name, full_name: fullName, tech_card_id: techCardId };
+            const method = editingProductId ? 'PUT' : 'POST';
+            const url = editingProductId ? `/api/sandbox/product-types/${editingProductId}` : '/api/sandbox/product-types';
+            try {
+                const resp = await apiFetch(url, { method, body: JSON.stringify(payload) });
+                const data = await resp.json();
+                showToast(`Товар "${data.name}" ${editingProductId ? 'обновлён' : 'создан'}`);
+                closeProductModal();
+                loadProducts();
+            } catch (err) {
+                productFormError.textContent = err.message;
+            }
+        });
+
+        closeProductModalBtn.addEventListener('click', closeProductModal);
+        cancelProductBtn.addEventListener('click', closeProductModal);
+        window.addEventListener('click', function(e) {
+            if (e.target === productModal) closeProductModal();
+        });
+
+        // Остальные инициализации
         if (createForm) {
             createForm.addEventListener('submit', async function(e) {
                 e.preventDefault();

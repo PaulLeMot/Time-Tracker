@@ -522,6 +522,41 @@
         .employee-tag .remove-employee-btn:hover {
             color: #ef4444;
         }
+        .task-item .task-info {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+        .task-item .assigned-employees {
+            font-size: 0.8rem;
+            color: #475569;
+            margin-top: 2px;
+        }
+        .task-item .assigned-employees span {
+            background: #f1f5f9;
+            padding: 0 6px;
+            border-radius: 12px;
+            display: inline-block;
+            margin: 2px 4px 2px 0;
+        }
+        .employee-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .employee-item .remove-employee-from-task {
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 2px 8px;
+            cursor: pointer;
+        }
+        .employee-item .remove-employee-from-task:hover {
+            background: #dc2626;
+        }
     </style>
 
     <div class="sandbox-container">
@@ -714,4 +749,33 @@
                 </div>
             </div>
         </div>
+
+        <div id="productModal" class="modal">
+            <div class="modal-content" style="max-width: 450px;">
+                <span class="close-product-modal" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
+                <h3 id="productModalTitle">Создание товара</h3>
+                <form id="productForm">
+                    <div class="form-group">
+                        <label>Название товара <span style="color:red;">*</span></label>
+                        <input type="text" id="productNameInput" placeholder="Короткое название" required style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1; margin-top:4px;">
+                    </div>
+                    <div class="form-group" style="margin-top:12px;">
+                        <label>Полное наименование</label>
+                        <input type="text" id="productFullNameInput" placeholder="Полное наименование (опционально)" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1; margin-top:4px;">
+                    </div>
+                    <div class="form-group" style="margin-top:12px;">
+                        <label>Техкарта</label>
+                        <select id="productTechCardSelect" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1; margin-top:4px;">
+                            <option value="">Без техкарты</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:12px; margin-top:16px; justify-content:flex-end;">
+                        <button type="button" id="cancelProductBtn" style="background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Отмена</button>
+                        <button type="submit" id="saveProductBtn" style="background:#22c55e; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Сохранить</button>
+                    </div>
+                    <div id="productFormError" style="color:red; margin-top:8px;"></div>
+                </form>
+            </div>
+        </div>
+
     </div>
