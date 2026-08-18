@@ -166,6 +166,7 @@ class ProductType(Base):
     __tablename__ = "product_types"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
+    full_name = Column(String, nullable=True)
     tech_card_id = Column(Integer, ForeignKey("tech_cards.id"), nullable=True)
     tech_card = relationship("TechCard", back_populates="products")
     deal_products = relationship("DealProductType", back_populates="product_type")

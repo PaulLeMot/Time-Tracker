@@ -66,15 +66,18 @@ class TechCardResponse(BaseModel):
 
 class ProductTypeCreate(BaseModel):
     name: str
+    full_name: Optional[str] = None
     tech_card_id: Optional[int] = None
 
 class ProductTypeUpdate(BaseModel):
     name: Optional[str] = None
+    full_name: Optional[str] = None
     tech_card_id: Optional[int] = None
 
 class ProductTypeResponse(BaseModel):
     id: int
     name: str
+    full_name: Optional[str] = None
     tech_card_id: Optional[int]
     tech_card_name: Optional[str]
 
@@ -394,6 +397,7 @@ async def get_product_types(db: AsyncSession = Depends(get_db)):
         {
             "id": p.id,
             "name": p.name,
+            "full_name": p.full_name,
             "tech_card_id": p.tech_card_id,
             "tech_card_name": p.tech_card.name if p.tech_card else None
         }
@@ -418,13 +422,19 @@ async def create_product_type(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        product = await crud.create_product_type(db, data.name, data.tech_card_id)
+        product = await crud.create_product_type(
+            db,
+            name=data.name,
+            full_name=data.full_name,
+            tech_card_id=data.tech_card_id
+        )
         product = await crud.get_product_type(db, product.id)
     except Exception as e:
         raise HTTPException(400, detail=str(e))
     return {
         "id": product.id,
         "name": product.name,
+        "full_name": product.full_name,
         "tech_card_id": product.tech_card_id,
         "tech_card_name": product.tech_card.name if product.tech_card else None
     }
@@ -437,13 +447,18 @@ async def update_product_type(
 ):
     try:
         product = await crud.update_product_type(
-            db, product_id, data.name, data.tech_card_id
+            db,
+            product_id,
+            name=data.name,
+            full_name=data.full_name,
+            tech_card_id=data.tech_card_id
         )
     except Exception as e:
         raise HTTPException(400, detail=str(e))
     return {
         "id": product.id,
         "name": product.name,
+        "full_name": product.full_name,
         "tech_card_id": product.tech_card_id,
         "tech_card_name": product.tech_card.name if product.tech_card else None
     }

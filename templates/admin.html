@@ -947,7 +947,27 @@
         }
         .daily-traffic-table td.last-cell {
             padding-right: 20px;
-        }   
+        }
+.product-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+.product-name {
+    font-weight: 500;
+    font-size: 1rem;
+    width: 200px;
+    text-align: left;
+    flex-shrink: 0;
+}
+.product-fullname {
+    font-weight: 500;
+    font-size: 1rem;
+    width: 200px;
+    text-align: left;
+    margin-left: 40px;
+    flex-shrink: 0;
+}
     </style>
 
 
@@ -6249,6 +6269,9 @@ function initProcsetsTab() {
             const name = prompt('Введите название нового товара:');
             if (name === null || name.trim() === '') return;
 
+            const fullName = prompt('Введите полное наименование товара (оставьте пустым, если не нужно):');
+            const fullNameValue = fullName && fullName.trim() !== '' ? fullName.trim() : null;
+
             const techCardName = prompt('Введите название техкарты (оставьте пустым, если без техкарты):');
             let techCardId = null;
 
@@ -6265,7 +6288,11 @@ function initProcsetsTab() {
             try {
                 const response = await apiFetch('/api/sandbox/product-types', {
                     method: 'POST',
-                    body: JSON.stringify({ name: name.trim(), tech_card_id: techCardId })
+                    body: JSON.stringify({
+                        name: name.trim(),
+                        full_name: fullNameValue,
+                        tech_card_id: techCardId
+                    })
                 });
                 const data = await response.json();
                 showToast(`Товар "${data.name}" создан${techCardId ? ` с техкартой "${techCardName.trim()}"` : ''}`);
@@ -6347,7 +6374,10 @@ function initProcsetsTab() {
                 <div class="product-group-body">`;
             for (const product of group.products) {
                 html += `<div class="product-item" data-id="${product.id}">
-                    <span class="product-name">${escapeHtml(product.name)}</span>
+                    <div class="product-info">
+                        <span class="product-name">${escapeHtml(product.name)}</span>
+                        <span class="product-fullname">${product.full_name ? escapeHtml(product.full_name) : ''}</span>
+                    </div>
                     <span class="product-actions">
                         <button class="edit-product-btn" data-id="${product.id}" title="Редактировать">✏️</button>
                         <button class="delete-product-btn" data-id="${product.id}" title="Удалить">🗑️</button>
@@ -6363,10 +6393,16 @@ function initProcsetsTab() {
                 const techCardId = btn.dataset.techId ? parseInt(btn.dataset.techId) : null;
                 const name = prompt('Введите название нового товара:');
                 if (name === null || name.trim() === '') return;
+                const fullName = prompt('Введите полное наименование товара (опционально):');
+                const fullNameValue = fullName && fullName.trim() !== '' ? fullName.trim() : null;
                 try {
                     const response = await apiFetch('/api/sandbox/product-types', {
                         method: 'POST',
-                        body: JSON.stringify({ name: name.trim(), tech_card_id: techCardId })
+                        body: JSON.stringify({
+                            name: name.trim(),
+                            full_name: fullNameValue,
+                            tech_card_id: techCardId
+                        })
                     });
                     const data = await response.json();
                     showToast(`Товар "${data.name}" создан`);
@@ -6383,11 +6419,23 @@ function initProcsetsTab() {
                 const product = products.find(p => p.id === productId);
                 if (!product) return;
                 const newName = prompt('Введите новое название товара:', product.name);
-                if (newName === null || newName.trim() === '') return;
+                if (newName === null) return;
+                const newFullName = prompt('Введите новое полное наименование (оставьте пустым для удаления):', product.full_name || '');
+                const fullNameValue = newFullName !== null && newFullName.trim() !== '' ? newFullName.trim() : null;
+                const newTechId = prompt('Введите ID техкарты (оставьте пустым для удаления привязки):', product.tech_card_id || '');
+                const techId = newTechId === '' ? null : parseInt(newTechId);
+                if (newName.trim() === '') {
+                    showToast('Название не может быть пустым', true);
+                    return;
+                }
                 try {
                     await apiFetch(`/api/sandbox/product-types/${productId}`, {
                         method: 'PUT',
-                        body: JSON.stringify({ name: newName.trim() })
+                        body: JSON.stringify({
+                            name: newName.trim(),
+                            full_name: fullNameValue,
+                            tech_card_id: techId
+                        })
                     });
                     showToast('Товар обновлён');
                     loadProducts();

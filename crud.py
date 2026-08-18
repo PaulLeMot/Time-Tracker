@@ -438,9 +438,14 @@ async def get_product_types(
 async def create_product_type(
     db: AsyncSession,
     name: str,
+    full_name: str = None,
     tech_card_id: int = None
 ) -> ProductType:
-    new_product_type = ProductType(name=name, tech_card_id=tech_card_id)
+    new_product_type = ProductType(
+        name=name,
+        full_name=full_name,
+        tech_card_id=tech_card_id
+    )
     db.add(new_product_type)
     await db.commit()
     await db.refresh(new_product_type)
@@ -450,6 +455,7 @@ async def update_product_type(
     db: AsyncSession,
     product_type_id: int,
     name: str = None,
+    full_name: str = None,
     tech_card_id: int = None
 ) -> ProductType:
     existing = await get_product_type(db, product_type_id)
@@ -459,6 +465,8 @@ async def update_product_type(
     values = {}
     if name is not None:
         values["name"] = name
+    if full_name is not None:
+        values["full_name"] = full_name
     if tech_card_id is not None:
         values["tech_card_id"] = tech_card_id
     if not values:
