@@ -6904,7 +6904,7 @@ function initProcsetsTab() {
 
         constructorListEl.addEventListener('dragover', (e) => {
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
+            e.dataTransfer.dropEffect = 'all';
             constructorListEl.style.borderColor = '#3b82f6';
         });
         constructorListEl.addEventListener('dragleave', (e) => {
