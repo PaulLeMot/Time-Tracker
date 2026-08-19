@@ -1321,7 +1321,7 @@
     const assignRoleBtn = document.getElementById('assignRoleBtn');
     const createRoleAndAssignBtn = document.getElementById('createRoleAndAssignBtn');
     const roleSelect = document.getElementById('roleSelect');
-    const newRoleNameInput = document.getElementById('newRoleNameInline');
+    const newRoleNameInput = document.getElementById('newRoleNameInput');
     const roleModalEmployeeFullName = document.getElementById('roleModalEmployeeFullName');
     const roleModalError = document.getElementById('roleModalError');
     let currentEmployeeIdForRole = null;
@@ -6000,6 +6000,7 @@ window.addEventListener('click', function(e) {
 });
 
 // Назначение существующей должности
+// ---- Назначение существующей должности (ДОБАВЛЯЕТ, а не заменяет) ----
 assignRoleBtn.addEventListener('click', async function() {
     const roleId = parseInt(roleSelect.value);
     if (!roleId) {
@@ -6013,17 +6014,14 @@ assignRoleBtn.addEventListener('click', async function() {
     }
 
     try {
-        // 1. Удаляем все текущие должности сотрудника
-        const rolesForEmployee = window._employeeRolesMap?.[employeeId] || [];
-        const allRoles = await (await fetch('/api/sandbox/roles', { credentials: 'include' })).json();
-        for (const roleName of rolesForEmployee) {
-            const role = allRoles.find(r => r.name === roleName);
-            if (role) {
-                await fetch(`/api/sandbox/roles/${role.id}/employees/${employeeId}`, { method: 'DELETE', credentials: 'include' });
-            }
+        // Проверяем, не назначена ли уже эта роль сотруднику
+        const currentRoles = await (await fetch(`/api/sandbox/employees/${employeeId}/roles`, { credentials: 'include' })).json();
+        if (currentRoles.some(r => r.id === roleId)) {
+            showToast('Эта должность уже назначена сотруднику', true);
+            return;
         }
 
-        // 2. Назначаем сотрудника на выбранную должность
+        // Назначаем сотрудника на выбранную должность (без удаления старых)
         const resp = await fetch(`/api/sandbox/roles/${roleId}/employees`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -6034,7 +6032,7 @@ assignRoleBtn.addEventListener('click', async function() {
             const err = await resp.json();
             throw new Error(err.detail || 'Ошибка назначения');
         }
-        showToast('Должность назначена');
+        showToast('Должность добавлена');
         closeRoleModal();
         loadEmployees(); // обновляем таблицу
     } catch (err) {
@@ -6042,7 +6040,7 @@ assignRoleBtn.addEventListener('click', async function() {
     }
 });
 
-// Создание новой должности и назначение
+// ---- Создание новой должности и назначение (ДОБАВЛЯЕТ) ----
 createRoleAndAssignBtn.addEventListener('click', async function() {
     const newRoleName = newRoleNameInput.value.trim();
     if (!newRoleName) {
@@ -6069,17 +6067,14 @@ createRoleAndAssignBtn.addEventListener('click', async function() {
         }
         const newRole = await createResp.json();
 
-        // 2. Удаляем все текущие должности сотрудника
-        const rolesForEmployee = window._employeeRolesMap?.[employeeId] || [];
-        const allRoles = await (await fetch('/api/sandbox/roles', { credentials: 'include' })).json();
-        for (const roleName of rolesForEmployee) {
-            const role = allRoles.find(r => r.name === roleName);
-            if (role) {
-                await fetch(`/api/sandbox/roles/${role.id}/employees/${employeeId}`, { method: 'DELETE', credentials: 'include' });
-            }
+        // 2. Проверяем, не назначена ли уже эта роль (маловероятно, но на всякий случай)
+        const currentRoles = await (await fetch(`/api/sandbox/employees/${employeeId}/roles`, { credentials: 'include' })).json();
+        if (currentRoles.some(r => r.id === newRole.id)) {
+            showToast('Эта должность уже назначена сотруднику', true);
+            return;
         }
 
-        // 3. Назначаем сотрудника на новую должность
+        // 3. Назначаем сотрудника на новую должность (без удаления старых)
         const assignResp = await fetch(`/api/sandbox/roles/${newRole.id}/employees`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -6090,7 +6085,7 @@ createRoleAndAssignBtn.addEventListener('click', async function() {
             const err = await assignResp.json();
             throw new Error(err.detail || 'Ошибка назначения');
         }
-        showToast('Новая должность создана и назначена');
+        showToast('Новая должность создана и добавлена');
         closeRoleModal();
         loadEmployees();
     } catch (err) {
