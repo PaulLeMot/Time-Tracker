@@ -6660,64 +6660,11 @@ function initProcsetsTab() {
     }
 
     // ---- Функция для назначения сотрудника на задачу (через создание роли) ----
+    // Удаляем эту функцию, она не нужна, так как мы теперь используем openTaskEmployeeModal
+    // (она осталась для совместимости, но не используется)
     async function openEmployeeSelectionModal(taskId, taskName) {
-        currentTaskIdForAssignment = taskId;
-        if (!allEmployees || allEmployees.length === 0) {
-            await loadAllEmployees();
-            openEmployeeSelectionModal(taskId, taskName);
-            return;
-        }
-
-        const modal = document.createElement('div');
-        modal.className = 'modal';
-        modal.style.display = 'block';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 400px;">
-                <span class="modal-close" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
-                <h3>Назначить сотрудника на задачу</h3>
-                <p><strong>Задача:</strong> ${escapeHtml(taskName)}</p>
-                <select id="employeeSelect" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1;">
-                    ${allEmployees.map(e => `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`).join('')}
-                </select>
-                <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
-                    <button id="cancelSelectBtn" style="background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Отмена</button>
-                    <button id="confirmAssignBtn" style="background:#22c55e; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Назначить</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-
-        const closeModal = () => {
-            modal.remove();
-            currentTaskIdForAssignment = null;
-        };
-
-        modal.querySelector('.modal-close').addEventListener('click', closeModal);
-        modal.querySelector('#cancelSelectBtn').addEventListener('click', closeModal);
-        window.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
-
-        modal.querySelector('#confirmAssignBtn').addEventListener('click', async () => {
-            const select = modal.querySelector('#employeeSelect');
-            const employeeId = parseInt(select.value);
-            if (!employeeId) {
-                showToast('Выберите сотрудника', true);
-                return;
-            }
-            try {
-                const resp = await apiFetch(`/api/sandbox/tasks/${taskId}/assign-employee`, {
-                    method: 'POST',
-                    body: JSON.stringify({ employee_id: employeeId })
-                });
-                const data = await resp.json();
-                showToast(`Сотрудник назначен на задачу "${taskName}" (должность "${data.role_name}")`);
-                closeModal();
-                await loadRoles();
-            } catch (err) {
-                showToast(err.message, true);
-            }
-        });
+        // Устаревшая функция, используем openTaskEmployeeModal
+        openTaskEmployeeModal(taskId, taskName);
     }
 
     // ---- Новая функция для управления сотрудниками задачи (модальное окно) ----
@@ -6726,10 +6673,18 @@ function initProcsetsTab() {
             await loadAllEmployees();
         }
 
-        const role = roles.find(r => r.name === taskName);
-        const roleId = role ? role.id : null;
-        const assignedEmployees = role ? (role.employees || []) : [];
+        // Находим все роли, в которые входит данная задача
+        const rolesForTask = roles.filter(role => role.tasks.some(t => t.id === taskId));
 
+        if (rolesForTask.length === 0) {
+            showToast(`Задача "${taskName}" не привязана ни к одной должности. Сначала создайте должность и добавьте в неё эту задачу.`, true);
+            return;
+        }
+
+        // Для простоты используем первую роль (можно расширить для нескольких)
+        const role = rolesForTask[0];
+        const roleId = role.id;
+        const assignedEmployees = role.employees || [];
         const assignedIds = assignedEmployees.map(e => e.id);
         const availableEmployees = allEmployees.filter(e => !assignedIds.includes(e.id));
 
@@ -6741,6 +6696,7 @@ function initProcsetsTab() {
                 <span class="modal-close" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
                 <h3>Управление назначенными сотрудниками</h3>
                 <p><strong>Задача:</strong> ${escapeHtml(taskName)}</p>
+                <p><strong>Должность:</strong> ${escapeHtml(role.name)}</p>
                 <div style="margin-top:12px;">
                     <h4>Назначенные сотрудники</h4>
                     <div id="assignedEmployeesList">
@@ -6810,7 +6766,7 @@ function initProcsetsTab() {
                 return;
             }
             try {
-                const resp = await apiFetch(`/api/sandbox/tasks/${taskId}/assign-employee`, {
+                const resp = await apiFetch(`/api/sandbox/roles/${roleId}/employees`, {
                     method: 'POST',
                     body: JSON.stringify({ employee_id: employeeId })
                 });
@@ -6863,6 +6819,7 @@ function initProcsetsTab() {
         return Object.values(groups).sort((a, b) => a.type.name.localeCompare(b.type.name));
     }
 
+    // ---- Рендеринг задач с отображением должностей и сотрудников ----
     function renderTasksGrouped() {
         const leftPanel = document.getElementById('tasksLeftPanel');
         if (!leftPanel) return;
@@ -6876,6 +6833,15 @@ function initProcsetsTab() {
             leftPanel.innerHTML = '<p style="color:#94a3b8;">Нет задач с типами. Создайте типы и задачи.</p>';
             return;
         }
+
+        // Строим маппинг task_id -> список ролей
+        const taskToRoles = {};
+        roles.forEach(role => {
+            role.tasks.forEach(task => {
+                if (!taskToRoles[task.id]) taskToRoles[task.id] = [];
+                taskToRoles[task.id].push(role);
+            });
+        });
 
         let html = '<div class="task-groups-container">';
         for (const group of groups) {
@@ -6891,11 +6857,14 @@ function initProcsetsTab() {
                 </div>
                 <div class="task-group-body">`;
             for (const task of group.tasks) {
-                const role = roles.find(r => r.name === task.name);
+                const rolesForTask = taskToRoles[task.id] || [];
                 let employeesHtml = '';
-                if (role && role.employees && role.employees.length > 0) {
-                    const names = role.employees.map(e => escapeHtml(e.full_name)).join(', ');
-                    employeesHtml = `<div class="assigned-employees">${escapeHtml(task.name)} — ${names}</div>`;
+                if (rolesForTask.length > 0) {
+                    const parts = rolesForTask.map(role => {
+                        const names = (role.employees || []).map(e => escapeHtml(e.full_name)).join(', ');
+                        return `${escapeHtml(role.name)} — ${names || 'нет сотрудников'}`;
+                    });
+                    employeesHtml = `<div class="assigned-employees">${parts.join('; ')}</div>`;
                 }
 
                 html += `<div class="task-item" data-id="${task.id}" draggable="true">
@@ -6920,6 +6889,7 @@ function initProcsetsTab() {
         }
         leftPanel.innerHTML = html;
 
+        // ---- Обработчики событий ----
         leftPanel.querySelectorAll('.task-item[draggable="true"]').forEach(el => {
             el.removeEventListener('dragstart', handleDragStart);
             el.removeEventListener('dragend', handleDragEnd);

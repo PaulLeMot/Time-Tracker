@@ -603,22 +603,3 @@ async def remove_employee_from_role(
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
     return None
-
-# ==================== НАЗНАЧЕНИЕ СОТРУДНИКА НА ЗАДАЧУ ====================
-
-class AssignEmployeeToTask(BaseModel):
-    employee_id: int
-
-@router.post("/tasks/{task_id}/assign-employee", status_code=201, response_model=dict)
-async def assign_employee_to_task(
-    task_id: int,
-    data: AssignEmployeeToTask,
-    db: AsyncSession = Depends(get_db)
-):
-    try:
-        result = await crud.add_employee_to_task_role(db, task_id, data.employee_id)
-        return result
-    except ValueError as e:
-        raise HTTPException(404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(400, detail=str(e))
