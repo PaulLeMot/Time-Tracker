@@ -1321,7 +1321,7 @@
     const assignRoleBtn = document.getElementById('assignRoleBtn');
     const createRoleAndAssignBtn = document.getElementById('createRoleAndAssignBtn');
     const roleSelect = document.getElementById('roleSelect');
-    const newRoleNameInput = document.getElementById('newRoleNameInput');
+    const newRoleNameInput = document.getElementById('newRoleNameInline');
     const roleModalEmployeeFullName = document.getElementById('roleModalEmployeeFullName');
     const roleModalError = document.getElementById('roleModalError');
     let currentEmployeeIdForRole = null;
@@ -7665,21 +7665,34 @@ function initProcsetsTab() {
             });
         }
 
-        // ---- Обработчик кнопки "➕ Добавить" для списка должностей ----
-        const addRoleSimpleBtn = document.getElementById('addRoleSimpleBtn');
-        if (addRoleSimpleBtn) {
-            addRoleSimpleBtn.addEventListener('click', async function() {
-                const name = prompt('Введите название новой должности:');
-                if (!name || name.trim() === '') return;
+        // ---- Обработчик inline-поля для добавления должности ----
+        const addRoleInlineBtn = document.getElementById('addRoleInlineBtn');
+        const newRoleNameInput = document.getElementById('newRoleNameInline');
+        if (addRoleInlineBtn && newRoleNameInput) {
+            // Добавление по клику
+            addRoleInlineBtn.addEventListener('click', async function() {
+                const name = newRoleNameInput.value.trim();
+                if (!name) {
+                    showToast('Введите название должности', true);
+                    return;
+                }
                 try {
                     await apiFetch('/api/sandbox/roles', {
                         method: 'POST',
-                        body: JSON.stringify({ name: name.trim() })
+                        body: JSON.stringify({ name: name })
                     });
                     showToast('Должность создана');
+                    newRoleNameInput.value = '';
                     await loadRoles();
                 } catch (err) {
                     showToast(err.message, true);
+                }
+            });
+
+            // Добавление по Enter
+            newRoleNameInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    addRoleInlineBtn.click();
                 }
             });
         }
