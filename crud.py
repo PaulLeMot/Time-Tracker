@@ -1266,3 +1266,13 @@ async def set_role_tasks(db: AsyncSession, role_id: int, task_ids: list[int]) ->
     await db.commit()
     # Возвращаем обновлённый список задач
     return await get_tasks_for_role(db, role_id)
+
+async def get_roles_for_employee(db: AsyncSession, employee_id: int) -> list[Role]:
+    stmt = select(Role).join(EmployeeRole, EmployeeRole.role_id == Role.id).where(
+        EmployeeRole.employee_id == employee_id
+    ).options(
+        selectinload(Role.role_tasks).selectinload(RoleTask.task),
+        selectinload(Role.employee_roles).selectinload(EmployeeRole.employee)
+    )
+    result = await db.execute(stmt)
+    return result.unique().scalars().all()

@@ -1087,7 +1087,7 @@
                             <th>ФИО</th>
                             <th>Пароль</th>
                             <th>Активен</th>
-                            <th>Штрих-код</th>
+                            <th>Должность</th>
                             <th>Админ</th>
                             <th>Мониторинг</th>
                             <th>Действия</th>
@@ -1287,6 +1287,38 @@
         <div id="editProposedTimeError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
+<!-- Модальное окно для изменения должности сотрудника -->
+<div id="roleModal" class="modal">
+    <div class="modal-content" style="max-width: 450px;">
+        <span class="close-role-modal" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
+        <h3 id="roleModalTitle">Изменение должности</h3>
+        <p id="roleModalEmployeeName" style="font-weight: 500; color: #0f172a; margin-bottom: 16px;">Сотрудник: <span id="roleModalEmployeeFullName">—</span></p>
+        <div style="margin-bottom: 16px;">
+            <label style="font-weight: 500;">Текущие должности</label>
+            <div id="currentRolesList" style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px;">
+                <!-- сюда будут подставляться теги с названиями и крестиками -->
+            </div>
+        </div>
+        <div style="margin-bottom: 16px;">
+            <label style="font-weight: 500;">Выберите существующую должность</label>
+            <select id="roleSelect" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1; margin-top:4px;">
+                <option value="">-- Выберите должность --</option>
+            </select>
+        </div>
+        <div style="margin-bottom: 16px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+            <label style="font-weight: 500;">Или создайте новую</label>
+            <div style="display: flex; gap: 8px; margin-top: 4px;">
+                <input type="text" id="newRoleNameInput" placeholder="Название новой должности" style="flex:1; padding:8px; border-radius:20px; border:1px solid #cbd5e1;">
+                <button id="createRoleAndAssignBtn" class="success" style="padding:8px 16px; border:none; border-radius:20px; background:#22c55e; color:white; cursor:pointer;">Создать и назначить</button>
+            </div>
+        </div>
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+            <button id="cancelRoleBtn" style="background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Отмена</button>
+            <button id="assignRoleBtn" style="background:#3b82f6; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Назначить</button>
+        </div>
+        <div id="roleModalError" style="color:red; margin-top:8px;"></div>
+    </div>
+</div>
 <script>
     let eventSource = null;
     let startDate = '';
@@ -1310,7 +1342,17 @@
     let selectedEmployeeId = '';
     let periodTrafficModeActive = false;
     let dailyTrafficModeActive = false;
-    
+    // ---- Переменные для модального окна должности ----
+    const roleModal = document.getElementById('roleModal');
+    const closeRoleModalBtn = document.querySelector('.close-role-modal');
+    const cancelRoleBtn = document.getElementById('cancelRoleBtn');
+    const assignRoleBtn = document.getElementById('assignRoleBtn');
+    const createRoleAndAssignBtn = document.getElementById('createRoleAndAssignBtn');
+    const roleSelect = document.getElementById('roleSelect');
+    const newRoleNameInput = document.getElementById('newRoleNameInput');
+    const roleModalEmployeeFullName = document.getElementById('roleModalEmployeeFullName');
+    const roleModalError = document.getElementById('roleModalError');
+    let currentEmployeeIdForRole = null;
     const colorLabels = {
         'start': 'Начало дня',
         'break_start': 'Начало перерыва',
@@ -1387,42 +1429,82 @@
 
     async function loadEmployees() {
         try {
-            const resp = await fetch('/api/employees?active_only=false');
-            if (!resp.ok) throw new Error('Ошибка загрузки');
-            let employees = await resp.json();
+            // Загружаем сотрудников
+            const empResp = await fetch('/api/employees?active_only=false');
+            if (!empResp.ok) throw new Error('Ошибка загрузки сотрудников');
+            let employees = await empResp.json();
             employees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+
+            // Загружаем роли, чтобы узнать, у кого какая должность
+            let roles = [];
+            try {
+                const rolesResp = await fetch('/api/sandbox/roles', { credentials: 'include' });
+                if (rolesResp.ok) {
+                    roles = await rolesResp.json();
+                } else {
+                    console.warn('Не удалось загрузить роли, поле "Должность" будет пустым');
+                }
+            } catch (err) {
+                console.warn('Ошибка загрузки должностей:', err);
+            }
+
+            // Строим маппинг: employee_id -> список названий должностей
+            const employeeRolesMap = {};
+            roles.forEach(role => {
+                if (role.employees && role.employees.length > 0) {
+                    role.employees.forEach(emp => {
+                        if (!employeeRolesMap[emp.id]) {
+                            employeeRolesMap[emp.id] = [];
+                        }
+                        employeeRolesMap[emp.id].push(role.name);
+                    });
+                }
+            });
+
             const tbody = document.getElementById('employeesTbody');
             tbody.innerHTML = '';
             for (const emp of employees) {
                 const row = tbody.insertRow();
-                
+
                 row.insertCell(0).innerText = emp.id;
-                
+
                 const loginCell = row.insertCell(1);
                 loginCell.innerHTML = `${escapeHtml(emp.username)} <button class="small-btn edit-username-btn" data-id="${emp.id}" data-username="${escapeHtml(emp.username)}" title="Редактировать логин">✏️</button>`;
-                
+
                 const nameCell = row.insertCell(2);
                 nameCell.innerHTML = `${escapeHtml(emp.full_name)} <button class="small-btn edit-fullname-btn" data-id="${emp.id}" data-fullname="${escapeHtml(emp.full_name)}" title="Редактировать ФИО">✏️</button>`;
-                
+
                 const passwordCell = row.insertCell(3);
                 passwordCell.innerHTML = `
                     <span style="font-family: monospace;">${emp.password || 'не задан'}</span>
                     <button class="small-btn reset-pass-btn" data-id="${emp.id}" title="Сбросить пароль">🔑</button>
                     <button class="small-btn edit-pass-btn" data-id="${emp.id}" data-password="${emp.password || ''}" title="Изменить пароль">✏️</button>
                 `;
-                
+
                 const activeCell = row.insertCell(4);
                 activeCell.innerHTML = `
                     ${emp.is_active ? 'Да' : 'Нет'}
                     <button class="small-btn toggle-active-btn" data-id="${emp.id}" data-active="${emp.is_active}" title="Изменить статус">🔄</button>
                 `;
-                
-                const barcodeSecretCell = row.insertCell(5);
-                barcodeSecretCell.innerHTML = `
-                    <span style="font-family: monospace;">${escapeHtml(emp.barcode_secret || 'не задан')}</span>
-                    <button class="small-btn edit-barcode-secret-btn" data-id="${emp.id}" data-secret="${escapeHtml(emp.barcode_secret || '')}" title="Изменить секрет штрих-кода">✏️</button>
-                `;
 
+                // ---------- ЯЧЕЙКА: ДОЛЖНОСТЬ ----------
+                const roleCell = row.insertCell(5);
+                const roleNames = employeeRolesMap[emp.id] || [];
+                if (roleNames.length > 0) {
+                    roleCell.innerText = roleNames.join(', ');
+                    roleCell.style.cursor = 'pointer';
+                    roleCell.style.color = '#3b82f6';
+                    roleCell.style.textDecoration = 'underline';
+                } else {
+                    roleCell.innerText = '—';
+                    roleCell.style.color = '#94a3b8';
+                    roleCell.style.cursor = 'pointer';
+                }
+                roleCell.addEventListener('click', function() {
+                    openRoleModal(emp.id, emp.full_name);
+                });
+
+                // Админ
                 const adminCell = row.insertCell(6);
                 const adminCheckbox = document.createElement('input');
                 adminCheckbox.type = 'checkbox';
@@ -1446,6 +1528,7 @@
                 });
                 adminCell.appendChild(adminCheckbox);
 
+                // Мониторинг
                 const monitorCell = row.insertCell(7);
                 const monitorCheckbox = document.createElement('input');
                 monitorCheckbox.type = 'checkbox';
@@ -1469,6 +1552,7 @@
                 });
                 monitorCell.appendChild(monitorCheckbox);
 
+                // Действия (Штрих-код и удаление)
                 const actionsCell = row.insertCell(8);
                 const barcodeBtn = document.createElement('button');
                 barcodeBtn.textContent = 'Штрих-код';
@@ -1488,7 +1572,6 @@
                 };
 
                 const expandCell = row.insertCell(9);
-                // Определяем, есть ли расписание
                 const hasSchedule = emp.schedule_data && Object.keys(emp.schedule_data).length > 0;
                 const arrowColor = hasSchedule ? '#166534' : '#991b1b';
                 expandCell.innerHTML = `<button class="expand-schedule-btn" data-id="${emp.id}" style="background:none; border:none; cursor:pointer; font-size:1.2rem; color: ${arrowColor};">▼</button>`;
@@ -1513,7 +1596,7 @@
                 actionsCell.appendChild(delBtn);
             }
 
-            // обработчики для кнопок редактирования и т.д. (остаются без изменений)
+            // ---- Обработчики кнопок (редактирование, пароль, активность) ----
             document.querySelectorAll('.edit-username-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const id = btn.dataset.id;
@@ -1565,37 +1648,15 @@
                     } else showToast('Ошибка', true);
                 });
             });
-            document.querySelectorAll('.edit-barcode-secret-btn').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = btn.dataset.id;
-                    const current = btn.dataset.secret;
-                    const newSecret = prompt('Введите новое значение для штрих-кода (будет отображаться на карточке):', current);
-                    if (newSecret !== null) {
-                        try {
-                            const resp = await fetch(`/api/employees/${id}`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ barcode_secret: newSecret })
-                            });
-                            if (resp.ok) {
-                                showToast('Секрет штрих-кода обновлён');
-                                loadEmployees();
-                                refreshCurrentReport();
-                            } else {
-                                showToast('Ошибка обновления', true);
-                            }
-                        } catch (err) {
-                            showToast('Ошибка сети', true);
-                        }
-                    }
-                });
-            });
+
+            // Сохраняем маппинг в глобальной переменной для использования в модальном окне
+            window._employeeRolesMap = employeeRolesMap;
 
         } catch (err) {
             showToast(err.message, true);
         }
     }
-    document.getElementById('addEmployeeForm').addEventListener('submit', async (e) => {
+document.getElementById('addEmployeeForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value.trim();
         const fullName = document.getElementById('fullName').value.trim();
@@ -2328,7 +2389,7 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         initTabs();
         const refreshRecentBtn = document.getElementById('refreshRecentBtn');
         if (refreshRecentBtn) {
@@ -2337,7 +2398,7 @@
                 loadRecentEntries(parseInt(limit));
             });
         }
-        loadEmployees();
+        await loadEmployees();
         loadEmployeeListForFilter();
         loadRecentEmployeeFilter();
         flatpickr("#notifDateRange", {
@@ -3790,6 +3851,45 @@ function openEditProposedTimeModal(notifId, currentIsoTime) {
     }
     document.getElementById('editProposedTimeError').innerText = '';
     document.getElementById('editProposedTimeModal').style.display = 'block';
+}
+
+async function openRoleModal(employeeId, employeeFullName) {
+    currentEmployeeIdForRole = employeeId;
+    roleModalEmployeeFullName.textContent = employeeFullName;
+    roleModalError.textContent = '';
+    newRoleNameInput.value = '';
+    roleSelect.value = '';
+
+    // ПОКАЗЫВАЕМ МОДАЛЬНОЕ ОКНО
+    roleModal.style.display = 'block';
+
+    try {
+        // Загружаем все должноти для выпадающего списка
+        const resp = await fetch('/api/sandbox/roles', { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки должностей');
+        const roles = await resp.json();
+
+        // Заполняем select
+        roleSelect.innerHTML = '<option value="">-- Выберите должность --</option>';
+        roles.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r.id;
+            opt.textContent = r.name;
+            roleSelect.appendChild(opt);
+        });
+
+        // ОТОБРАЖАЕМ ТЕКУЩИЕ ДОЛЖНОСТИ СОТРУДНИКА (теги с крестиками)
+        await renderCurrentRoles(employeeId);
+    } catch (err) {
+        // Показываем ошибку, но модалка уже открыта
+        roleModalError.textContent = err.message;
+        showToast('Ошибка загрузки должностей: ' + err.message, true);
+    }
+}
+
+function closeRoleModal() {
+    roleModal.style.display = 'none';
+    currentEmployeeIdForRole = null;
 }
 
 document.getElementById('saveEditProposedTimeBtn').addEventListener('click', async () => {
@@ -5918,6 +6018,168 @@ function getAverageTimeColor(timeStr) {
     if (minutes > high) return 'avg-time-green';
     return '';
 }
+// ---- Обработчики для модального окна должности ----
+closeRoleModalBtn.addEventListener('click', closeRoleModal);
+cancelRoleBtn.addEventListener('click', closeRoleModal);
+
+// Закрытие при клике вне модалки
+window.addEventListener('click', function(e) {
+    if (e.target === roleModal) closeRoleModal();
+});
+
+// Назначение существующей должности
+assignRoleBtn.addEventListener('click', async function() {
+    const roleId = parseInt(roleSelect.value);
+    if (!roleId) {
+        roleModalError.textContent = 'Выберите должность';
+        return;
+    }
+    const employeeId = currentEmployeeIdForRole;
+    if (!employeeId) {
+        roleModalError.textContent = 'Сотрудник не выбран';
+        return;
+    }
+
+    try {
+        // 1. Удаляем все текущие должности сотрудника
+        const rolesForEmployee = window._employeeRolesMap?.[employeeId] || [];
+        const allRoles = await (await fetch('/api/sandbox/roles', { credentials: 'include' })).json();
+        for (const roleName of rolesForEmployee) {
+            const role = allRoles.find(r => r.name === roleName);
+            if (role) {
+                await fetch(`/api/sandbox/roles/${role.id}/employees/${employeeId}`, { method: 'DELETE', credentials: 'include' });
+            }
+        }
+
+        // 2. Назначаем сотрудника на выбранную должность
+        const resp = await fetch(`/api/sandbox/roles/${roleId}/employees`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: employeeId }),
+            credentials: 'include'
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || 'Ошибка назначения');
+        }
+        showToast('Должность назначена');
+        closeRoleModal();
+        loadEmployees(); // обновляем таблицу
+    } catch (err) {
+        roleModalError.textContent = err.message;
+    }
+});
+
+// Создание новой должности и назначение
+createRoleAndAssignBtn.addEventListener('click', async function() {
+    const newRoleName = newRoleNameInput.value.trim();
+    if (!newRoleName) {
+        roleModalError.textContent = 'Введите название новой должности';
+        return;
+    }
+    const employeeId = currentEmployeeIdForRole;
+    if (!employeeId) {
+        roleModalError.textContent = 'Сотрудник не выбран';
+        return;
+    }
+
+    try {
+        // 1. Создаём должность
+        const createResp = await fetch('/api/sandbox/roles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newRoleName }),
+            credentials: 'include'
+        });
+        if (!createResp.ok) {
+            const err = await createResp.json();
+            throw new Error(err.detail || 'Ошибка создания должности');
+        }
+        const newRole = await createResp.json();
+
+        // 2. Удаляем все текущие должности сотрудника
+        const rolesForEmployee = window._employeeRolesMap?.[employeeId] || [];
+        const allRoles = await (await fetch('/api/sandbox/roles', { credentials: 'include' })).json();
+        for (const roleName of rolesForEmployee) {
+            const role = allRoles.find(r => r.name === roleName);
+            if (role) {
+                await fetch(`/api/sandbox/roles/${role.id}/employees/${employeeId}`, { method: 'DELETE', credentials: 'include' });
+            }
+        }
+
+        // 3. Назначаем сотрудника на новую должность
+        const assignResp = await fetch(`/api/sandbox/roles/${newRole.id}/employees`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: employeeId }),
+            credentials: 'include'
+        });
+        if (!assignResp.ok) {
+            const err = await assignResp.json();
+            throw new Error(err.detail || 'Ошибка назначения');
+        }
+        showToast('Новая должность создана и назначена');
+        closeRoleModal();
+        loadEmployees();
+    } catch (err) {
+        roleModalError.textContent = err.message;
+    }
+});
+async function renderCurrentRoles(employeeId) {
+    const container = document.getElementById('currentRolesList');
+    if (!container) return;
+
+    try {
+        const resp = await fetch(`/api/sandbox/employees/${employeeId}/roles`, { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки должностей сотрудника');
+        const roles = await resp.json(); // массив должностей, каждая с полями id, name, description, tasks, employees
+
+        if (roles.length === 0) {
+            container.innerHTML = '<span style="color: #94a3b8;">Нет назначенных должностей</span>';
+            return;
+        }
+
+        let html = '';
+        for (const role of roles) {
+            html += `<span style="display: inline-flex; align-items: center; background: #e2e8f0; padding: 4px 12px; border-radius: 20px; gap: 6px;">
+                        ${escapeHtml(role.name)}
+                        <button class="remove-role-btn" data-role-id="${role.id}" data-employee-id="${employeeId}" 
+                                style="background: none; border: none; cursor: pointer; color: #ef4444; font-size: 1.2rem; line-height: 1; padding: 0 2px;">
+                            &times;
+                        </button>
+                     </span>`;
+        }
+        container.innerHTML = html;
+
+        // Обработчики удаления (как раньше)
+        container.querySelectorAll('.remove-role-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const roleId = parseInt(this.dataset.roleId);
+                const empId = parseInt(this.dataset.employeeId);
+                if (!confirm('Удалить эту должность у сотрудника?')) return;
+                try {
+                    const resp = await fetch(`/api/sandbox/roles/${roleId}/employees/${empId}`, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+                    if (!resp.ok) throw new Error('Ошибка удаления');
+                    showToast('Должность удалена');
+                    // Обновляем список должностей в модалке
+                    await renderCurrentRoles(empId);
+                    // Обновляем таблицу (чтобы обновить глобальный маппинг, но это не обязательно для модалки)
+                    await loadEmployees();
+                    // Сбрасываем выбор в select
+                    roleSelect.value = '';
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    } catch (err) {
+        container.innerHTML = '<span style="color: red;">Ошибка загрузки должностей</span>';
+        showToast(err.message, true);
+    }
+}
 function initProcsetsTab() {
     // ---- Глобальные переменные ----
     let deals = [];
@@ -5933,28 +6195,21 @@ function initProcsetsTab() {
     let products = [];
     let techCards = [];
 
-    // ---- Переменные для ролей ----
+    // ---- Переменные для должностей ----
     let roles = [];
     let allEmployees = [];
-    let currentTaskIdForAssignment = null;
 
-    // ---- Переменные для конструктора ----
-    let constructorMode = 'techcard';
+    // ---- Переменные для конструктора (только техкарты) ----
     let constructorTasks = [];
     let currentTechCardId = null;
-    let currentRoleId = null;
 
-    // ---- Элементы конструктора ----
+    // ---- Элементы конструктора (только техкарты) ----
     let techCardNameInput = null;
     let techCardSelect = null;
-    let roleNameInput = null;
-    let roleDescriptionInput = null;
-    let roleSelect = null;
     let constructorListEl = null;
     let saveConstructorBtn = null;
     let deleteConstructorBtn = null;
     let clearConstructorBtn = null;
-    let toggleModeBtn = null;
     let constructorInitialized = false;
 
     // ---- Элементы модального окна товаров ----
@@ -6393,7 +6648,6 @@ function initProcsetsTab() {
         }
         containerEl.innerHTML = html;
 
-        // ---- Обработчики событий для товаров (кнопки) ----
         containerEl.querySelectorAll('.add-product-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 const techCardId = this.dataset.techId ? parseInt(this.dataset.techId) : null;
@@ -6451,7 +6705,7 @@ function initProcsetsTab() {
         });
     }
 
-    // ======================== ЗАДАЧИ И КОНСТРУКТОР ========================
+    // ======================== ЗАДАЧИ И КОНСТРУКТОР (ТОЛЬКО ТЕХКАРТЫ) ========================
 
     // ---- Функция рендеринга списка типов задач ----
     function renderTaskTypes() {
@@ -6485,31 +6739,20 @@ function initProcsetsTab() {
         });
     }
 
-    // ---- Загрузка ролей ----
+    // ---- Загрузка должностей ----
     async function loadRoles() {
         try {
             const resp = await apiFetch('/api/sandbox/roles');
             roles = await resp.json();
-            populateRoleSelect();
             renderRoles();
-            renderTasksGrouped();  // <-- обновляем задачи, чтобы отобразить сотрудников
+            renderTasksGrouped();  // <-- обновляем задачи, чтобы отобразить роли
         } catch (err) {
-            console.error('Ошибка загрузки ролей:', err);
-            showToast('Не удалось загрузить роли: ' + err.message, true);
+            console.error('Ошибка загрузки должностей:', err);
+            showToast('Не удалось загрузить должности: ' + err.message, true);
         }
     }
 
-    function populateRoleSelect() {
-        if (!roleSelect) return;
-        const currentVal = roleSelect.value;
-        roleSelect.innerHTML = '<option value="">-- Создать новую --</option>';
-        roles.forEach(r => {
-            roleSelect.innerHTML += `<option value="${r.id}">${escapeHtml(r.name)}</option>`;
-        });
-        if (currentVal) roleSelect.value = currentVal;
-    }
-
-    // ---- Загрузка всех сотрудников (для выбора в ролях) ----
+    // ---- Загрузка всех сотрудников (для вкладки "Роли") ----
     async function loadAllEmployees() {
         try {
             const resp = await fetch('/api/employees?active_only=true', { credentials: 'include' });
@@ -6528,7 +6771,7 @@ function initProcsetsTab() {
         if (!containerEl) return;
 
         if (!roles || roles.length === 0) {
-            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет ролей. Создайте их в конструкторе задач.</p>';
+            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет ролей. Создайте их через API или напрямую в БД.</p>';
             return;
         }
 
@@ -6659,128 +6902,6 @@ function initProcsetsTab() {
         }
     }
 
-    // ---- Функция для назначения сотрудника на задачу (через создание роли) ----
-    // Удаляем эту функцию, она не нужна, так как мы теперь используем openTaskEmployeeModal
-    // (она осталась для совместимости, но не используется)
-    async function openEmployeeSelectionModal(taskId, taskName) {
-        // Устаревшая функция, используем openTaskEmployeeModal
-        openTaskEmployeeModal(taskId, taskName);
-    }
-
-    // ---- Новая функция для управления сотрудниками задачи (модальное окно) ----
-    async function openTaskEmployeeModal(taskId, taskName) {
-        if (!allEmployees || allEmployees.length === 0) {
-            await loadAllEmployees();
-        }
-
-        // Находим все роли, в которые входит данная задача
-        const rolesForTask = roles.filter(role => role.tasks.some(t => t.id === taskId));
-
-        if (rolesForTask.length === 0) {
-            showToast(`Задача "${taskName}" не привязана ни к одной должности. Сначала создайте должность и добавьте в неё эту задачу.`, true);
-            return;
-        }
-
-        // Для простоты используем первую роль (можно расширить для нескольких)
-        const role = rolesForTask[0];
-        const roleId = role.id;
-        const assignedEmployees = role.employees || [];
-        const assignedIds = assignedEmployees.map(e => e.id);
-        const availableEmployees = allEmployees.filter(e => !assignedIds.includes(e.id));
-
-        const modal = document.createElement('div');
-        modal.className = 'modal';
-        modal.style.display = 'block';
-        modal.innerHTML = `
-            <div class="modal-content" style="max-width: 500px;">
-                <span class="modal-close" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
-                <h3>Управление назначенными сотрудниками</h3>
-                <p><strong>Задача:</strong> ${escapeHtml(taskName)}</p>
-                <p><strong>Должность:</strong> ${escapeHtml(role.name)}</p>
-                <div style="margin-top:12px;">
-                    <h4>Назначенные сотрудники</h4>
-                    <div id="assignedEmployeesList">
-                        ${assignedEmployees.length === 0 ? '<p style="color:#94a3b8;">Нет назначенных сотрудников</p>' : ''}
-                        ${assignedEmployees.map(e => `
-                            <div class="employee-item" data-employee-id="${e.id}">
-                                <span>${escapeHtml(e.full_name)}</span>
-                                <button class="remove-employee-from-task" data-role-id="${roleId}" data-employee-id="${e.id}" style="background:red; color:white; border:none; border-radius:12px; padding:2px 8px; cursor:pointer;">✖</button>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-                <div style="margin-top:16px;">
-                    <h4>Добавить сотрудника</h4>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <select id="addEmployeeSelect" style="flex:1; padding:8px; border-radius:20px; border:1px solid #cbd5e1;">
-                            <option value="">-- Выберите сотрудника --</option>
-                            ${availableEmployees.map(e => `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`).join('')}
-                        </select>
-                        <button id="addEmployeeToTaskBtn" class="success" style="padding:6px 16px; border:none; border-radius:20px; background:#22c55e; color:white; cursor:pointer;">➕ Добавить</button>
-                    </div>
-                    ${availableEmployees.length === 0 ? '<p style="color:#94a3b8; margin-top:4px;">Все сотрудники уже назначены</p>' : ''}
-                </div>
-                <div style="margin-top:16px; display:flex; justify-content:flex-end;">
-                    <button id="closeTaskEmployeeModalBtn" style="background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Закрыть</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-
-        const closeModal = () => {
-            modal.remove();
-        };
-
-        modal.querySelector('.modal-close').addEventListener('click', closeModal);
-        modal.querySelector('#closeTaskEmployeeModalBtn').addEventListener('click', closeModal);
-        window.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
-
-        modal.querySelectorAll('.remove-employee-from-task').forEach(btn => {
-            btn.addEventListener('click', async function() {
-                const employeeId = parseInt(this.dataset.employeeId);
-                const roleId = parseInt(this.dataset.roleId);
-                if (!roleId) {
-                    showToast('Должность не найдена', true);
-                    return;
-                }
-                if (!confirm('Удалить этого сотрудника из задачи?')) return;
-                try {
-                    await apiFetch(`/api/sandbox/roles/${roleId}/employees/${employeeId}`, { method: 'DELETE' });
-                    showToast('Сотрудник удалён из задачи');
-                    await loadRoles();
-                    closeModal();
-                    openTaskEmployeeModal(taskId, taskName);
-                } catch (err) {
-                    showToast(err.message, true);
-                }
-            });
-        });
-
-        modal.querySelector('#addEmployeeToTaskBtn').addEventListener('click', async function() {
-            const select = modal.querySelector('#addEmployeeSelect');
-            const employeeId = parseInt(select.value);
-            if (!employeeId) {
-                showToast('Выберите сотрудника', true);
-                return;
-            }
-            try {
-                const resp = await apiFetch(`/api/sandbox/roles/${roleId}/employees`, {
-                    method: 'POST',
-                    body: JSON.stringify({ employee_id: employeeId })
-                });
-                const data = await resp.json();
-                showToast(`Сотрудник добавлен в задачу "${taskName}"`);
-                await loadRoles();
-                closeModal();
-                openTaskEmployeeModal(taskId, taskName);
-            } catch (err) {
-                showToast(err.message, true);
-            }
-        });
-    }
-
     // ---- Загрузка задач и типов ----
     async function loadTaskTypes() {
         try {
@@ -6819,7 +6940,7 @@ function initProcsetsTab() {
         return Object.values(groups).sort((a, b) => a.type.name.localeCompare(b.type.name));
     }
 
-    // ---- Рендеринг задач с отображением должностей и сотрудников ----
+    // ---- Рендеринг задач с отображением ролей и кнопками добавления/удаления ----
     function renderTasksGrouped() {
         const leftPanel = document.getElementById('tasksLeftPanel');
         if (!leftPanel) return;
@@ -6858,24 +6979,30 @@ function initProcsetsTab() {
                 <div class="task-group-body">`;
             for (const task of group.tasks) {
                 const rolesForTask = taskToRoles[task.id] || [];
-                let employeesHtml = '';
+
+                // ---- ОТОБРАЖЕНИЕ РОЛЕЙ ДЛЯ ЗАДАЧИ ----
+                let rolesHtml = '';
                 if (rolesForTask.length > 0) {
-                    const parts = rolesForTask.map(role => {
-                        const names = (role.employees || []).map(e => escapeHtml(e.full_name)).join(', ');
-                        return `${escapeHtml(role.name)} — ${names || 'нет сотрудников'}`;
-                    });
-                    employeesHtml = `<div class="assigned-employees">${parts.join('; ')}</div>`;
+                    rolesHtml = `<div class="task-roles" style="font-size:0.8rem; color:#475569; margin-top:4px;">
+                        ${rolesForTask.map(role => `
+                            <span class="role-tag" style="background:#f1f5f9; border-radius:12px; padding:0 6px; display:inline-block; margin:2px 4px 2px 0;">
+                                ${escapeHtml(role.name)}
+                                <button class="remove-task-from-role" data-task-id="${task.id}" data-role-id="${role.id}" style="background:none; border:none; cursor:pointer; color:#ef4444; padding:0 2px; font-size:0.8rem;">✖</button>
+                            </span>
+                        `).join('')}
+                    </div>`;
                 }
 
+                // ---- КНОПКИ: редактировать, удалить, добавить в роль (без "👤") ----
                 html += `<div class="task-item" data-id="${task.id}" draggable="true">
                     <div class="task-info">
                         <span class="task-name">${escapeHtml(task.name)}</span>
-                        ${employeesHtml}
+                        ${rolesHtml}
                     </div>
                     <span class="task-actions">
                         <button class="edit-task-btn" data-id="${task.id}" title="Редактировать задачу">✏️</button>
                         <button class="delete-task-btn" data-id="${task.id}" title="Удалить задачу">🗑️</button>
-                        <button class="assign-employee-btn" data-id="${task.id}" data-name="${escapeHtml(task.name)}" title="Назначить сотрудника">➕</button>
+                        <button class="add-task-to-role-btn" data-task-id="${task.id}" data-task-name="${escapeHtml(task.name)}" title="Добавить в роль">➕</button>
                     </span>
                 </div>`;
             }
@@ -6992,14 +7119,86 @@ function initProcsetsTab() {
             });
         });
 
-        // ---- Обработчики кнопок назначения сотрудника на задачу ----
-        leftPanel.querySelectorAll('.assign-employee-btn').forEach(btn => {
+        // ---- Обработчики добавления задачи в роль ----
+        leftPanel.querySelectorAll('.add-task-to-role-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const taskId = parseInt(btn.dataset.id);
-                const taskName = btn.dataset.name;
-                openTaskEmployeeModal(taskId, taskName);
+                const taskId = parseInt(btn.dataset.taskId);
+                const taskName = btn.dataset.taskName;
+                openAddTaskToRoleModal(taskId, taskName);
             });
+        });
+
+        // ---- Обработчики удаления задачи из роли ----
+        leftPanel.querySelectorAll('.remove-task-from-role').forEach(btn => {
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                const taskId = parseInt(this.dataset.taskId);
+                const roleId = parseInt(this.dataset.roleId);
+                if (!confirm('Удалить эту задачу из роли?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/roles/${roleId}/tasks/${taskId}`, { method: 'DELETE' });
+                    showToast('Задача удалена из роли');
+                    await loadRoles();
+                    await loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    // ----- Функция для добавления задачи в роль (модальное окно) -----
+    async function openAddTaskToRoleModal(taskId, taskName) {
+        // Получаем все роли
+        const resp = await apiFetch('/api/sandbox/roles');
+        const allRoles = await resp.json();
+        // Роли, в которых задачи ещё нет
+        const available = allRoles.filter(r => !r.tasks.some(t => t.id === taskId));
+        if (available.length === 0) {
+            showToast('Задача уже во всех ролях', true);
+            return;
+        }
+        // Создаём модалку
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:400px;">
+                <span class="modal-close" style="float:right;cursor:pointer;font-size:1.5rem;">&times;</span>
+                <h3>Добавить задачу в роль</h3>
+                <p><strong>Задача:</strong> ${escapeHtml(taskName)}</p>
+                <select id="roleSelectForTask" style="width:100%;padding:8px;border-radius:20px;border:1px solid #cbd5e1;">
+                    ${available.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('')}
+                </select>
+                <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                    <button id="cancelAddTaskToRole" style="background:#94a3b8;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer;">Отмена</button>
+                    <button id="confirmAddTaskToRole" style="background:#22c55e;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer;">Добавить</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const closeModal = () => modal.remove();
+        modal.querySelector('.modal-close').addEventListener('click', closeModal);
+        modal.querySelector('#cancelAddTaskToRole').addEventListener('click', closeModal);
+        window.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+        modal.querySelector('#confirmAddTaskToRole').addEventListener('click', async () => {
+            const roleId = parseInt(modal.querySelector('#roleSelectForTask').value);
+            if (!roleId) { showToast('Выберите роль', true); return; }
+            try {
+                await apiFetch(`/api/sandbox/roles/${roleId}/tasks`, {
+                    method: 'POST',
+                    body: JSON.stringify({ task_id: taskId })
+                });
+                showToast('Задача добавлена в роль');
+                closeModal();
+                await loadRoles();
+                await loadTasks();
+            } catch (err) {
+                showToast(err.message, true);
+            }
         });
     }
 
@@ -7025,21 +7224,17 @@ function initProcsetsTab() {
         draggedTaskId = null;
     }
 
-    // ----- Инициализация конструктора -----
+    // ----- Инициализация конструктора (только техкарты) -----
     function initConstructorUI() {
         const rightPanel = document.getElementById('tasksRightPanel');
         if (!rightPanel) return;
 
         techCardNameInput = document.getElementById('techCardNameInput');
         techCardSelect = document.getElementById('techCardSelect');
-        roleNameInput = document.getElementById('roleNameInput');
-        roleDescriptionInput = document.getElementById('roleDescriptionInput');
-        roleSelect = document.getElementById('roleSelect');
         constructorListEl = document.getElementById('constructorTasksList');
         saveConstructorBtn = document.getElementById('saveConstructorBtn');
         deleteConstructorBtn = document.getElementById('deleteConstructorBtn');
         clearConstructorBtn = document.getElementById('clearConstructorBtn');
-        toggleModeBtn = document.getElementById('toggleModeBtn');
 
         if (!constructorListEl) {
             console.warn('Не найден constructorTasksList');
@@ -7052,27 +7247,9 @@ function initProcsetsTab() {
         }
 
         populateTechCardSelect();
-        populateRoleSelect();
-
-        if (toggleModeBtn) {
-            toggleModeBtn.addEventListener('click', function() {
-                if (constructorMode === 'techcard') {
-                    constructorMode = 'role';
-                    this.textContent = '🔄 Переключить на Техкарту';
-                    showRoleMode();
-                } else {
-                    constructorMode = 'techcard';
-                    this.textContent = '🔄 Переключить на должность';
-                    showTechCardMode();
-                }
-                clearConstructor();
-            });
-            toggleModeBtn.textContent = '🔄 Переключить на должность';
-        }
 
         if (techCardSelect) {
             techCardSelect.addEventListener('change', async function() {
-                if (constructorMode !== 'techcard') return;
                 const val = this.value;
                 if (val === '') {
                     clearConstructor();
@@ -7083,29 +7260,17 @@ function initProcsetsTab() {
             });
         }
 
-        if (roleSelect) {
-            roleSelect.addEventListener('change', async function() {
-                if (constructorMode !== 'role') return;
-                const val = this.value;
-                if (val === '') {
-                    clearConstructor();
-                    return;
-                }
-                const roleId = parseInt(val);
-                await loadRoleToConstructor(roleId);
-            });
-        }
-
         if (saveConstructorBtn) {
-            saveConstructorBtn.addEventListener('click', saveConstructor);
+            saveConstructorBtn.addEventListener('click', saveTechCard);
         }
         if (deleteConstructorBtn) {
-            deleteConstructorBtn.addEventListener('click', deleteCurrentObject);
+            deleteConstructorBtn.addEventListener('click', deleteCurrentTechCard);
         }
         if (clearConstructorBtn) {
             clearConstructorBtn.addEventListener('click', clearConstructor);
         }
 
+        // Drag & Drop для перемещения задач в конструкторе
         constructorListEl.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'all';
@@ -7126,7 +7291,8 @@ function initProcsetsTab() {
                 return;
             }
 
-            if (constructorMode === 'techcard' && data.startsWith('reorder:')) {
+            // Переупорядочивание внутри конструктора
+            if (data.startsWith('reorder:')) {
                 const fromIndex = parseInt(data.split(':')[1]);
                 const items = constructorListEl.querySelectorAll('.constructor-task-item');
                 let toIndex = items.length;
@@ -7166,23 +7332,8 @@ function initProcsetsTab() {
             console.log('Текущий конструктор:', constructorTasks);
         });
 
-        showTechCardMode();
         constructorInitialized = true;
         console.log('Конструктор инициализирован');
-    }
-
-    function showTechCardMode() {
-        const techContainer = document.getElementById('techcard-fields');
-        const roleContainer = document.getElementById('role-fields');
-        if (techContainer) techContainer.style.display = '';
-        if (roleContainer) roleContainer.style.display = 'none';
-    }
-
-    function showRoleMode() {
-        const techContainer = document.getElementById('techcard-fields');
-        const roleContainer = document.getElementById('role-fields');
-        if (techContainer) techContainer.style.display = 'none';
-        if (roleContainer) roleContainer.style.display = '';
     }
 
     function populateTechCardSelect() {
@@ -7206,29 +7357,9 @@ function initProcsetsTab() {
             if (techCardNameInput) techCardNameInput.value = data.name || '';
             constructorTasks = data.tasks.map(t => ({ id: t.id, name: t.name }));
             currentTechCardId = techCardId;
-            currentRoleId = null;
             renderConstructorTasks();
         } catch (err) {
             showToast('Ошибка загрузки техкарты: ' + err.message, true);
-        }
-    }
-
-    async function loadRoleToConstructor(roleId) {
-        try {
-            const resp = await apiFetch(`/api/sandbox/roles/${roleId}`);
-            const data = await resp.json();
-            if (!data) {
-                showToast('Должность не найдена', true);
-                return;
-            }
-            if (roleNameInput) roleNameInput.value = data.name || '';
-            if (roleDescriptionInput) roleDescriptionInput.value = data.description || '';
-            constructorTasks = data.tasks.map(t => ({ id: t.id, name: t.name }));
-            currentRoleId = roleId;
-            currentTechCardId = null;
-            renderConstructorTasks();
-        } catch (err) {
-            showToast('Ошибка загрузки роли: ' + err.message, true);
         }
     }
 
@@ -7240,24 +7371,22 @@ function initProcsetsTab() {
         }
         let html = '';
         constructorTasks.forEach((task, index) => {
-            const prefix = constructorMode === 'techcard' ? `${index+1}. ` : '';
-            html += `<div class="constructor-task-item" draggable="${constructorMode === 'techcard' ? 'true' : 'false'}" data-index="${index}" style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:white; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:4px; cursor:${constructorMode === 'techcard' ? 'grab' : 'default'};">
-                <span>${prefix}${escapeHtml(task.name)}</span>
+            html += `<div class="constructor-task-item" draggable="true" data-index="${index}" style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:white; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:4px; cursor:grab;">
+                <span>${index+1}. ${escapeHtml(task.name)}</span>
                 <button class="remove-constructor-task" data-index="${index}" style="background:none; border:none; cursor:pointer; color:#ef4444;">✖</button>
             </div>`;
         });
         constructorListEl.innerHTML = html;
 
-        if (constructorMode === 'techcard') {
-            constructorListEl.querySelectorAll('.constructor-task-item').forEach(el => {
-                el.addEventListener('dragstart', (e) => {
-                    const idx = el.dataset.index;
-                    e.dataTransfer.setData('text/plain', `reorder:${idx}`);
-                    e.dataTransfer.effectAllowed = 'move';
-                    console.log('dragstart constructor item, index:', idx);
-                });
+        // Для перетаскивания внутри конструктора
+        constructorListEl.querySelectorAll('.constructor-task-item').forEach(el => {
+            el.addEventListener('dragstart', (e) => {
+                const idx = el.dataset.index;
+                e.dataTransfer.setData('text/plain', `reorder:${idx}`);
+                e.dataTransfer.effectAllowed = 'move';
+                console.log('dragstart constructor item, index:', idx);
             });
-        }
+        });
 
         constructorListEl.querySelectorAll('.remove-constructor-task').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -7271,54 +7400,25 @@ function initProcsetsTab() {
     function clearConstructor() {
         constructorTasks = [];
         currentTechCardId = null;
-        currentRoleId = null;
         if (techCardNameInput) techCardNameInput.value = '';
-        if (roleNameInput) roleNameInput.value = '';
-        if (roleDescriptionInput) roleDescriptionInput.value = '';
         if (techCardSelect) techCardSelect.value = '';
-        if (roleSelect) roleSelect.value = '';
         renderConstructorTasks();
     }
 
-    async function deleteCurrentObject() {
-        if (constructorMode === 'techcard') {
-            if (!currentTechCardId) {
-                showToast('Нет открытой техкарты для удаления', true);
-                return;
-            }
-            const name = techCardNameInput ? techCardNameInput.value.trim() : 'без названия';
-            if (!confirm(`Удалить техкарту "${name}" (ID: ${currentTechCardId})? Все товары, привязанные к ней, потеряют техкарту.`)) return;
-            try {
-                await apiFetch(`/api/sandbox/tech-cards/${currentTechCardId}`, { method: 'DELETE' });
-                showToast('Техкарта удалена');
-                await loadProducts();
-                clearConstructor();
-            } catch (err) {
-                showToast('Ошибка удаления: ' + err.message, true);
-            }
-        } else {
-            if (!currentRoleId) {
-                showToast('Нет открытой роли для удаления', true);
-                return;
-            }
-            const name = roleNameInput ? roleNameInput.value.trim() : 'без названия';
-            if (!confirm(`Удалить должность "${name}" (ID: ${currentRoleId})?`)) return;
-            try {
-                await apiFetch(`/api/sandbox/roles/${currentRoleId}`, { method: 'DELETE' });
-                showToast('Должность удалена');
-                await loadRoles();
-                clearConstructor();
-            } catch (err) {
-                showToast('Ошибка удаления: ' + err.message, true);
-            }
+    async function deleteCurrentTechCard() {
+        if (!currentTechCardId) {
+            showToast('Нет открытой техкарты для удаления', true);
+            return;
         }
-    }
-
-    async function saveConstructor() {
-        if (constructorMode === 'techcard') {
-            await saveTechCard();
-        } else {
-            await saveRole();
+        const name = techCardNameInput ? techCardNameInput.value.trim() : 'без названия';
+        if (!confirm(`Удалить техкарту "${name}" (ID: ${currentTechCardId})? Все товары, привязанные к ней, потеряют техкарту.`)) return;
+        try {
+            await apiFetch(`/api/sandbox/tech-cards/${currentTechCardId}`, { method: 'DELETE' });
+            showToast('Техкарта удалена');
+            await loadProducts();
+            clearConstructor();
+        } catch (err) {
+            showToast('Ошибка удаления: ' + err.message, true);
         }
     }
 
@@ -7358,42 +7458,6 @@ function initProcsetsTab() {
         }
     }
 
-    async function saveRole() {
-        const name = roleNameInput ? roleNameInput.value.trim() : '';
-        if (!name) {
-            showToast('Введите название роли', true);
-            return;
-        }
-        if (constructorTasks.length === 0) {
-            showToast('Добавьте хотя бы одну задачу в конструктор', true);
-            return;
-        }
-        const description = roleDescriptionInput ? roleDescriptionInput.value.trim() : null;
-        const taskIds = constructorTasks.map(t => t.id);
-
-        try {
-            let resp;
-            if (currentRoleId) {
-                resp = await apiFetch(`/api/sandbox/roles/${currentRoleId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ name, description, task_ids: taskIds })
-                });
-            } else {
-                resp = await apiFetch('/api/sandbox/roles', {
-                    method: 'POST',
-                    body: JSON.stringify({ name, description, task_ids: taskIds })
-                });
-            }
-            const data = await resp.json();
-            showToast(`Должность "${data.name}" сохранена`);
-            await loadRoles();
-            clearConstructor();
-        } catch (err) {
-            showToast('Ошибка сохранения: ' + err.message, true);
-            console.error('Ошибка сохранения роли:', err);
-        }
-    }
-
     // ---- Обработчики кнопок вкладки "Роли" ----
     function initRolesTabButtons() {
         const refreshRolesBtn = document.getElementById('refreshRolesBtn');
@@ -7411,15 +7475,7 @@ function initProcsetsTab() {
                     tasksTabBtn.click();
                 }
                 setTimeout(() => {
-                    if (constructorMode !== 'role') {
-                        if (toggleModeBtn) {
-                            toggleModeBtn.click();
-                        }
-                    }
-                    clearConstructor();
-                    if (roleNameInput) {
-                        roleNameInput.focus();
-                    }
+                    // Пользователь может создать роль через другие средства
                 }, 300);
             });
         }
@@ -7555,7 +7611,6 @@ function initProcsetsTab() {
                         initConstructorUI();
                     } else {
                         populateTechCardSelect();
-                        populateRoleSelect();
                     }
                 } else if (target === 'products') {
                     loadProducts();

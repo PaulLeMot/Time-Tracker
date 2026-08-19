@@ -603,3 +603,39 @@ async def remove_employee_from_role(
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
     return None
+
+@router.get("/employees/{employee_id}/roles", response_model=List[dict])
+async def get_employee_roles(
+    employee_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    employee = await crud.get_employee_by_id(db, employee_id)
+    if not employee:
+        raise HTTPException(404, "Employee not found")
+    roles = await crud.get_roles_for_employee(db, employee_id)
+    # Возвращаем только id и name
+    return [{"id": r.id, "name": r.name} for r in roles]
+
+@router.post("/roles/{role_id}/tasks", status_code=201)
+async def add_task_to_role(
+    role_id: int,
+    task_id: int = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        await crud.add_task_to_role(db, role_id, task_id)
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e))
+    return {"message": "Task added to role"}
+
+@router.delete("/roles/{role_id}/tasks/{task_id}", status_code=204)
+async def remove_task_from_role(
+    role_id: int,
+    task_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        await crud.remove_task_from_role(db, role_id, task_id)
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
+    return None
