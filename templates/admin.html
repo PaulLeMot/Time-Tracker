@@ -7203,12 +7203,17 @@ function initProcsetsTab() {
     function renderRolesSimpleList() {
         const tbody = document.getElementById('rolesSimpleList');
         if (!tbody) return;
-        if (!roles || roles.length === 0) {
+
+        // Сортируем роли по названию (по алфавиту, с учётом русского языка)
+        const sortedRoles = [...roles].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+        if (!sortedRoles.length) {
             tbody.innerHTML = '<tr><td colspan="3" style="color:#94a3b8; text-align:center;">Нет должностей</td></tr>';
             return;
         }
+
         let html = '';
-        roles.forEach(role => {
+        sortedRoles.forEach(role => {
             html += `<tr data-role-id="${role.id}">
                 <td style="padding:4px 8px;">
                     <input type="text" class="role-name-input" value="${escapeHtml(role.name)}" data-role-id="${role.id}" style="width:100%; padding:4px 8px; border:1px solid #e2e8f0; border-radius:6px; font-size:0.95rem;">
@@ -7297,7 +7302,6 @@ function initProcsetsTab() {
             });
         });
     }
-
     // ----- Инициализация конструктора (только техкарты) -----
     function initConstructorUI() {
         const rightPanel = document.getElementById('tasksRightPanel');
