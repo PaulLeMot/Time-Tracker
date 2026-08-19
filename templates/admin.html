@@ -6195,7 +6195,7 @@ function initProcsetsTab() {
     let products = [];
     let techCards = [];
 
-    // ---- Переменные для должностей ----
+    // ---- Переменные для ролей ----
     let roles = [];
     let allEmployees = [];
 
@@ -6739,16 +6739,17 @@ function initProcsetsTab() {
         });
     }
 
-    // ---- Загрузка должностей ----
+    // ---- Загрузка ролей ----
     async function loadRoles() {
         try {
             const resp = await apiFetch('/api/sandbox/roles');
             roles = await resp.json();
-            renderRoles();
-            renderTasksGrouped();  // <-- обновляем задачи, чтобы отобразить роли
+            renderRoles();            // для вкладки "Роли"
+            renderRolesSimpleList();  // для списка на панели задач
+            renderTasksGrouped();     // обновляем задачи с ролями
         } catch (err) {
-            console.error('Ошибка загрузки должностей:', err);
-            showToast('Не удалось загрузить должности: ' + err.message, true);
+            console.error('Ошибка загрузки ролей:', err);
+            showToast('Не удалось загрузить роли: ' + err.message, true);
         }
     }
 
@@ -6993,7 +6994,7 @@ function initProcsetsTab() {
                     </div>`;
                 }
 
-                // ---- КНОПКИ: редактировать, удалить, добавить в роль (без "👤") ----
+                // ---- КНОПКИ: редактировать, удалить, добавить в роль ----
                 html += `<div class="task-item" data-id="${task.id}" draggable="true">
                     <div class="task-info">
                         <span class="task-name">${escapeHtml(task.name)}</span>
@@ -7224,6 +7225,84 @@ function initProcsetsTab() {
         draggedTaskId = null;
     }
 
+    // ==================== НОВЫЙ БЛОК: СПИСОК ДОЛЖНОСТЕЙ ====================
+
+    // ---- Рендеринг списка должностей (простой список на панели задач) ----
+function renderRolesSimpleList() {
+    const tbody = document.getElementById('rolesSimpleList');
+    if (!tbody) return;
+    if (!roles || roles.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="color:#94a3b8; text-align:center;">Нет должностей</td></tr>';
+        return;
+    }
+    let html = '';
+    roles.forEach(role => {
+        html += `<tr data-role-id="${role.id}">
+            <td style="padding:4px 8px;">
+                <input type="text" class="role-name-input" value="${escapeHtml(role.name)}" data-role-id="${role.id}" style="width:100%; padding:4px 8px; border:1px solid #e2e8f0; border-radius:6px; font-size:0.95rem;">
+            </td>
+            <td style="padding:4px 8px; text-align:right;">
+                <button class="remove-role-simple-btn" data-role-id="${role.id}" style="background:none; border:none; cursor:pointer; color:#ef4444; font-size:1.1rem;">✖</button>
+            </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+
+    // Обработчики для input: сохранение при blur или Enter
+    tbody.querySelectorAll('.role-name-input').forEach(input => {
+        const roleId = parseInt(input.dataset.roleId);
+        const originalName = input.value;
+
+        const save = async () => {
+            const newName = input.value.trim();
+            if (newName === originalName) return;
+            if (!newName) {
+                showToast('Название не может быть пустым', true);
+                input.value = originalName;
+                return;
+            }
+            try {
+                await apiFetch(`/api/sandbox/roles/${roleId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ name: newName })
+                });
+                showToast('Должность переименована');
+                await loadRoles(); // перезагрузит таблицу
+            } catch (err) {
+                showToast(err.message, true);
+                input.value = originalName;
+            }
+        };
+
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                input.blur();
+            }
+            if (e.key === 'Escape') {
+                input.value = originalName;
+                input.blur();
+            }
+        });
+    });
+
+    // Обработчики удаления
+    tbody.querySelectorAll('.remove-role-simple-btn').forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            const roleId = parseInt(this.dataset.roleId);
+            if (!confirm('Удалить эту должность? Все связи с задачами и сотрудниками будут удалены.')) return;
+            try {
+                await apiFetch(`/api/sandbox/roles/${roleId}`, { method: 'DELETE' });
+                showToast('Должность удалена');
+                await loadRoles();
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        });
+    });
+}
     // ----- Инициализация конструктора (только техкарты) -----
     function initConstructorUI() {
         const rightPanel = document.getElementById('tasksRightPanel');
@@ -7474,9 +7553,7 @@ function initProcsetsTab() {
                 if (tasksTabBtn) {
                     tasksTabBtn.click();
                 }
-                setTimeout(() => {
-                    // Пользователь может создать роль через другие средства
-                }, 300);
+                // Переключаем на вкладку задач, чтобы пользователь мог увидеть список должностей
             });
         }
     }
@@ -7588,6 +7665,25 @@ function initProcsetsTab() {
             });
         }
 
+        // ---- Обработчик кнопки "➕ Добавить" для списка должностей ----
+        const addRoleSimpleBtn = document.getElementById('addRoleSimpleBtn');
+        if (addRoleSimpleBtn) {
+            addRoleSimpleBtn.addEventListener('click', async function() {
+                const name = prompt('Введите название новой должности:');
+                if (!name || name.trim() === '') return;
+                try {
+                    await apiFetch('/api/sandbox/roles', {
+                        method: 'POST',
+                        body: JSON.stringify({ name: name.trim() })
+                    });
+                    showToast('Должность создана');
+                    await loadRoles();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        }
+
         // ---- НАВИГАЦИЯ ПО ВКЛАДКАМ ----
         document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(btn => {
             btn.addEventListener('click', function() {
@@ -7612,6 +7708,7 @@ function initProcsetsTab() {
                     } else {
                         populateTechCardSelect();
                     }
+                    loadRoles(); // подгружаем роли для отображения списка
                 } else if (target === 'products') {
                     loadProducts();
                 } else if (target === 'roles') {
