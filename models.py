@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Text, UniqueConstraint, Date
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Text, UniqueConstraint, Date, Boolean
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import relationship
 from enum import Enum
@@ -208,7 +208,7 @@ class Role(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(50), unique=True, nullable=False)
     description = Column(Text)
-
+    allow_multiple = Column(Boolean, default=True)
     employee_roles = relationship("EmployeeRole", back_populates="role", cascade="all, delete-orphan")
     role_tasks = relationship("RoleTask", back_populates="role", cascade="all, delete-orphan")
 

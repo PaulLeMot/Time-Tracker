@@ -1138,7 +1138,8 @@ async def create_role(
     db: AsyncSession,
     name: str,
     description: str = None,
-    task_ids: list[int] = None
+    task_ids: list[int] = None,
+    allow_multiple: bool = True
 ) -> Role:
     new_role = Role(name=name, description=description)
     db.add(new_role)
@@ -1159,7 +1160,8 @@ async def update_role(
     role_id: int,
     name: str = None,
     description: str = None,
-    task_ids: list[int] = None
+    task_ids: list[int] = None,
+    allow_multiple: bool = None
 ) -> Role:
     role = await get_role(db, role_id)
     if not role:
@@ -1169,7 +1171,8 @@ async def update_role(
         role.name = name
     if description is not None:
         role.description = description
-
+    if allow_multiple is not None:
+        role.allow_multiple = allow_multiple
     # Если передан список task_ids, заменяем все задачи
     if task_ids is not None:
         # Удаляем все старые связи
@@ -1193,7 +1196,20 @@ async def delete_role(db: AsyncSession, role_id: int) -> None:
 
 # ---------- Добавить сотрудника в роль ----------
 async def add_employee_to_role(db: AsyncSession, role_id: int, employee_id: int) -> EmployeeRole:
-    # Проверяем, не существует ли уже такая связь
+    # Проверяем существование роли
+    role = await get_role(db, role_id)
+    if not role:
+        raise ValueError("Role not found")
+
+    # Если множественное назначение запрещено – проверяем, не занята ли роль
+    if not role.allow_multiple:
+        stmt = select(EmployeeRole).where(EmployeeRole.role_id == role_id)
+        result = await db.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing:
+            raise ValueError("Эта должность уже назначена другому сотруднику (множественное назначение запрещено)")
+
+    # Проверяем, не назначен ли уже этот сотрудник на эту роль
     stmt = select(EmployeeRole).where(
         EmployeeRole.role_id == role_id,
         EmployeeRole.employee_id == employee_id
@@ -1201,6 +1217,7 @@ async def add_employee_to_role(db: AsyncSession, role_id: int, employee_id: int)
     result = await db.execute(stmt)
     if result.scalar_one_or_none():
         raise ValueError("Employee already assigned to this role")
+
     link = EmployeeRole(role_id=role_id, employee_id=employee_id)
     db.add(link)
     await db.commit()

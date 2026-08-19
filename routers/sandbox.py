@@ -95,16 +95,19 @@ class RoleResponse(BaseModel):
     description: Optional[str] = None
     tasks: List[RoleTaskResponse] = []
     employees: List[EmployeeBrief] = []
+    allow_multiple: bool = True
 
 class RoleCreate(BaseModel):
     name: str
     description: Optional[str] = None
     task_ids: Optional[List[int]] = None
+    allow_multiple: bool = True
 
 class RoleUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     task_ids: Optional[List[int]] = None
+    allow_multiple: Optional[bool] = None
 
 class RoleEmployeeAdd(BaseModel):
     employee_id: int
@@ -482,7 +485,8 @@ async def get_roles(db: AsyncSession = Depends(get_db)):
             "name": role.name,
             "description": role.description,
             "tasks": tasks,
-            "employees": employees
+            "employees": employees,
+            "allow_multiple": role.allow_multiple   # добавлено
         })
     return result
 
@@ -500,7 +504,8 @@ async def get_role(role_id: int, db: AsyncSession = Depends(get_db)):
         "id": role.id,
         "name": role.name,
         "description": role.description,
-        "tasks": tasks
+        "tasks": tasks,
+        "allow_multiple": role.allow_multiple   # добавлено
     }
 
 
@@ -511,7 +516,8 @@ async def create_role(data: RoleCreate, db: AsyncSession = Depends(get_db)):
             db,
             name=data.name,
             description=data.description,
-            task_ids=data.task_ids
+            task_ids=data.task_ids,
+            allow_multiple=data.allow_multiple
         )
     except Exception as e:
         raise HTTPException(400, detail=str(e))
@@ -526,7 +532,8 @@ async def create_role(data: RoleCreate, db: AsyncSession = Depends(get_db)):
         "id": role.id,
         "name": role.name,
         "description": role.description,
-        "tasks": tasks
+        "tasks": tasks,
+        "allow_multiple": role.allow_multiple   # добавлено
     }
 
 
@@ -542,7 +549,8 @@ async def update_role(
             role_id,
             name=data.name,
             description=data.description,
-            task_ids=data.task_ids
+            task_ids=data.task_ids,
+            allow_multiple=data.allow_multiple
         )
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
@@ -559,7 +567,8 @@ async def update_role(
         "id": role.id,
         "name": role.name,
         "description": role.description,
-        "tasks": tasks
+        "tasks": tasks,
+        "allow_multiple": role.allow_multiple   # добавлено
     }
 
 
