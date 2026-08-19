@@ -8,967 +8,939 @@
     <meta http-equiv="Expires" content="0">
     <title>Админ-панель TimeTracker</title>
     <link rel="icon" type="image/png" href="../static/ttr.png">
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-            background: #f1f5f9;
-            margin: 0;
-            padding: 20px;
+<style>
+    * { box-sizing: border-box; }
+    body {
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        background: #f1f5f9;
+        margin: 0;
+        padding: 20px;
+    }
+    .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 24px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        padding: 24px;
+    }
+    h1, h2 { color: #0f172a; }
+    .section {
+        margin-bottom: 40px;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 24px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 16px;
+    }
+    th, td {
+        text-align: left;
+        padding: 12px 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    th {
+        background-color: #f8fafc;
+        font-weight: 600;
+    }
+    button, .btn {
+        background: #3b82f6;
+        border: none;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        margin-right: 6px;
+        transition: all 0.2s;
+        height: 38px;
+        line-height: 1.2;
+    }
+    .btn-danger { background: #ef4444; }
+    .btn-warning { background: #f59e0b; }
+    .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+    form {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 16px 0;
+    }
+    input, select {
+        padding: 8px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 20px;
+        font-size: 1rem;
+    }
+    .report-table { margin-top: 16px; overflow-x: auto; }
+    .toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #0f172a;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 40px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+        z-index: 1000;
+    }
+    .toast.show { opacity: 1; }
+    .date-picker {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1001;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+    }
+    .modal-content {
+        background-color: #fefefe;
+        margin: 5% auto;
+        padding: 20px;
+        border-radius: 16px;
+        width: 90%;
+        max-width: 800px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+    .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .close:hover { color: black; }
+    .entry-time {
+        font-family: monospace;
+        background: #f1f5f9;
+        padding: 4px 8px;
+        border-radius: 12px;
+    }
+    .small-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2rem;
+        margin: 0 4px;
+    }
+    .edit-controls {
+        display: inline-block;
+    }
+    .edit-controls input {
+        margin-right: 4px;
+        padding: 2px 4px;
+        font-size: 0.9rem;
+    }
+    @media (max-width: 768px) {
+        .report-table th, 
+        .report-table td {
+            padding: 6px 4px;
+            font-size: 0.7rem;
         }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 24px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
-            padding: 24px;
+        #employeesTable {
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
         }
-        h1, h2 { color: #0f172a; }
-        .section {
-            margin-bottom: 40px;
-            border-bottom: 1px solid #e2e8f0;
-            padding-bottom: 24px;
+        #reportContainer {
+            overflow-x: auto;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 16px;
-        }
-        th, td {
-            text-align: left;
-            padding: 12px 8px;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        th {
-            background-color: #f8fafc;
-            font-weight: 600;
-        }
-        button, .btn {
-            background: #3b82f6;
-            border: none;
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            margin-right: 6px;
-            transition: all 0.2s;
-            height: 38px;
-            line-height: 1.2;
-        }
-        .btn-danger { background: #ef4444; }
-        .btn-warning { background: #f59e0b; }
-        .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
-        form {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            flex-wrap: wrap;
-            margin: 16px 0;
-        }
-        input, select {
-            padding: 8px 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 20px;
-            font-size: 1rem;
-        }
-        .report-table { margin-top: 16px; overflow-x: auto; }
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: #0f172a;
-            color: white;
-            padding: 12px 20px;
-            border-radius: 40px;
-            opacity: 0;
-            transition: opacity 0.3s;
-            pointer-events: none;
-            z-index: 1000;
-        }
-        .toast.show { opacity: 1; }
-        .date-picker {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1001;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-        }
-        .modal-content {
-            background-color: #fefefe;
-            margin: 5% auto;
-            padding: 20px;
-            border-radius: 16px;
-            width: 90%;
-            max-width: 800px;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .close:hover { color: black; }
-        .entry-time {
-            font-family: monospace;
-            background: #f1f5f9;
-            padding: 4px 8px;
-            border-radius: 12px;
-        }
-        .small-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 1.2rem;
-            margin: 0 4px;
-        }
-        .edit-controls {
-            display: inline-block;
-        }
-        .edit-controls input {
-            margin-right: 4px;
-            padding: 2px 4px;
-            font-size: 0.9rem;
-        }
-        @media (max-width: 768px) {
-            .report-table th, 
-            .report-table td {
-                padding: 6px 4px;
-                font-size: 0.7rem;
-            }
-            #employeesTable {
-                display: block;
-                overflow-x: auto;
-                white-space: nowrap;
-            }
-            #reportContainer {
-                overflow-x: auto;
-            }
-            .report-table {
-                min-width: 700px;
-            }
-            .tabs {
-                overflow-x: auto;
-                white-space: nowrap;
-                flex-wrap: nowrap;
-                -webkit-overflow-scrolling: touch;
-                padding-bottom: 8px;
-            }
-            .tab-btn {
-                display: inline-block;
-                flex-shrink: 0;
-                margin-right: 4px;
-                font-size: 0.85rem;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .tab-btn {
-                padding: 6px 12px;
-                font-size: 0.85rem;
-            }
+        .report-table {
+            min-width: 700px;
         }
         .tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 24px;
-            border-bottom: 1px solid #e2e8f0;
+            overflow-x: auto;
+            white-space: nowrap;
+            flex-wrap: nowrap;
+            -webkit-overflow-scrolling: touch;
             padding-bottom: 8px;
         }
         .tab-btn {
-            background: transparent;
-            border: none;
-            padding: 8px 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: #64748b;
-            cursor: pointer;
-            border-radius: 40px;
-            transition: all 0.2s;
-        }
-        .tab-btn:hover {
-            background: #f1f5f9;
-            color: #1e293b;
-        }
-        .tab-btn.active {
-            background: #3b82f6;
-            color: white;
-        }
-        .tab-content {
-            animation: fadeIn 0.2s ease;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        .recent-table {
-            overflow-x: visible;
-            overflow-y: visible;
-        }
-        .recent-table table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            margin-top: 0;
-            width: 100%;
-        }
-        .recent-table th, .recent-table td {
-            padding: 8px;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        .row-not-started { background-color: #f1f5f9; }
-        .row-working { background-color: #dcfce7; }
-        .row-on-break { background-color: #fef9c3; }
-        .row-ended { background-color: #dbeafe; }
-        .worked-hours-cell { background-color: #dbeafe; }
-        .break-minutes-cell { background-color: #fef9c3; }
-        .break-minutes-cell { border-right: 1px solid #292929; }
-        .highlight-fio {
-            background-color: #e0f2fe !important;
-        }
-        .highlight-day {
-            background-color: #e0f2fe !important;
-        }
-        .break-minutes-cell {
-            border-right: 1px solid #292929;
-        }
-        .break-minutes-cell:last-child {
-            border-right: none;
-        }
-
-        .highlight-fio {
-            background-color: #e0f2fe !important;
-        }
-        .highlight-day-header {
-            background-color: #e0f2fe !important;
-        }
-        .highlight-hour-header {
-            background-color: #e0f2fe !important;
-        }
-        #weeklyReportContainer {
-            margin-top: 16px;
-        }
-
-        #weeklyReportContainer .report-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        #weeklyReportContainer .report-table thead th {
-            line-height: 40px;
-            vertical-align: middle;
-        }
-        .sortable-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            display: flex;
-            flex-direction: row;
-            gap: 8px;
-            background: #f8fafc;
-            border-radius: 60px;
-            padding: 0;
-            flex-wrap: wrap;
-            align-items: center;
-            height: 38px;
-        }
-
-        .sortable-list li {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 40px;
-            padding: 6px 16px;
-            cursor: grab;
-            user-select: none;
-            transition: background 0.2s;
             display: inline-block;
-            line-height: 1.2;
+            flex-shrink: 0;
+            margin-right: 4px;
             font-size: 0.85rem;
         }
-        .sortable-list li:last-child {
-            border-bottom: none;
-        }
-        .sortable-list li:active {
-            cursor: grabbing;
-        }
-        .sortable-list li.dragging {
-            opacity: 0.5;
-        }
-        .report-table thead th {
-            position: sticky;
-            top: 0;
-            background-color: #f8fafc;
-            z-index: 10;
-        }
-        .inactive-day {
-            background-color: #e2e8f0 !important;
-        }
+    }
 
-        .report-table td {
-            text-align: center;
-            vertical-align: top;
-            padding: 8px 4px;
-        }
-
-        .report-table td > div {
-            line-height: 1.4;
-            margin: 2px 0;
-            min-height: 1.4em;
-        }
-
-        .report-table td.fio-cell {
-            text-align: left;
-            vertical-align: middle;
-        }
-        .report-table td.inactive-day,
-        .report-table td.inactive-day div {
-            background-color: #ededed !important;
-            color: #c8c8c8 !important;
-        }
-
-        /* Таблица статистики за период — центрирование заголовков и ячеек */
-        .period-stat-table th,
-        .period-stat-table td {
-            text-align: center;
-        }
-
-        /* Исключение: первый столбец (ФИО) выравниваем влево */
-        .period-stat-table th:first-child,
-        .period-stat-table td:first-child {
-            text-align: left;
-        }
-
-        .close-rounding,
-        .close-edit,
-        .close-username,
-        .close-fullname,
-        .close-edit-notif,
-        .close-explanation-view {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .close-rounding:hover,
-        .close-edit:hover,
-        .close-username:hover,
-        .close-fullname:hover,
-        .close-edit-notif:hover,
-        .close-explanation-view:hover {
-            color: black;
-        }
-        .schedule-row td {
-            background-color: #f9fafb;
-            border-top: 2px solid #e2e8f0;
-        }
-        .expand-schedule-btn {
-            color: #1e293b;
-        }
-        .schedule-row table,
-        .schedule-row th,
-        .schedule-row td {
-            border: 1px solid #cbd5e1;
-            border-collapse: collapse;
-        }
-        .schedule-row th, .schedule-row td {
-            padding: 8px 4px;
-            background-color: #f9fafb;
-        }
-        .schedule-row input.schedule-time-input {
-            border: none;
-            background: transparent;
-            padding: 8px 4px;
-            font-size: 1rem;
-            width: 100%;
-            text-align: center;
-            font-family: 'Courier New', monospace;
-            outline: none;
-            box-shadow: none;
-            box-sizing: border-box;
-        }
-        .schedule-start-row td {
-            background-color: rgba(144, 238, 144, 0.15);
-        }
-        .schedule-end-row td {
-            background-color: rgba(255, 160, 122, 0.15);
-        }
-        .schedule-row td:focus-within {
-            background-color: rgba(239, 255, 254, 0.05);
-        }
-        .expand-schedule-btn {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            font-size: 1.2rem;
-            line-height: 1;
-        }
-        #employeesTable {
-            border-collapse: collapse;
-        }
-        #employeesTable th:last-child,
-        #employeesTable td:last-child {
-            width: 40px;
-            min-width: 40px;
-            max-width: 40px;
-        }
-        .schedule-row table th,
-        .schedule-row table td {
-            width: calc(100% / 7);
-        }
-        
-        .close-edit-notif {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .close-edit-notif:hover {
-            color: black;
-        }
-
-        .recent-table table {
-            width: 100%;
-            border-collapse: separate;
-            margin-top: 0;
-        }
-
-        .recent-table th {
-            position: sticky;
-            top: 0;
-            background: #f8fafc;
-            z-index: 20;
-        }
-
-        .report-table thead {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-        }
-
-        .close-create-notif {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .close-create-notif:hover {
-            color: black;
-        }
-
-        .flatpickr-calendar button,
-        .flatpickr-calendar .flatpickr-prev-month,
-        .flatpickr-calendar .flatpickr-next-month {
-            height: auto !important;
-            padding: 4px 6px !important;
-            background: transparent !important;
-            border: none !important;
-            margin: 0 !important;
-            font-size: 14px !important;
-            line-height: 1 !important;
-            color: #3b82f6 !important;
-        }
-        .flatpickr-calendar button:hover {
-            background: #e2e8f0 !important;
-        }
-
-        .flatpickr-current-month .cur-month,
-        .flatpickr-current-month .cur-year {
-            font-size: 14px;
-        }
-
-        .flatpickr-calendar {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            border-radius: 16px;
-            margin-top: 4px;
-        }
-        .report-table td a {
-            color: #1e293b;
-            text-decoration: none;
-            transition: all 0.2s;
-        }
-
-        .report-table td a:hover {
-            color: #3b82f6 !important;
-            text-decoration: underline !important;
-            cursor: pointer;
-        }
-
-        .recent-start {
-            background-color: rgba(34, 197, 94, 0.15);
-        }
-        .recent-break-start {
-            background-color: rgba(250, 204, 21, 0.2);
-        }
-        .recent-break-end {
-            background-color: rgba(249, 115, 22, 0.2);
-        }
-        .recent-end {
-            background-color: rgba(239, 68, 68, 0.15);
-        }
-        #notificationsContainer .report-table td:nth-child(6) {
-            text-align: left;
-        }
-        #weeklyTrafficTableContainer table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 8px;
-        }
-        #weeklyTrafficTableContainer th,
-        #weeklyTrafficTableContainer td {
-            border: 1px solid #e2e8f0;
-            padding: 8px;
-            vertical-align: top;
-            text-align: left;
-        }
-        #weeklyTrafficTableContainer th {
-            background: #f8fafc;
-            font-weight: 600;
-            text-align: left;
-        }
-        #weeklyTrafficTableContainer .traffic-entry {
-            padding: 2px 0;
-            font-size: 0.9rem;
-            border-bottom: 1px solid #f1f5f9;
-        }
-        #weeklyTrafficTableContainer .traffic-entry:last-child {
-            border-bottom: none;
-        }
-        /* Кнопка добавления в заголовке */
-        .add-entry-btn {
-            font-size: 0.9rem;
-            cursor: pointer;
-            color: #3b82f6;
-            margin-left: 4px;
-            transition: 0.2s;
-        }
-        .add-entry-btn:hover {
-            transform: scale(1.2);
-        }
-
-        /* Ячейка для добавления записи */
-        .add-entry-cell {
-            background: #f1f5f9 !important;
-            padding: 8px !important;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .add-entry-input {
-            width: 70px;
-            padding: 4px 6px;
-            border: 1px solid #cbd5e1;
-            border-radius: 12px;
-            font-size: 0.9rem;
-            text-align: center;
-            font-family: monospace;
-            outline: none;
-        }
-        .add-entry-input:focus {
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
-        }
-        .add-entry-color {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            border: 2px solid #cbd5e1;
-            cursor: pointer;
-            transition: 0.2s;
-            flex-shrink: 0;
-        }
-        .add-entry-color:hover {
-            transform: scale(1.1);
-        }
-        .add-entry-color.start { background: #22c55e; border-color: #16a34a; }
-        .add-entry-color.break_start { background: #facc15; border-color: #eab308; }
-        .add-entry-color.break_end { background: #f97316; border-color: #ea580c; }
-        .add-entry-color.end { background: #ef4444; border-color: #dc2626; }
-
-        .add-entry-save {
-            background: none;
-            border: none;
-            color: #3b82f6;
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0 4px;
-            transition: 0.2s;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: auto;
-            height: auto;
-            border-radius: 0;
-        }
-        .add-entry-save:hover {
-            transform: scale(1.1);
-            color: #2563eb;
-        }
-        .add-entry-save:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        /* Редактируемая ячейка */
-        .entry-cell.editing {
-            border: 2px solid #3b82f6 !important;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
-            outline: none;
-        }
-        .entry-cell .edit-controls {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            flex-wrap: wrap;
-            padding: 4px;
-        }
-        .entry-cell .edit-controls .edit-time-input {
-            width: 60px;
-            padding: 2px 4px;
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            text-align: center;
-            font-family: monospace;
-            outline: none;
-        }
-        .entry-cell .edit-controls .edit-time-input:focus {
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
-        }
-        .entry-cell .edit-controls .edit-color-btn {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            border: 2px solid #cbd5e1;
-            cursor: pointer;
-            transition: 0.2s;
-            flex-shrink: 0;
-        }
-        .entry-cell .edit-controls .edit-color-btn:hover {
-            transform: scale(1.1);
-        }
-        .entry-cell .edit-controls .edit-color-btn.start { background: #22c55e; border-color: #16a34a; }
-        .entry-cell .edit-controls .edit-color-btn.break_start { background: #facc15; border-color: #eab308; }
-        .entry-cell .edit-controls .edit-color-btn.break_end { background: #fb923c; border-color: #ea580c; }
-        .entry-cell .edit-controls .edit-color-btn.end { background: #ef4444; border-color: #dc2626; }
-
-        .daily-traffic-table td.editing .edit-color-btn.start { background: #22c55e; border-color: #16a34a; }
-        .daily-traffic-table td.editing .edit-color-btn.break_start { background: #facc15; border-color: #eab308; }
-        .daily-traffic-table td.editing .edit-color-btn.break_end { background: #fb923c; border-color: #ea580c; }
-        .daily-traffic-table td.editing .edit-color-btn.end { background: #ef4444; border-color: #dc2626; }
-
-        .entry-cell .edit-controls .edit-save-btn {
-            background: none;
-            border: none;
-            color: #3b82f6;
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0 2px;
-            transition: 0.2s;
-        }
-        .entry-cell .edit-controls .edit-save-btn:hover {
-            transform: scale(1.1);
-            color: #2563eb;
-        }
-        .entry-cell .edit-controls .edit-delete-btn {
-            background: none;
-            border: none;
-            color: #ef4444;
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0 2px;
-            transition: 0.2s;
-        }
-        .entry-cell .edit-controls .edit-delete-btn:hover {
-            transform: scale(1.1);
-            color: #dc2626;
-        }
-        .entry-cell .edit-controls .edit-save-btn:disabled,
-        .entry-cell .edit-controls .edit-delete-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        /* Дневной светофор — таблица по содержимому */
-        .daily-traffic-table {
-            width: auto;              /* не растягиваем */
-            border-collapse: collapse;
-            margin: 0;
-        }
-
-        .daily-traffic-table td,
-        .daily-traffic-table th {
-            border: none;
-            padding: 4px 4px;
-        }
-
-        /* Колонка ФИО — фиксированная ширина */
-        .daily-traffic-table td.fio-cell {
-            width: 200px;
-            max-width: 200px;
-            min-width: 200px;
-            text-align: left;
-            white-space: normal;
-            word-break: break-word;
-            padding-right: 8px;
-            vertical-align: middle;
-        }
-
-        /* Все колонки с отметками (включая последнюю) — одинаковой ширины */
-        .daily-traffic-table td:not(.fio-cell) {
-            min-width: 75px;
-            width: auto;
-            white-space: nowrap;
-            padding: 4px 2px;
-            text-align: center;
-            vertical-align: middle;
-        }
-
-        /* Блоки самих отметок */
-        .daily-cell {
-            display: inline-block;
-            width: 75px;                /* фиксированная ширина */
-            padding: 8px 6px;
-            border-radius: 8px;
-            font-weight: 500;
-            font-size: 0.95rem;
-            text-align: center;
-            background-color: #f1f5f9;
-            color: #1e293b;
-        }
-
-        /* Цвета */
-        .daily-cell.start { background-color: rgba(34, 197, 94, 0.15); }
-        .daily-cell.break_start { background-color: rgba(250, 204, 21, 0.2); }
-        .daily-cell.break_end { background-color: rgba(249, 115, 22, 0.2); }
-        .daily-cell.end { background-color: rgba(239, 68, 68, 0.15); }
-        .daily-cell.unknown { background-color: #f1f5f9; color: #94a3b8; }
-
-        /* Подсветка редактируемой ячейки */
-        .daily-traffic-table td.editing {
-            border: 2px solid #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
-            outline: none;
-            background-color: #f8fafc !important;
-            max-width: 200px;
-        }
-
-        /* Стили элементов управления в режиме редактирования — без изменений */
-        .daily-traffic-table td.editing .edit-controls {
-            display: flex !important;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            flex-wrap: wrap;
-            padding: 4px;
-        }
-        .daily-traffic-table td.editing .edit-time-input {
-            width: 60px;
-            padding: 2px 4px;
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            text-align: center;
-            font-family: monospace;
-            outline: none;
-        }
-        .daily-traffic-table td.editing .edit-color-btn {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            border: 2px solid #cbd5e1;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-
-        .daily-traffic-table td.editing .edit-save-btn,
-        .daily-traffic-table td.editing .edit-delete-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0 2px;
-            transition: 0.2s;
-        }
-        .daily-traffic-table td.editing .edit-save-btn { color: #3b82f6; }
-        .daily-traffic-table td.editing .edit-save-btn:hover { transform: scale(1.1); color: #2563eb; }
-        .daily-traffic-table td.editing .edit-delete-btn { color: #ef4444; }
-        .daily-traffic-table td.editing .edit-delete-btn:hover { transform: scale(1.1); color: #dc2626; }
-    
-    
-    
-    
-    
-
-
-        /* Стили для блока сводки в ежедневном светофоре (одна колонка) */
-        #weeklyTrafficSummary {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            align-items: flex-start;
-        }
-
-        .summary-item {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        .summary-label {
-            font-weight: 500;
-            color: #0f172a;
-            font-size: 0.95rem;
-        }
-
-        .summary-value {
-            font-weight: 600;
-            font-size: 1.1rem;
-            color: #0f172a;
-        }
-
-        .summary-raw {
-            color: #64748b;
-            font-weight: 400;
-            font-size: 0.9rem;
-            margin-left: 4px;
-        }
-
-        /* Цвета: рабочее время – зелёный, перерывы – оранжевый */
-        #trafficWorked {
-            color: #008000;      /* ярко-зелёный */
-        }
-
-        #trafficBreak {
-            color: #ff8c00;      /* оранжевый (как в оригинале) */
-        }
-
-    
-            /* Выделенная ячейка */
-        .traffic-table td.selected-cell {
-            border: 2px solid #3b82f6 !important;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3) !important;
-            outline: none;
-            position: relative;
-            z-index: 1;
-        }
-
-        /* Подсветка строки и столбца при наведении (уже есть) */
-        .highlight-fio {
-            background-color: #e0f2fe !important;
-        }
-        .highlight-day-header {
-            background-color: #e0f2fe !important;
-        }
-    
-
-        /* Типы дней */
-        .day-type-work { background-color: #bfdbfe !important; }
-        .day-type-off { background-color: #e2e8f0 !important; }
-        .day-type-vacation { background-color: #86efac !important; }
-        .day-type-sick { background-color: #fde047 !important; }
-
-        /* Контекстное меню */
-        .traffic-context-menu {
-            display: none;
-            position: fixed;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            padding: 8px;
-            z-index: 1000;
-            min-width: 120px;
-        }
-        .traffic-context-menu .menu-item {
-            display: flex;
-            align-items: center;
-            cursor: pointer;
+    @media (max-width: 480px) {
+        .tab-btn {
             padding: 6px 12px;
-            border-radius: 4px;
-            transition: background 0.1s;
+            font-size: 0.85rem;
         }
-        .traffic-context-menu .menu-item:hover {
-            background: #f1f5f9;
-        }
-        .traffic-context-menu .color-circle {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            margin-right: 10px;
-            border: 1px solid #e2e8f0;
-        }
-        /* Цвета для среднего времени (пастельные) */
-        .avg-time-red { background-color: #fecaca !important; }    /* пастельно-красный */
-        .avg-time-yellow { background-color: #fef08a !important; } /* пастельно-жёлтый */
-        .avg-time-blue { background-color: #bfdbfe !important; }   /* пастельно-синий */
-        .avg-time-green { background-color: #bbf7d0 !important; }  /* пастельно-зелёный */
+    }
+    .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 8px;
+    }
+    .tab-btn {
+        background: transparent;
+        border: none;
+        padding: 8px 20px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #64748b;
+        cursor: pointer;
+        border-radius: 40px;
+        transition: all 0.2s;
+    }
+    .tab-btn:hover {
+        background: #f1f5f9;
+        color: #1e293b;
+    }
+    .tab-btn.active {
+        background: #3b82f6;
+        color: white;
+    }
+    .tab-content {
+        animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    .recent-table {
+        overflow-x: visible;
+        overflow-y: visible;
+    }
+    .recent-table table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        margin-top: 0;
+        width: 100%;
+    }
+    .recent-table th, .recent-table td {
+        padding: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .row-not-started { background-color: #f1f5f9; }
+    .row-working { background-color: #dcfce7; }
+    .row-on-break { background-color: #fef9c3; }
+    .row-ended { background-color: #dbeafe; }
+    .worked-hours-cell { background-color: #dbeafe; }
+    .break-minutes-cell { background-color: #fef9c3; }
+    .break-minutes-cell { border-right: 1px solid #292929; }
+    .highlight-fio {
+        background-color: #e0f2fe !important;
+    }
+    .highlight-day {
+        background-color: #e0f2fe !important;
+    }
+    .break-minutes-cell {
+        border-right: 1px solid #292929;
+    }
+    .break-minutes-cell:last-child {
+        border-right: none;
+    }
 
-        /* Цвета как в #trafficWorked и #trafficBreak */
-        .daily-cell.worked {
-            background-color: #f1f5f9;   /* серый фон */
-            color: #008000;              /* зелёный */
-            font-weight: 600;
-        }
-        .daily-cell.break {
-            background-color: #f1f5f9;   /* серый фон */
-            color: #ff8c00;              /* оранжевый */
-            font-weight: 600;
-        }
-        /* Увеличиваем ширину только двух последних ячеек (статистика) */
-        .daily-traffic-table td.stat-cell {
-            min-width: 25px !important;  /* принудительно переопределяем */
-            white-space: nowrap;
-        }
+    .highlight-fio {
+        background-color: #e0f2fe !important;
+    }
+    .highlight-day-header {
+        background-color: #e0f2fe !important;
+    }
+    .highlight-hour-header {
+        background-color: #e0f2fe !important;
+    }
+    #weeklyReportContainer {
+        margin-top: 16px;
+    }
 
-        /* Внутренний спан растягиваем по ширине родителя */
-        .daily-traffic-table td.stat-cell .daily-cell {
-            width: auto;
-            min-width: 100px;  /* чтобы не сжимались слишком */
-        }
-        .daily-traffic-table td.last-cell {
-            padding-right: 20px;
-        }
-        .product-info {
-            display: flex;
-            align-items: center;
-            flex: 1;
-        }
-        .product-name {
-            font-weight: 500;
-            font-size: 1rem;
-            width: 200px;
-            text-align: left;
-            flex-shrink: 0;
-        }
-        .product-fullname {
-            font-weight: 500;
-            font-size: 1rem;
-            width: 200px;
-            text-align: left;
-            margin-left: 40px;
-            flex-shrink: 0;
-        }
-    </style>
+    #weeklyReportContainer .report-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    #weeklyReportContainer .report-table thead th {
+        line-height: 40px;
+        vertical-align: middle;
+    }
+    .sortable-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        background: #f8fafc;
+        border-radius: 60px;
+        padding: 0;
+        flex-wrap: wrap;
+        align-items: center;
+        height: 38px;
+    }
+
+    .sortable-list li {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 40px;
+        padding: 6px 16px;
+        cursor: grab;
+        user-select: none;
+        transition: background 0.2s;
+        display: inline-block;
+        line-height: 1.2;
+        font-size: 0.85rem;
+    }
+    .sortable-list li:last-child {
+        border-bottom: none;
+    }
+    .sortable-list li:active {
+        cursor: grabbing;
+    }
+    .sortable-list li.dragging {
+        opacity: 0.5;
+    }
+    .report-table thead th {
+        position: sticky;
+        top: 0;
+        background-color: #f8fafc;
+        z-index: 10;
+    }
+    .inactive-day {
+        background-color: #e2e8f0 !important;
+    }
+
+    .report-table td {
+        text-align: center;
+        vertical-align: top;
+        padding: 8px 4px;
+    }
+
+    .report-table td > div {
+        line-height: 1.4;
+        margin: 2px 0;
+        min-height: 1.4em;
+    }
+
+    .report-table td.fio-cell {
+        text-align: left;
+        vertical-align: middle;
+    }
+    .report-table td.inactive-day,
+    .report-table td.inactive-day div {
+        background-color: #ededed !important;
+        color: #c8c8c8 !important;
+    }
+
+    /* Таблица статистики за период — центрирование заголовков и ячеек */
+    .period-stat-table th,
+    .period-stat-table td {
+        text-align: center;
+    }
+
+    /* Исключение: первый столбец (ФИО) выравниваем влево */
+    .period-stat-table th:first-child,
+    .period-stat-table td:first-child {
+        text-align: left;
+    }
+
+    .close-rounding,
+    .close-edit,
+    .close-username,
+    .close-fullname,
+    .close-edit-notif,
+    .close-explanation-view {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .close-rounding:hover,
+    .close-edit:hover,
+    .close-username:hover,
+    .close-fullname:hover,
+    .close-edit-notif:hover,
+    .close-explanation-view:hover {
+        color: black;
+    }
+    .schedule-row td {
+        background-color: #f9fafb;
+        border-top: 2px solid #e2e8f0;
+    }
+    .expand-schedule-btn {
+        color: #1e293b;
+    }
+    .schedule-row table,
+    .schedule-row th,
+    .schedule-row td {
+        border: 1px solid #cbd5e1;
+        border-collapse: collapse;
+    }
+    .schedule-row th, .schedule-row td {
+        padding: 8px 4px;
+        background-color: #f9fafb;
+    }
+    .schedule-row input.schedule-time-input {
+        border: none;
+        background: transparent;
+        padding: 8px 4px;
+        font-size: 1rem;
+        width: 100%;
+        text-align: center;
+        font-family: 'Courier New', monospace;
+        outline: none;
+        box-shadow: none;
+        box-sizing: border-box;
+    }
+    .schedule-start-row td {
+        background-color: rgba(144, 238, 144, 0.15);
+    }
+    .schedule-end-row td {
+        background-color: rgba(255, 160, 122, 0.15);
+    }
+    .schedule-row td:focus-within {
+        background-color: rgba(239, 255, 254, 0.05);
+    }
+    .expand-schedule-btn {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        font-size: 1.2rem;
+        line-height: 1;
+    }
+    #employeesTable {
+        border-collapse: collapse;
+    }
+    #employeesTable th:last-child,
+    #employeesTable td:last-child {
+        width: 40px;
+        min-width: 40px;
+        max-width: 40px;
+    }
+    .schedule-row table th,
+    .schedule-row table td {
+        width: calc(100% / 7);
+    }
+    
+    .close-edit-notif {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .close-edit-notif:hover {
+        color: black;
+    }
+
+    .recent-table table {
+        width: 100%;
+        border-collapse: separate;
+        margin-top: 0;
+    }
+
+    .recent-table th {
+        position: sticky;
+        top: 0;
+        background: #f8fafc;
+        z-index: 20;
+    }
+
+    .report-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+
+    .close-create-notif {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .close-create-notif:hover {
+        color: black;
+    }
+
+    .flatpickr-calendar button,
+    .flatpickr-calendar .flatpickr-prev-month,
+    .flatpickr-calendar .flatpickr-next-month {
+        height: auto !important;
+        padding: 4px 6px !important;
+        background: transparent !important;
+        border: none !important;
+        margin: 0 !important;
+        font-size: 14px !important;
+        line-height: 1 !important;
+        color: #3b82f6 !important;
+    }
+    .flatpickr-calendar button:hover {
+        background: #e2e8f0 !important;
+    }
+
+    .flatpickr-current-month .cur-month,
+    .flatpickr-current-month .cur-year {
+        font-size: 14px;
+    }
+
+    .flatpickr-calendar {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border-radius: 16px;
+        margin-top: 4px;
+    }
+    .report-table td a {
+        color: #1e293b;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+
+    .report-table td a:hover {
+        color: #3b82f6 !important;
+        text-decoration: underline !important;
+        cursor: pointer;
+    }
+
+    .recent-start {
+        background-color: rgba(34, 197, 94, 0.15);
+    }
+    .recent-break-start {
+        background-color: rgba(250, 204, 21, 0.2);
+    }
+    .recent-break-end {
+        background-color: rgba(249, 115, 22, 0.2);
+    }
+    .recent-end {
+        background-color: rgba(239, 68, 68, 0.15);
+    }
+    #notificationsContainer .report-table td:nth-child(6) {
+        text-align: left;
+    }
+    #weeklyTrafficTableContainer table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+    }
+    #weeklyTrafficTableContainer th,
+    #weeklyTrafficTableContainer td {
+        border: 1px solid #e2e8f0;
+        padding: 8px;
+        vertical-align: top;
+        text-align: left;
+    }
+    #weeklyTrafficTableContainer th {
+        background: #f8fafc;
+        font-weight: 600;
+        text-align: left;
+    }
+    #weeklyTrafficTableContainer .traffic-entry {
+        padding: 2px 0;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    #weeklyTrafficTableContainer .traffic-entry:last-child {
+        border-bottom: none;
+    }
+    /* Кнопка добавления в заголовке */
+    .add-entry-btn {
+        font-size: 0.9rem;
+        cursor: pointer;
+        color: #3b82f6;
+        margin-left: 4px;
+        transition: 0.2s;
+    }
+    .add-entry-btn:hover {
+        transform: scale(1.2);
+    }
+
+    /* Ячейка для добавления записи */
+    .add-entry-cell {
+        background: #f1f5f9 !important;
+        padding: 8px !important;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .add-entry-input {
+        width: 70px;
+        padding: 4px 6px;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        text-align: center;
+        font-family: monospace;
+        outline: none;
+    }
+    .add-entry-input:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
+    }
+    .add-entry-color {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 2px solid #cbd5e1;
+        cursor: pointer;
+        transition: 0.2s;
+        flex-shrink: 0;
+    }
+    .add-entry-color:hover {
+        transform: scale(1.1);
+    }
+    .add-entry-color.start { background: #22c55e; border-color: #16a34a; }
+    .add-entry-color.break_start { background: #facc15; border-color: #eab308; }
+    .add-entry-color.break_end { background: #f97316; border-color: #ea580c; }
+    .add-entry-color.end { background: #ef4444; border-color: #dc2626; }
+
+    .add-entry-save {
+        background: none;
+        border: none;
+        color: #3b82f6;
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 0 4px;
+        transition: 0.2s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: auto;
+        height: auto;
+        border-radius: 0;
+    }
+    .add-entry-save:hover {
+        transform: scale(1.1);
+        color: #2563eb;
+    }
+    .add-entry-save:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    /* Редактируемая ячейка */
+    .entry-cell.editing {
+        border: 2px solid #3b82f6 !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        outline: none;
+    }
+    .entry-cell .edit-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 4px;
+    }
+    .entry-cell .edit-controls .edit-time-input {
+        width: 60px;
+        padding: 2px 4px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        text-align: center;
+        font-family: monospace;
+        outline: none;
+    }
+    .entry-cell .edit-controls .edit-time-input:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
+    }
+    .entry-cell .edit-controls .edit-color-btn {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid #cbd5e1;
+        cursor: pointer;
+        transition: 0.2s;
+        flex-shrink: 0;
+    }
+    .entry-cell .edit-controls .edit-color-btn:hover {
+        transform: scale(1.1);
+    }
+    .entry-cell .edit-controls .edit-color-btn.start { background: #22c55e; border-color: #16a34a; }
+    .entry-cell .edit-controls .edit-color-btn.break_start { background: #facc15; border-color: #eab308; }
+    .entry-cell .edit-controls .edit-color-btn.break_end { background: #fb923c; border-color: #ea580c; }
+    .entry-cell .edit-controls .edit-color-btn.end { background: #ef4444; border-color: #dc2626; }
+
+    .daily-traffic-table td.editing .edit-color-btn.start { background: #22c55e; border-color: #16a34a; }
+    .daily-traffic-table td.editing .edit-color-btn.break_start { background: #facc15; border-color: #eab308; }
+    .daily-traffic-table td.editing .edit-color-btn.break_end { background: #fb923c; border-color: #ea580c; }
+    .daily-traffic-table td.editing .edit-color-btn.end { background: #ef4444; border-color: #dc2626; }
+
+    .entry-cell .edit-controls .edit-save-btn {
+        background: none;
+        border: none;
+        color: #3b82f6;
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 0 2px;
+        transition: 0.2s;
+    }
+    .entry-cell .edit-controls .edit-save-btn:hover {
+        transform: scale(1.1);
+        color: #2563eb;
+    }
+    .entry-cell .edit-controls .edit-delete-btn {
+        background: none;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 0 2px;
+        transition: 0.2s;
+    }
+    .entry-cell .edit-controls .edit-delete-btn:hover {
+        transform: scale(1.1);
+        color: #dc2626;
+    }
+    .entry-cell .edit-controls .edit-save-btn:disabled,
+    .entry-cell .edit-controls .edit-delete-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+    /* Дневной светофор — таблица по содержимому */
+    .daily-traffic-table {
+        width: auto;              /* не растягиваем */
+        border-collapse: collapse;
+        margin: 0;
+    }
+
+    .daily-traffic-table td,
+    .daily-traffic-table th {
+        border: none;
+        padding: 4px 4px;
+    }
+
+    /* Колонка ФИО — фиксированная ширина */
+    .daily-traffic-table td.fio-cell {
+        width: 200px;
+        max-width: 200px;
+        min-width: 200px;
+        text-align: left;
+        white-space: normal;
+        word-break: break-word;
+        padding-right: 8px;
+        vertical-align: middle;
+    }
+
+    /* Все колонки с отметками (включая последнюю) — одинаковой ширины */
+    .daily-traffic-table td:not(.fio-cell) {
+        min-width: 75px;
+        width: auto;
+        white-space: nowrap;
+        padding: 4px 2px;
+        text-align: center;
+        vertical-align: middle;
+    }
+
+    /* Блоки самих отметок */
+    .daily-cell {
+        display: inline-block;
+        width: 75px;                /* фиксированная ширина */
+        padding: 8px 6px;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.95rem;
+        text-align: center;
+        background-color: #f1f5f9;
+        color: #1e293b;
+    }
+
+    /* Цвета */
+    .daily-cell.start { background-color: rgba(34, 197, 94, 0.15); }
+    .daily-cell.break_start { background-color: rgba(250, 204, 21, 0.2); }
+    .daily-cell.break_end { background-color: rgba(249, 115, 22, 0.2); }
+    .daily-cell.end { background-color: rgba(239, 68, 68, 0.15); }
+    .daily-cell.unknown { background-color: #f1f5f9; color: #94a3b8; }
+
+    /* Подсветка редактируемой ячейки */
+    .daily-traffic-table td.editing {
+        border: 2px solid #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+        outline: none;
+        background-color: #f8fafc !important;
+        max-width: 200px;
+    }
+
+    /* Стили элементов управления в режиме редактирования — без изменений */
+    .daily-traffic-table td.editing .edit-controls {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 4px;
+    }
+    .daily-traffic-table td.editing .edit-time-input {
+        width: 60px;
+        padding: 2px 4px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        text-align: center;
+        font-family: monospace;
+        outline: none;
+    }
+    .daily-traffic-table td.editing .edit-color-btn {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid #cbd5e1;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .daily-traffic-table td.editing .edit-save-btn,
+    .daily-traffic-table td.editing .edit-delete-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 0 2px;
+        transition: 0.2s;
+    }
+    .daily-traffic-table td.editing .edit-save-btn { color: #3b82f6; }
+    .daily-traffic-table td.editing .edit-save-btn:hover { transform: scale(1.1); color: #2563eb; }
+    .daily-traffic-table td.editing .edit-delete-btn { color: #ef4444; }
+    .daily-traffic-table td.editing .edit-delete-btn:hover { transform: scale(1.1); color: #dc2626; }
+
+    /* Стили для блока сводки в ежедневном светофоре (одна колонка) */
+    #weeklyTrafficSummary {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    .summary-item {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .summary-label {
+        font-weight: 500;
+        color: #0f172a;
+        font-size: 0.95rem;
+    }
+
+    .summary-value {
+        font-weight: 600;
+        font-size: 1.1rem;
+        color: #0f172a;
+    }
+
+    .summary-raw {
+        color: #64748b;
+        font-weight: 400;
+        font-size: 0.9rem;
+        margin-left: 4px;
+    }
+
+    /* Цвета: рабочее время – зелёный, перерывы – оранжевый */
+    #trafficWorked {
+        color: #008000;      /* ярко-зелёный */
+    }
+
+    #trafficBreak {
+        color: #ff8c00;      /* оранжевый (как в оригинале) */
+    }
+
+    /* Выделенная ячейка */
+    .traffic-table td.selected-cell {
+        border: 2px solid #3b82f6 !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3) !important;
+        outline: none;
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Подсветка строки и столбца при наведении (уже есть) */
+    .highlight-fio {
+        background-color: #e0f2fe !important;
+    }
+    .highlight-day-header {
+        background-color: #e0f2fe !important;
+    }
+
+    /* Типы дней */
+    .day-type-work { background-color: #bfdbfe !important; }
+    .day-type-off { background-color: #e2e8f0 !important; }
+    .day-type-vacation { background-color: #86efac !important; }
+    .day-type-sick { background-color: #fde047 !important; }
+
+    /* Контекстное меню */
+    .traffic-context-menu {
+        display: none;
+        position: fixed;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        padding: 8px;
+        z-index: 1000;
+        min-width: 120px;
+    }
+    .traffic-context-menu .menu-item {
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 6px 12px;
+        border-radius: 4px;
+        transition: background 0.1s;
+    }
+    .traffic-context-menu .menu-item:hover {
+        background: #f1f5f9;
+    }
+    .traffic-context-menu .color-circle {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        margin-right: 10px;
+        border: 1px solid #e2e8f0;
+    }
+    /* Цвета для среднего времени (пастельные) */
+    .avg-time-red { background-color: #fecaca !important; }    /* пастельно-красный */
+    .avg-time-yellow { background-color: #fef08a !important; } /* пастельно-жёлтый */
+    .avg-time-blue { background-color: #bfdbfe !important; }   /* пастельно-синий */
+    .avg-time-green { background-color: #bbf7d0 !important; }  /* пастельно-зелёный */
+
+    /* Цвета как в #trafficWorked и #trafficBreak */
+    .daily-cell.worked {
+        background-color: #f1f5f9;   /* серый фон */
+        color: #008000;              /* зелёный */
+        font-weight: 600;
+    }
+    .daily-cell.break {
+        background-color: #f1f5f9;   /* серый фон */
+        color: #ff8c00;              /* оранжевый */
+        font-weight: 600;
+    }
+    /* Увеличиваем ширину только двух последних ячеек (статистика) */
+    .daily-traffic-table td.stat-cell {
+        min-width: 25px !important;  /* принудительно переопределяем */
+        white-space: nowrap;
+    }
+
+    /* Внутренний спан растягиваем по ширине родителя */
+    .daily-traffic-table td.stat-cell .daily-cell {
+        width: auto;
+        min-width: 100px;  /* чтобы не сжимались слишком */
+    }
+    .daily-traffic-table td.last-cell {
+        padding-right: 20px;
+    }   
+</style>
 
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
