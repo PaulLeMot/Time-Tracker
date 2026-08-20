@@ -6148,7 +6148,7 @@ async function renderCurrentRoles(employeeId) {
     }
 }
 function initProcsetsTab() {
-    // ---- Глобальные переменные (внутри замыкания) ----
+    // ---- Глобальные переменные ----
     let deals = [];
     let dealTypes = [];
     let ips = [];
@@ -6196,7 +6196,7 @@ function initProcsetsTab() {
     const importPreviewBody = container.querySelector('#importPreviewBody');
     const clearImportBtn = container.querySelector('#clearImportBtn');
 
-    // ---- Вспомогательные функции (apiFetch и прочее) ----
+    // ---- Вспомогательная функция apiFetch ----
     async function apiFetch(url, options = {}) {
         const resp = await fetch(url, {
             ...options,
@@ -6364,7 +6364,6 @@ function initProcsetsTab() {
         createError.textContent = '';
         populateDealTypeSelect();
 
-        // Сброс импорта
         importedProducts = [];
         importPreviewBody.innerHTML = '';
         importPreviewContainer.style.display = 'none';
@@ -6393,7 +6392,6 @@ function initProcsetsTab() {
 
     function closeCreateModal() {
         modalCreate.style.display = 'none';
-        // Очистка импорта
         importedProducts = [];
         importPreviewBody.innerHTML = '';
         importPreviewContainer.style.display = 'none';
@@ -6543,7 +6541,7 @@ function initProcsetsTab() {
                 const resp = await apiFetch('/api/sandbox/import/preview', {
                     method: 'POST',
                     body: formData,
-                    headers: { 'Content-Type': undefined } // удаляем, чтобы браузер сам поставил multipart
+                    headers: { 'Content-Type': undefined }
                 });
                 const data = await resp.json();
                 importedProducts = data.products;
@@ -6596,7 +6594,7 @@ function initProcsetsTab() {
         }
     }
 
-    // ---- Обработчик создания сделки (с учётом товаров) ----
+    // ---- Обработчик создания сделки ----
     if (createForm) {
         createForm.addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -6617,7 +6615,7 @@ function initProcsetsTab() {
                 deal_type_id: dealTypeId,
                 ip_id: ipId,
                 mp_id: mpId,
-                products: importedProducts   // массив товаров
+                products: importedProducts
             };
 
             try {
@@ -6629,7 +6627,6 @@ function initProcsetsTab() {
                 showToast(`Сделка создана, ID: ${data.id}`);
                 closeCreateModal();
                 loadDeals();
-                // Очистка формы и импорта
                 importedProducts = [];
                 importPreviewBody.innerHTML = '';
                 importPreviewContainer.style.display = 'none';
@@ -6646,12 +6643,1017 @@ function initProcsetsTab() {
         });
     }
 
-    // ---- Остальные инициализации (вкладки, товары, задачи, роли) ----
-    // ... (здесь весь остальной код, который был в функции initProcsetsTab, включая обработчики для товаров, задач, ролей)
-    // Для краткости я не буду дублировать его полностью, но он должен быть скопирован из старой функции.
-    // Ниже приведены только основные вызовы.
+    // ================================================
+    //   ВКЛАДКА «ТОВАРЫ»
+    // ================================================
 
-    // ---- Инициализация навигации по вкладкам песочницы ----
+    async function loadProducts() {
+        try {
+            const resp = await apiFetch('/api/sandbox/product-types');
+            products = await resp.json();
+            // также загружаем техкарты для группировки
+            const techResp = await apiFetch('/api/sandbox/tech-cards');
+            techCards = await techResp.json();
+            renderProductsGrouped();
+        } catch (err) {
+            showToast('Ошибка загрузки товаров: ' + err.message, true);
+        }
+    }
+
+    function renderProductsGrouped() {
+        const containerEl = document.getElementById('productsList');
+        if (!containerEl) return;
+        if (!products.length) {
+            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет товаров. Создайте товары в справочнике.</p>';
+            return;
+        }
+        const groups = groupProductsByTechCard(products, techCards);
+        if (groups.length === 0) {
+            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет товаров с техкартами.</p>';
+            return;
+        }
+        let html = '<div class="product-groups-container">';
+        for (const group of groups) {
+            const isNoTech = group.tech_card === null;
+            const groupName = isNoTech ? '📦 Без техкарты' : escapeHtml(group.tech_card.name);
+            html += `<div class="product-group" data-group-id="${isNoTech ? 'no_tech' : group.tech_card.id}">
+                <div class="product-group-header">
+                    <span class="product-group-title">${groupName}</span>
+                    <span class="product-group-actions">
+                        <button class="add-product-btn" data-tech-id="${isNoTech ? '' : group.tech_card.id}" title="Добавить товар">➕</button>
+                        ${!isNoTech ? `<button class="edit-techcard-btn" data-id="${group.tech_card.id}" title="Редактировать техкарту">✏️</button>` : ''}
+                        ${!isNoTech ? `<button class="delete-techcard-btn" data-id="${group.tech_card.id}" title="Удалить техкарту">🗑️</button>` : ''}
+                    </span>
+                </div>
+                <div class="product-group-body">`;
+            for (const product of group.products) {
+                html += `<div class="product-item" data-id="${product.id}">
+                    <div class="product-info">
+                        <span class="product-name">${escapeHtml(product.name)}</span>
+                        ${product.full_name ? `<span class="product-fullname">${escapeHtml(product.full_name)}</span>` : ''}
+                    </div>
+                    <span class="product-actions">
+                        <button class="edit-product-btn" data-id="${product.id}" title="Редактировать">✏️</button>
+                        <button class="delete-product-btn" data-id="${product.id}" title="Удалить">🗑️</button>
+                    </span>
+                </div>`;
+            }
+            html += `</div></div>`;
+        }
+        containerEl.innerHTML = html;
+
+        // Обработчики для кнопок товаров
+        containerEl.querySelectorAll('.add-product-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const techCardId = this.dataset.techId ? parseInt(this.dataset.techId) : null;
+                openProductModal(null, techCardId);
+            });
+        });
+        containerEl.querySelectorAll('.edit-product-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const productId = parseInt(this.dataset.id);
+                const product = products.find(p => p.id === productId);
+                if (product) openProductModal(product);
+            });
+        });
+        containerEl.querySelectorAll('.delete-product-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const productId = parseInt(this.dataset.id);
+                if (!confirm('Удалить товар?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/product-types/${productId}`, { method: 'DELETE' });
+                    showToast('Товар удалён');
+                    loadProducts();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+        containerEl.querySelectorAll('.edit-techcard-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const techCardId = parseInt(this.dataset.id);
+                document.querySelector('.sandbox-sidebar .nav-btn[data-target="tasks"]').click();
+                setTimeout(() => {
+                    if (techCardSelect) {
+                        techCardSelect.value = techCardId;
+                        techCardSelect.dispatchEvent(new Event('change'));
+                    }
+                }, 300);
+            });
+        });
+        containerEl.querySelectorAll('.delete-techcard-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const techCardId = parseInt(this.dataset.id);
+                if (!confirm('Удалить техкарту? Все товары, привязанные к ней, потеряют техкарту.')) return;
+                try {
+                    await apiFetch(`/api/sandbox/tech-cards/${techCardId}`, { method: 'DELETE' });
+                    showToast('Техкарта удалена');
+                    loadProducts();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    function groupProductsByTechCard(products, techCards) {
+        const groups = {};
+        techCards.forEach(tc => { groups[tc.id] = { tech_card: tc, products: [] }; });
+        groups['no_tech'] = { tech_card: null, products: [] };
+        products.forEach(p => {
+            if (p.tech_card_id && groups[p.tech_card_id]) {
+                groups[p.tech_card_id].products.push(p);
+            } else {
+                groups['no_tech'].products.push(p);
+            }
+        });
+        const sorted = Object.values(groups);
+        sorted.sort((a, b) => {
+            if (a.tech_card === null) return 1;
+            if (b.tech_card === null) return -1;
+            return a.tech_card.name.localeCompare(b.tech_card.name);
+        });
+        return sorted;
+    }
+
+    // Модальное окно товаров
+    const productModal = document.getElementById('productModal');
+    const productForm = document.getElementById('productForm');
+    const productNameInput = document.getElementById('productNameInput');
+    const productFullNameInput = document.getElementById('productFullNameInput');
+    const productTechCardSelect = document.getElementById('productTechCardSelect');
+    const productModalTitle = document.getElementById('productModalTitle');
+    const productFormError = document.getElementById('productFormError');
+    const closeProductModalBtn = document.querySelector('.close-product-modal');
+    const cancelProductBtn = document.getElementById('cancelProductBtn');
+    let editingProductId = null;
+
+    function openProductModal(product = null, defaultTechCardId = null) {
+        editingProductId = product ? product.id : null;
+        productFormError.textContent = '';
+        productNameInput.value = product ? product.name : '';
+        productFullNameInput.value = product ? (product.full_name || '') : '';
+        populateProductTechCardSelect(product ? product.tech_card_id : defaultTechCardId);
+        productModalTitle.textContent = product ? 'Редактирование товара' : 'Создание товара';
+        productModal.style.display = 'block';
+    }
+
+    function closeProductModal() {
+        productModal.style.display = 'none';
+        editingProductId = null;
+    }
+
+    function populateProductTechCardSelect(selectedId) {
+        const select = productTechCardSelect;
+        select.innerHTML = '<option value="">Без техкарты</option>';
+        techCards.forEach(tc => {
+            const opt = document.createElement('option');
+            opt.value = tc.id;
+            opt.textContent = tc.name;
+            if (tc.id === selectedId) opt.selected = true;
+            select.appendChild(opt);
+        });
+    }
+
+    if (productForm) {
+        productForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const name = productNameInput.value.trim();
+            if (!name) {
+                productFormError.textContent = 'Название обязательно';
+                return;
+            }
+            const fullName = productFullNameInput.value.trim() || null;
+            const techCardId = parseInt(productTechCardSelect.value) || null;
+            const payload = { name, full_name: fullName, tech_card_id: techCardId };
+            const method = editingProductId ? 'PUT' : 'POST';
+            const url = editingProductId ? `/api/sandbox/product-types/${editingProductId}` : '/api/sandbox/product-types';
+            try {
+                const resp = await apiFetch(url, { method, body: JSON.stringify(payload) });
+                const data = await resp.json();
+                showToast(`Товар "${data.name}" ${editingProductId ? 'обновлён' : 'создан'}`);
+                closeProductModal();
+                loadProducts();
+            } catch (err) {
+                productFormError.textContent = err.message;
+            }
+        });
+    }
+
+    if (closeProductModalBtn) closeProductModalBtn.addEventListener('click', closeProductModal);
+    if (cancelProductBtn) cancelProductBtn.addEventListener('click', closeProductModal);
+    window.addEventListener('click', function(e) {
+        if (e.target === productModal) closeProductModal();
+    });
+
+    // ================================================
+    //   ВКЛАДКА «ЗАДАЧИ» (конструктор, типы, задачи)
+    // ================================================
+
+    async function loadTaskTypes() {
+        try {
+            const resp = await apiFetch('/api/sandbox/task-types');
+            taskTypes = await resp.json();
+            renderTaskTypes();
+            renderTasksGrouped();
+        } catch (err) {
+            showToast('Ошибка загрузки типов задач: ' + err.message, true);
+        }
+    }
+
+    async function loadTasks() {
+        try {
+            const resp = await apiFetch('/api/sandbox/tasks');
+            allTasks = await resp.json();
+            renderTasksGrouped();
+        } catch (err) {
+            showToast('Ошибка загрузки задач: ' + err.message, true);
+        }
+    }
+
+    function renderTaskTypes() {
+        const container = document.getElementById('taskTypeList');
+        if (!container) return;
+        if (!taskTypes || taskTypes.length === 0) {
+            container.innerHTML = '<p style="color:#94a3b8;">Нет типов задач</p>';
+            return;
+        }
+        let html = '';
+        for (const t of taskTypes) {
+            html += `<span class="task-type-item">
+                        ${escapeHtml(t.name)}
+                        <span class="remove-type" data-id="${t.id}">✖</span>
+                    </span>`;
+        }
+        container.innerHTML = html;
+        container.querySelectorAll('.remove-type').forEach(el => {
+            el.addEventListener('click', async () => {
+                const id = parseInt(el.dataset.id);
+                if (!confirm('Удалить тип задачи?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/task-types/${id}`, { method: 'DELETE' });
+                    showToast('Тип удалён');
+                    await loadTaskTypes();
+                    await loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    function groupTasksByType(tasks, types) {
+        const groups = {};
+        types.forEach(t => { groups[t.id] = { type: t, tasks: [] }; });
+        groups['other'] = { type: { id: 'other', name: 'Без типа' }, tasks: [] };
+        tasks.forEach(task => {
+            if (task.task_type_id && groups[task.task_type_id]) {
+                groups[task.task_type_id].tasks.push(task);
+            } else {
+                groups['other'].tasks.push(task);
+            }
+        });
+        return Object.values(groups).sort((a, b) => a.type.name.localeCompare(b.type.name));
+    }
+
+    function renderTasksGrouped() {
+        const leftPanel = document.getElementById('tasksLeftPanel');
+        if (!leftPanel) return;
+        if (!allTasks.length && !taskTypes.length) {
+            leftPanel.innerHTML = '<p style="color:#94a3b8;">Нет задач. Создайте типы и задачи.</p>';
+            return;
+        }
+        let groups = groupTasksByType(allTasks, taskTypes);
+        groups = groups.filter(g => g.type.id !== 'other');
+        if (groups.length === 0) {
+            leftPanel.innerHTML = '<p style="color:#94a3b8;">Нет задач с типами. Создайте типы и задачи.</p>';
+            return;
+        }
+
+        // Маппинг задача -> роли
+        const taskToRoles = {};
+        roles.forEach(role => {
+            role.tasks.forEach(task => {
+                if (!taskToRoles[task.id]) taskToRoles[task.id] = [];
+                taskToRoles[task.id].push(role);
+            });
+        });
+
+        let html = '<div class="task-groups-container">';
+        for (const group of groups) {
+            const typeId = group.type.id;
+            const typeName = group.type.name;
+            html += `<div class="task-group" data-type-id="${typeId}">
+                <div class="task-group-header" data-id="${typeId}">
+                    <span class="task-group-title">${escapeHtml(typeName)}</span>
+                    <span class="task-group-actions">
+                        <button class="edit-type-btn" data-id="${typeId}" title="Редактировать тип">✏️</button>
+                        <button class="delete-type-btn" data-id="${typeId}" title="Удалить тип">🗑️</button>
+                    </span>
+                </div>
+                <div class="task-group-body">`;
+            for (const task of group.tasks) {
+                const rolesForTask = taskToRoles[task.id] || [];
+                let rolesHtml = '';
+                if (rolesForTask.length > 0) {
+                    rolesHtml = `<div class="task-roles" style="font-size:0.8rem; color:#475569; margin-top:4px;">
+                        ${rolesForTask.map(role => `
+                            <span class="role-tag" style="background:#f1f5f9; border-radius:12px; padding:0 6px; display:inline-block; margin:2px 4px 2px 0;">
+                                ${escapeHtml(role.name)}
+                                <button class="remove-task-from-role" data-task-id="${task.id}" data-role-id="${role.id}" style="background:none; border:none; cursor:pointer; color:#ef4444; padding:0 2px; font-size:0.8rem;">✖</button>
+                            </span>
+                        `).join('')}
+                    </div>`;
+                }
+                html += `<div class="task-item" data-id="${task.id}" draggable="true">
+                    <div class="task-info">
+                        <span class="task-name">${escapeHtml(task.name)}</span>
+                        ${rolesHtml}
+                    </div>
+                    <span class="task-actions">
+                        <button class="edit-task-btn" data-id="${task.id}" title="Редактировать задачу">✏️</button>
+                        <button class="delete-task-btn" data-id="${task.id}" title="Удалить задачу">🗑️</button>
+                        <button class="add-task-to-role-btn" data-task-id="${task.id}" data-task-name="${escapeHtml(task.name)}" title="Добавить в роль">➕</button>
+                    </span>
+                </div>`;
+            }
+            html += `
+                <div class="add-task-area">
+                    <input type="text" class="new-task-input" placeholder="Название новой задачи" data-type-id="${typeId}">
+                    <button class="add-task-btn" data-type-id="${typeId}">➕</button>
+                </div>
+            </div>`;
+            html += `</div></div>`;
+        }
+        leftPanel.innerHTML = html;
+
+        // Обработчики
+        leftPanel.querySelectorAll('.task-item[draggable="true"]').forEach(el => {
+            el.removeEventListener('dragstart', handleDragStart);
+            el.removeEventListener('dragend', handleDragEnd);
+            el.addEventListener('dragstart', handleDragStart);
+            el.addEventListener('dragend', handleDragEnd);
+        });
+
+        leftPanel.querySelectorAll('.edit-task-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const taskId = parseInt(btn.dataset.id);
+                const task = allTasks.find(t => t.id === taskId);
+                if (!task) return;
+                const newName = prompt('Введите новое название задачи:', task.name);
+                if (newName !== null && newName.trim() !== '') {
+                    try {
+                        await apiFetch(`/api/sandbox/tasks/${taskId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ name: newName.trim() })
+                        });
+                        showToast('Задача обновлена');
+                        loadTasks();
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.delete-task-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const taskId = parseInt(btn.dataset.id);
+                if (!confirm('Удалить задачу?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/tasks/${taskId}`, { method: 'DELETE' });
+                    showToast('Задача удалена');
+                    loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.add-task-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const typeId = parseInt(btn.dataset.typeId);
+                const input = btn.closest('.add-task-area').querySelector('.new-task-input');
+                const name = input?.value.trim();
+                if (!name) return showToast('Введите название задачи', true);
+                try {
+                    await apiFetch('/api/sandbox/tasks', {
+                        method: 'POST',
+                        body: JSON.stringify({ name, task_type_id: typeId })
+                    });
+                    showToast('Задача создана');
+                    if (input) input.value = '';
+                    loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.edit-type-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const typeId = parseInt(btn.dataset.id);
+                const type = taskTypes.find(t => t.id === typeId);
+                if (!type) return;
+                const newName = prompt('Введите новое название типа:', type.name);
+                if (newName !== null && newName.trim() !== '') {
+                    try {
+                        await apiFetch(`/api/sandbox/task-types/${typeId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ name: newName.trim() })
+                        });
+                        showToast('Тип обновлён');
+                        loadTaskTypes();
+                    } catch (err) {
+                        showToast(err.message, true);
+                    }
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.delete-type-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const typeId = parseInt(btn.dataset.id);
+                if (!confirm('Удалить тип задач? Все задачи этого типа останутся без типа.')) return;
+                try {
+                    await apiFetch(`/api/sandbox/task-types/${typeId}`, { method: 'DELETE' });
+                    showToast('Тип удалён');
+                    loadTaskTypes();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+
+        leftPanel.querySelectorAll('.add-task-to-role-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const taskId = parseInt(btn.dataset.taskId);
+                const taskName = btn.dataset.taskName;
+                openAddTaskToRoleModal(taskId, taskName);
+            });
+        });
+
+        leftPanel.querySelectorAll('.remove-task-from-role').forEach(btn => {
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                const taskId = parseInt(this.dataset.taskId);
+                const roleId = parseInt(this.dataset.roleId);
+                if (!confirm('Удалить эту задачу из роли?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/roles/${roleId}/tasks/${taskId}`, { method: 'DELETE' });
+                    showToast('Задача удалена из роли');
+                    await loadRoles();
+                    await loadTasks();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    let draggedTaskId = null;
+    function handleDragStart(e) {
+        const item = e.target.closest('.task-item');
+        if (!item) return;
+        const taskId = item.dataset.id;
+        if (!taskId) return;
+        e.dataTransfer.setData('text/plain', String(taskId));
+        e.dataTransfer.effectAllowed = 'copy';
+        draggedTaskId = taskId;
+    }
+    function handleDragEnd(e) {
+        draggedTaskId = null;
+    }
+
+    async function openAddTaskToRoleModal(taskId, taskName) {
+        const resp = await apiFetch('/api/sandbox/roles');
+        const allRoles = await resp.json();
+        const available = allRoles.filter(r => !r.tasks.some(t => t.id === taskId));
+        if (available.length === 0) {
+            showToast('Задача уже во всех ролях', true);
+            return;
+        }
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:400px;">
+                <span class="modal-close" style="float:right;cursor:pointer;font-size:1.5rem;">&times;</span>
+                <h3>Добавить задачу в роль</h3>
+                <p><strong>Задача:</strong> ${escapeHtml(taskName)}</p>
+                <select id="roleSelectForTask" style="width:100%;padding:8px;border-radius:20px;border:1px solid #cbd5e1;">
+                    ${available.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('')}
+                </select>
+                <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                    <button id="cancelAddTaskToRole" style="background:#94a3b8;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer;">Отмена</button>
+                    <button id="confirmAddTaskToRole" style="background:#22c55e;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer;">Добавить</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const closeModal = () => modal.remove();
+        modal.querySelector('.modal-close').addEventListener('click', closeModal);
+        modal.querySelector('#cancelAddTaskToRole').addEventListener('click', closeModal);
+        window.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+        modal.querySelector('#confirmAddTaskToRole').addEventListener('click', async () => {
+            const roleId = parseInt(modal.querySelector('#roleSelectForTask').value);
+            if (!roleId) { showToast('Выберите роль', true); return; }
+            try {
+                await apiFetch(`/api/sandbox/roles/${roleId}/tasks`, {
+                    method: 'POST',
+                    body: JSON.stringify({ task_id: taskId })
+                });
+                showToast('Задача добавлена в роль');
+                closeModal();
+                await loadRoles();
+                await loadTasks();
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        });
+    }
+
+    // ================================================
+    //   КОНСТРУКТОР ТЕХКАРТ
+    // ================================================
+
+    function initConstructorUI() {
+        const rightPanel = document.getElementById('tasksRightPanel');
+        if (!rightPanel) return;
+
+        techCardNameInput = document.getElementById('techCardNameInput');
+        techCardSelect = document.getElementById('techCardSelect');
+        constructorListEl = document.getElementById('constructorTasksList');
+        saveConstructorBtn = document.getElementById('saveConstructorBtn');
+        deleteConstructorBtn = document.getElementById('deleteConstructorBtn');
+        clearConstructorBtn = document.getElementById('clearConstructorBtn');
+
+        if (!constructorListEl) return;
+
+        if (constructorInitialized) return;
+
+        populateTechCardSelect();
+
+        if (techCardSelect) {
+            techCardSelect.addEventListener('change', async function() {
+                const val = this.value;
+                if (val === '') {
+                    clearConstructor();
+                    return;
+                }
+                const techCardId = parseInt(val);
+                await loadTechCardToConstructor(techCardId);
+            });
+        }
+
+        if (saveConstructorBtn) {
+            saveConstructorBtn.addEventListener('click', saveTechCard);
+        }
+        if (deleteConstructorBtn) {
+            deleteConstructorBtn.addEventListener('click', deleteCurrentTechCard);
+        }
+        if (clearConstructorBtn) {
+            clearConstructorBtn.addEventListener('click', clearConstructor);
+        }
+
+        constructorListEl.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'all';
+            constructorListEl.style.borderColor = '#3b82f6';
+        });
+        constructorListEl.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            constructorListEl.style.borderColor = '#cbd5e1';
+        });
+        constructorListEl.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            constructorListEl.style.borderColor = '#cbd5e1';
+            const data = e.dataTransfer.getData('text/plain');
+            if (!data) return;
+
+            if (data.startsWith('reorder:')) {
+                const fromIndex = parseInt(data.split(':')[1]);
+                const items = constructorListEl.querySelectorAll('.constructor-task-item');
+                let toIndex = items.length;
+                for (let i = 0; i < items.length; i++) {
+                    const rect = items[i].getBoundingClientRect();
+                    if (e.clientY < rect.top + rect.height / 2) {
+                        toIndex = i;
+                        break;
+                    }
+                }
+                if (fromIndex === toIndex) return;
+                const [moved] = constructorTasks.splice(fromIndex, 1);
+                constructorTasks.splice(toIndex, 0, moved);
+                renderConstructorTasks();
+                showToast(`Задача перемещена на позицию ${toIndex+1}`);
+                return;
+            }
+
+            const taskId = parseInt(data, 10);
+            if (isNaN(taskId)) return;
+            if (constructorTasks.some(t => t.id === taskId)) {
+                showToast('Эта задача уже добавлена в конструктор', true);
+                return;
+            }
+            const task = allTasks.find(t => t.id === taskId);
+            if (!task) {
+                showToast('Задача не найдена', true);
+                return;
+            }
+            constructorTasks.push({ id: task.id, name: task.name });
+            renderConstructorTasks();
+            showToast(`Задача "${task.name}" добавлена в конструктор`);
+        });
+
+        constructorInitialized = true;
+    }
+
+    function populateTechCardSelect() {
+        if (!techCardSelect) return;
+        const currentVal = techCardSelect.value;
+        techCardSelect.innerHTML = '<option value="">-- Создать новую --</option>';
+        techCards.forEach(tc => {
+            techCardSelect.innerHTML += `<option value="${tc.id}">${escapeHtml(tc.name)}</option>`;
+        });
+        if (currentVal) techCardSelect.value = currentVal;
+    }
+
+    async function loadTechCardToConstructor(techCardId) {
+        try {
+            const resp = await apiFetch(`/api/sandbox/tech-cards/${techCardId}`);
+            const data = await resp.json();
+            if (!data) {
+                showToast('Техкарта не найдена', true);
+                return;
+            }
+            if (techCardNameInput) techCardNameInput.value = data.name || '';
+            constructorTasks = data.tasks.map(t => ({ id: t.id, name: t.name }));
+            currentTechCardId = techCardId;
+            renderConstructorTasks();
+        } catch (err) {
+            showToast('Ошибка загрузки техкарты: ' + err.message, true);
+        }
+    }
+
+    function renderConstructorTasks() {
+        if (!constructorListEl) return;
+        if (constructorTasks.length === 0) {
+            constructorListEl.innerHTML = '<p style="color:#94a3b8; text-align:center;">Перетащите сюда задачи</p>';
+            return;
+        }
+        let html = '';
+        constructorTasks.forEach((task, index) => {
+            html += `<div class="constructor-task-item" draggable="true" data-index="${index}" style="display:flex; justify-content:space-between; align-items:center; padding:6px 12px; background:white; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:4px; cursor:grab;">
+                <span>${index+1}. ${escapeHtml(task.name)}</span>
+                <button class="remove-constructor-task" data-index="${index}" style="background:none; border:none; cursor:pointer; color:#ef4444;">✖</button>
+            </div>`;
+        });
+        constructorListEl.innerHTML = html;
+
+        constructorListEl.querySelectorAll('.constructor-task-item').forEach(el => {
+            el.addEventListener('dragstart', (e) => {
+                const idx = el.dataset.index;
+                e.dataTransfer.setData('text/plain', `reorder:${idx}`);
+                e.dataTransfer.effectAllowed = 'move';
+            });
+        });
+
+        constructorListEl.querySelectorAll('.remove-constructor-task').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.index);
+                constructorTasks.splice(idx, 1);
+                renderConstructorTasks();
+            });
+        });
+    }
+
+    function clearConstructor() {
+        constructorTasks = [];
+        currentTechCardId = null;
+        if (techCardNameInput) techCardNameInput.value = '';
+        if (techCardSelect) techCardSelect.value = '';
+        renderConstructorTasks();
+    }
+
+    async function deleteCurrentTechCard() {
+        if (!currentTechCardId) {
+            showToast('Нет открытой техкарты для удаления', true);
+            return;
+        }
+        const name = techCardNameInput ? techCardNameInput.value.trim() : 'без названия';
+        if (!confirm(`Удалить техкарту "${name}" (ID: ${currentTechCardId})?`)) return;
+        try {
+            await apiFetch(`/api/sandbox/tech-cards/${currentTechCardId}`, { method: 'DELETE' });
+            showToast('Техкарта удалена');
+            await loadProducts();
+            clearConstructor();
+        } catch (err) {
+            showToast('Ошибка удаления: ' + err.message, true);
+        }
+    }
+
+    async function saveTechCard() {
+        const name = techCardNameInput ? techCardNameInput.value.trim() : '';
+        if (!name) {
+            showToast('Введите название техкарты', true);
+            return;
+        }
+        if (constructorTasks.length === 0) {
+            showToast('Добавьте хотя бы одну задачу в конструктор', true);
+            return;
+        }
+        const taskIds = constructorTasks.map(t => t.id);
+        try {
+            let resp;
+            if (currentTechCardId) {
+                resp = await apiFetch(`/api/sandbox/tech-cards/${currentTechCardId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ name, task_ids: taskIds })
+                });
+            } else {
+                resp = await apiFetch('/api/sandbox/tech-cards', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, task_ids: taskIds })
+                });
+            }
+            const data = await resp.json();
+            showToast(`Техкарта "${data.name}" сохранена`);
+            await loadProducts();
+            clearConstructor();
+        } catch (err) {
+            showToast('Ошибка сохранения: ' + err.message, true);
+        }
+    }
+
+    // ================================================
+    //   ВКЛАДКА «РОЛИ»
+    // ================================================
+
+    async function loadRoles() {
+        try {
+            const resp = await apiFetch('/api/sandbox/roles');
+            roles = await resp.json();
+            renderRoles();
+            renderRolesSimpleList();
+            renderTasksGrouped(); // обновляем задачи с ролями
+        } catch (err) {
+            showToast('Ошибка загрузки ролей: ' + err.message, true);
+        }
+    }
+
+    async function loadAllEmployees() {
+        try {
+            const resp = await fetch('/api/employees?active_only=true', { credentials: 'include' });
+            if (!resp.ok) throw new Error('Ошибка загрузки сотрудников');
+            allEmployees = await resp.json();
+            allEmployees.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+        } catch (err) {
+            showToast('Ошибка загрузки сотрудников: ' + err.message, true);
+        }
+    }
+
+    function renderRoles() {
+        const containerEl = document.getElementById('rolesList');
+        if (!containerEl) return;
+        if (!roles || roles.length === 0) {
+            containerEl.innerHTML = '<p style="color:#94a3b8;">Нет ролей.</p>';
+            return;
+        }
+        let html = '<div class="roles-grid">';
+        for (const role of roles) {
+            const taskNames = role.tasks.map(t => escapeHtml(t.name)).join(', ') || '—';
+            const employeeNames = (role.employees || []).map(e => escapeHtml(e.full_name)).join(', ') || '—';
+            html += `<div class="role-card" data-role-id="${role.id}">
+                <div class="role-card-header">
+                    <div class="role-title">${escapeHtml(role.name)}</div>
+                    <div class="role-actions">
+                        <button class="role-add-employee-btn" data-role-id="${role.id}" title="Добавить сотрудника">➕</button>
+                    </div>
+                </div>
+                ${role.description ? `<div class="role-description">${escapeHtml(role.description)}</div>` : ''}
+                <div class="role-tasks"><strong>Задачи:</strong> ${taskNames}</div>
+                <div class="role-employees">
+                    <strong>Сотрудники:</strong>
+                    <span class="employee-list">
+                        ${(role.employees || []).map(e => `
+                            <span class="employee-tag">
+                                ${escapeHtml(e.full_name)}
+                                <button class="remove-employee-btn" data-role-id="${role.id}" data-employee-id="${e.id}" title="Удалить">✖</button>
+                            </span>
+                        `).join('')}
+                        ${(!role.employees || role.employees.length === 0) ? '—' : ''}
+                    </span>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+        containerEl.innerHTML = html;
+
+        containerEl.querySelectorAll('.role-add-employee-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const roleId = parseInt(btn.dataset.roleId);
+                await showEmployeeSelectionModal(roleId);
+            });
+        });
+
+        containerEl.querySelectorAll('.remove-employee-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const roleId = parseInt(btn.dataset.roleId);
+                const employeeId = parseInt(btn.dataset.employeeId);
+                if (!confirm('Удалить этого сотрудника из роли?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/roles/${roleId}/employees/${employeeId}`, { method: 'DELETE' });
+                    showToast('Сотрудник удалён из роли');
+                    await loadRoles();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    async function showEmployeeSelectionModal(roleId) {
+        if (!allEmployees || allEmployees.length === 0) {
+            await loadAllEmployees();
+        }
+        const role = roles.find(r => r.id === roleId);
+        if (!role) {
+            showToast('Должность не найдена', true);
+            return;
+        }
+        if (!role.allow_multiple && role.employees && role.employees.length > 0) {
+            showToast('Эта должность уже назначена сотруднику, множественное назначение запрещено', true);
+            return;
+        }
+        const assignedIds = (role.employees || []).map(e => e.id);
+        const available = allEmployees.filter(e => !assignedIds.includes(e.id));
+        if (available.length === 0) {
+            showToast('Все сотрудники уже назначены на эту должность', true);
+            return;
+        }
+
+        const selected = await new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'block';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 400px;">
+                    <span class="modal-close" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
+                    <h3>Назначить сотрудника на должность</h3>
+                    <select id="employeeSelect" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1;">
+                        ${available.map(e => `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`).join('')}
+                    </select>
+                    <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
+                        <button id="cancelSelectBtn" style="background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Отмена</button>
+                        <button id="confirmSelectBtn" style="background:#22c55e; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Добавить</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            const closeModal = () => { modal.remove(); resolve(null); };
+            modal.querySelector('.modal-close').addEventListener('click', closeModal);
+            modal.querySelector('#cancelSelectBtn').addEventListener('click', closeModal);
+            window.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+            modal.querySelector('#confirmSelectBtn').addEventListener('click', () => {
+                const select = modal.querySelector('#employeeSelect');
+                const empId = parseInt(select.value);
+                modal.remove();
+                resolve(empId);
+            });
+        });
+
+        if (selected) {
+            try {
+                await apiFetch(`/api/sandbox/roles/${roleId}/employees`, {
+                    method: 'POST',
+                    body: JSON.stringify({ employee_id: selected })
+                });
+                showToast('Сотрудник назначен на должность');
+                await loadRoles();
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        }
+    }
+
+    function renderRolesSimpleList() {
+        const tbody = document.getElementById('rolesSimpleList');
+        if (!tbody) return;
+        const sortedRoles = [...roles].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        if (!sortedRoles.length) {
+            tbody.innerHTML = '<tr><td colspan="3" style="color:#94a3b8; text-align:center;">Нет должностей</td></tr>';
+            return;
+        }
+        let html = '';
+        sortedRoles.forEach(role => {
+            html += `<tr data-role-id="${role.id}">
+                <td style="padding:4px 8px;">
+                    <input type="text" class="role-name-input" value="${escapeHtml(role.name)}" data-role-id="${role.id}" style="width:100%; padding:4px 8px; border:1px solid #e2e8f0; border-radius:6px; font-size:0.95rem;">
+                </td>
+                <td style="padding:4px 8px; text-align:center;">
+                    <input type="checkbox" class="role-allow-multiple" data-role-id="${role.id}" ${role.allow_multiple !== false ? 'checked' : ''}>
+                </td>
+                <td style="padding:4px 8px; text-align:right;">
+                    <button class="remove-role-simple-btn" data-role-id="${role.id}" style="background:none; border:none; cursor:pointer; color:#ef4444; font-size:1.1rem;">✖</button>
+                </td>
+            </tr>`;
+        });
+        tbody.innerHTML = html;
+
+        tbody.querySelectorAll('.role-name-input').forEach(input => {
+            const roleId = parseInt(input.dataset.roleId);
+            const originalName = input.value;
+            const save = async () => {
+                const newName = input.value.trim();
+                if (newName === originalName) return;
+                if (!newName) {
+                    showToast('Название не может быть пустым', true);
+                    input.value = originalName;
+                    return;
+                }
+                try {
+                    await apiFetch(`/api/sandbox/roles/${roleId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ name: newName })
+                    });
+                    showToast('Должность переименована');
+                    await loadRoles();
+                } catch (err) {
+                    showToast(err.message, true);
+                    input.value = originalName;
+                }
+            };
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                if (e.key === 'Escape') { input.value = originalName; input.blur(); }
+            });
+        });
+
+        tbody.querySelectorAll('.role-allow-multiple').forEach(cb => {
+            cb.addEventListener('change', async function() {
+                const roleId = parseInt(this.dataset.roleId);
+                const allowMultiple = this.checked;
+                try {
+                    await apiFetch(`/api/sandbox/roles/${roleId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ allow_multiple: allowMultiple })
+                    });
+                    showToast('Настройка обновлена');
+                    await loadRoles();
+                } catch (err) {
+                    showToast(err.message, true);
+                    this.checked = !this.checked;
+                }
+            });
+        });
+
+        tbody.querySelectorAll('.remove-role-simple-btn').forEach(btn => {
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                const roleId = parseInt(this.dataset.roleId);
+                if (!confirm('Удалить эту должность?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/roles/${roleId}`, { method: 'DELETE' });
+                    showToast('Должность удалена');
+                    await loadRoles();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
+
+    // Обработчики для кнопки "Добавить должность" (вкладка Роли)
+    function initRolesTabButtons() {
+        const refreshRolesBtn = document.getElementById('refreshRolesBtn');
+        if (refreshRolesBtn) {
+            refreshRolesBtn.addEventListener('click', loadRoles);
+        }
+        const addRoleBtn = document.getElementById('addRoleBtn');
+        if (addRoleBtn) {
+            addRoleBtn.addEventListener('click', () => {
+                document.querySelector('.sandbox-sidebar .nav-btn[data-target="tasks"]').click();
+            });
+        }
+    }
+
+    // ================================================
+    //   НАВИГАЦИЯ ПО ВКЛАДКАМ
+    // ================================================
+
     document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const target = this.dataset.target;
@@ -6668,23 +7670,29 @@ function initProcsetsTab() {
                 loadIPs();
                 loadMPs();
             } else if (target === 'tasks') {
-                // загрузка задач и инициализация конструктора (если нужно)
-                // ... (код из старой функции)
+                loadTaskTypes();
+                loadTasks();
+                if (!constructorInitialized) initConstructorUI();
+                else populateTechCardSelect();
+                loadRoles();
             } else if (target === 'products') {
-                // загрузка товаров
-                // ...
+                loadProducts();
             } else if (target === 'roles') {
-                // загрузка ролей
-                // ...
+                if (!allEmployees.length) loadAllEmployees();
+                loadRoles();
             }
         });
     });
 
-    // ---- Запуск начальных загрузок ----
+    // ---- Первоначальная загрузка ----
     loadDealTypes().then(() => loadDeals());
     loadIPs();
     loadMPs();
-    // ... остальные инициализации (задачи, товары, роли) - как в старой функции
+    loadTaskTypes();
+    loadTasks();
+    loadProducts();
+    loadAllEmployees();
+    loadRoles();
 
     // ---- Инициализация обработчиков контрагентов ----
     initCounterpartiesHandlers();
@@ -6702,10 +7710,18 @@ function initProcsetsTab() {
 
     // ---- Инициализация конструктора (если ещё не инициализирован) ----
     if (!constructorInitialized) {
-        // ... код инициализации конструктора из старой функции
-        // (techCardNameInput, techCardSelect, etc.)
-        // Для краткости опущено, но в реальной функции должно быть.
+        // отложим инициализацию до первого переключения на вкладку tasks
+        // но для надёжности можно вызвать сейчас, если вкладка активна
+        if (document.getElementById('panel-tasks').classList.contains('active')) {
+            initConstructorUI();
+        }
     }
+
+    // ---- Инициализация кнопок вкладки "Роли" ----
+    initRolesTabButtons();
+
+    // ---- Автообновление сделок каждые 30 секунд ----
+    setInterval(loadDeals, 30000);
 }
 </script>
 </body>
