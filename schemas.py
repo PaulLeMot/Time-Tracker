@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-
+from typing import Optional, List
 class TimeLogCreate(BaseModel):
     user_id: int
     action: str
@@ -44,3 +44,8 @@ class DealCreate(BaseModel):
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
     default_stages: Optional[List[int]] = None
+
+class DealProductItem(BaseModel):
+    name: str
+    full_name: Optional[str] = None
+    quantity: int = 1

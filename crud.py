@@ -3,6 +3,8 @@ from sqlalchemy import select, update, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from datetime import datetime, time, timedelta, date
+from typing import Optional, List
+from schemas import DealProductItem
 from models import (
     Employee,
     TimeEntry,
@@ -382,8 +384,9 @@ async def create_deal(
     db: AsyncSession,
     title: str,
     deal_type_id: int,
-    ip_id: int = None,
-    mp_id: int = None
+    ip_id: Optional[int] = None,
+    mp_id: Optional[int] = None,
+    products: Optional[List[DealProductItem]] = None
 ) -> Deal:
     new_deal = Deal(
         title=title,
@@ -392,7 +395,13 @@ async def create_deal(
         mp_id=mp_id
     )
     db.add(new_deal)
-    await db.commit()
+    await db.flush()
+
+    if products:
+        await add_products_to_deal(db, new_deal.id, products)
+    else:
+        await db.commit()
+
     await db.refresh(new_deal)
     return new_deal
 
@@ -1293,3 +1302,32 @@ async def get_roles_for_employee(db: AsyncSession, employee_id: int) -> list[Rol
     )
     result = await db.execute(stmt)
     return result.unique().scalars().all()
+
+async def get_or_create_product_type(
+    db: AsyncSession,
+    name: str,
+    full_name: Optional[str] = None
+) -> ProductType:
+    """Найти товар по имени, если нет – создать."""
+    stmt = select(ProductType).where(ProductType.name == name)
+    result = await db.execute(stmt)
+    product = result.scalar_one_or_none()
+    if product:
+        return product
+    return await create_product_type(db, name=name, full_name=full_name)
+
+async def add_products_to_deal(
+    db: AsyncSession,
+    deal_id: int,
+    products: List[DealProductItem]
+) -> None:
+    """Привязать товары к сделке (создавая товары при необходимости)."""
+    for item in products:
+        product = await get_or_create_product_type(db, item.name, item.full_name)
+        deal_product = DealProductType(
+            deal_id=deal_id,
+            product_id=product.id,
+            quantity=item.quantity
+        )
+        db.add(deal_product)
+    await db.commit()

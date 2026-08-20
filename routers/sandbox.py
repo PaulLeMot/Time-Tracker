@@ -6,7 +6,10 @@ from database import get_db
 import crud
 from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role
 from routers.auth import get_current_admin
-
+import pandas as pd
+import io
+from fastapi import UploadFile, File
+from schemas import DealProductItem
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
 # ==================== СХЕМЫ ====================
@@ -25,6 +28,7 @@ class DealCreate(BaseModel):
     deal_type_id: int
     ip_id: Optional[int] = None
     mp_id: Optional[int] = None
+    products: Optional[List[DealProductItem]] = None
 
 class IPResponse(BaseModel):
     id: int
@@ -147,7 +151,8 @@ async def create_deal(data: DealCreate, db: AsyncSession = Depends(get_db)):
             title=data.title,
             deal_type_id=data.deal_type_id,
             ip_id=data.ip_id,
-            mp_id=data.mp_id
+            mp_id=data.mp_id,
+            products=data.products
         )
     except Exception as e:
         raise HTTPException(400, detail=str(e))
@@ -648,3 +653,63 @@ async def remove_task_from_role(
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
     return None
+
+
+
+@router.post("/import/preview")
+async def preview_import(file: UploadFile = File(...)):
+    """Прочитать Excel‑файл и вернуть список товаров для предпросмотра."""
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(400, detail="Файл должен быть Excel (.xlsx или .xls)")
+
+    try:
+        contents = await file.read()
+        df = pd.read_excel(io.BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(400, detail=f"Не удалось прочитать файл: {str(e)}")
+
+    if df.empty:
+        raise HTTPException(400, detail="Файл пуст")
+
+    # Пытаемся найти колонки по имени
+    columns = df.columns.tolist()
+    name_col = None
+    full_name_col = None
+    quantity_col = None
+
+    for col in columns:
+        col_lower = col.lower().strip()
+        if col_lower in ('наименование', 'name', 'товар', 'артикул'):
+            name_col = col
+        elif col_lower in ('полное наименование', 'full_name', 'описание'):
+            full_name_col = col
+        elif col_lower in ('количество', 'quantity', 'кол-во', 'qty'):
+            quantity_col = col
+
+    # Если не нашли по имени – берём первые три колонки по порядку
+    if name_col is None and len(columns) > 0:
+        name_col = columns[0]
+    if full_name_col is None and len(columns) > 1:
+        full_name_col = columns[1]
+    if quantity_col is None and len(columns) > 2:
+        quantity_col = columns[2]
+
+    result = []
+    for _, row in df.iterrows():
+        name = str(row[name_col]) if name_col in row else ''
+        full_name = str(row[full_name_col]) if full_name_col in row else ''
+        quantity = 1
+        if quantity_col and quantity_col in row:
+            try:
+                quantity = int(row[quantity_col])
+            except (ValueError, TypeError):
+                quantity = 1
+        # Пропускаем пустые названия
+        if name and name.strip():
+            result.append({
+                "name": name.strip(),
+                "full_name": full_name.strip() if full_name else None,
+                "quantity": quantity
+            })
+
+    return {"products": result}

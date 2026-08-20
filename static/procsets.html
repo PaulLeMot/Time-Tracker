@@ -766,6 +766,30 @@
                             <option value="">Выберите МП</option>
                         </select>
                     </div>
+
+                    <!-- БЛОК ИМПОРТА ТОВАРОВ -->
+                    <div style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" id="importProductsBtn" class="btn" style="background: #3b82f6;">📥 Импорт товаров</button>
+                            <button type="button" id="clearImportBtn" class="btn btn-warning" style="display: none;">🗑️ Очистить</button>
+                            <span id="importStatus" style="color: #64748b; font-size: 0.9rem;"></span>
+                        </div>
+                        <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display: none;">
+                        <div id="importPreviewContainer" style="margin-top: 12px; overflow-x: auto; display: none;">
+                            <table id="importPreviewTable" class="report-table" style="width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th>Наименование</th>
+                                        <th>Полное наименование</th>
+                                        <th>Количество</th>
+                                        <th>Действие</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="importPreviewBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div style="display:flex; gap:12px; margin-top:16px;">
                         <button type="submit" class="success" style="padding:8px 24px;">Создать</button>
                         <button type="button" id="cancelCreateBtn" style="background:#94a3b8; padding:8px 24px;">Отмена</button>
