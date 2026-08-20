@@ -713,3 +713,83 @@ async def preview_import(file: UploadFile = File(...)):
             })
 
     return {"products": result}
+
+from datetime import datetime
+import os
+
+@router.get("/import/auto")
+async def auto_import(
+    deal_type: str,
+    ip_name: Optional[str] = None,
+    mp_name: Optional[str] = None,
+    date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    # Если дата не передана, берём сегодня в формате YYMMDD
+    if not date:
+        date = datetime.now().strftime("%y%m%d")  # например 260820
+    
+    base_path = r"w:\!МП_(FSk)"
+    
+    if deal_type == "FBS":
+        file_path = os.path.join(base_path, "!FBS", f"{date}_FBS", "Книга1.xlsx")
+    elif deal_type == "FSK":
+        file_path = os.path.join(base_path, f"{date}_FSk", "b24.xlsx")
+    elif deal_type == "FBO":
+        if not ip_name or not mp_name:
+            raise HTTPException(400, "Для FBO необходимо указать ИП и МП")
+        folder = f"{date}_{ip_name}_{mp_name}"
+        file_path = os.path.join(base_path, folder, "b24.xlsx")
+    else:
+        raise HTTPException(400, f"Неизвестный тип сделки: {deal_type}")
+
+    if not os.path.exists(file_path):
+        raise HTTPException(404, f"Файл не найден: {file_path}")
+
+    try:
+        df = pd.read_excel(file_path)
+    except Exception as e:
+        raise HTTPException(400, f"Ошибка чтения файла: {str(e)}")
+
+    if df.empty:
+        raise HTTPException(400, "Файл пуст")
+
+    # Определяем колонки (та же логика, что в preview_import)
+    columns = df.columns.tolist()
+    name_col = None
+    full_name_col = None
+    quantity_col = None
+    for col in columns:
+        col_lower = col.lower().strip()
+        if col_lower in ('наименование', 'name', 'товар', 'артикул'):
+            name_col = col
+        elif col_lower in ('полное наименование', 'full_name', 'описание'):
+            full_name_col = col
+        elif col_lower in ('количество', 'quantity', 'кол-во', 'qty'):
+            quantity_col = col
+
+    if name_col is None and len(columns) > 0:
+        name_col = columns[0]
+    if full_name_col is None and len(columns) > 1:
+        full_name_col = columns[1]
+    if quantity_col is None and len(columns) > 2:
+        quantity_col = columns[2]
+
+    result = []
+    for _, row in df.iterrows():
+        name = str(row[name_col]) if name_col in row else ''
+        full_name = str(row[full_name_col]) if full_name_col in row else ''
+        quantity = 1
+        if quantity_col and quantity_col in row:
+            try:
+                quantity = int(row[quantity_col])
+            except:
+                quantity = 1
+        if name and name.strip():
+            result.append({
+                "name": name.strip(),
+                "full_name": full_name.strip() if full_name else None,
+                "quantity": quantity
+            })
+
+    return {"products": result}

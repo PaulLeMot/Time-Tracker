@@ -6190,7 +6190,6 @@ function initProcsetsTab() {
 
     // ---- Импорт товаров: элементы ----
     const importBtn = container.querySelector('#importProductsBtn');
-    const importFileInput = container.querySelector('#importFileInput');
     const importStatus = container.querySelector('#importStatus');
     const importPreviewContainer = container.querySelector('#importPreviewContainer');
     const importPreviewBody = container.querySelector('#importPreviewBody');
@@ -6370,6 +6369,8 @@ function initProcsetsTab() {
         clearImportBtn.style.display = 'none';
         importStatus.textContent = '';
 
+        let typeSelect, ipSelect, mpSelect;
+
         try {
             const [ipsResp, mpsResp] = await Promise.all([
                 apiFetch('/api/sandbox/ips'),
@@ -6378,11 +6379,21 @@ function initProcsetsTab() {
             const ips = await ipsResp.json();
             const mps = await mpsResp.json();
 
-            const ipSelect = container.querySelector('#dealIp');
+            ipSelect = container.querySelector('#dealIp');
             ipSelect.innerHTML = '<option value="">Выберите ИП</option>' + ips.map(ip => `<option value="${ip.id}">${escapeHtml(ip.name)}</option>`).join('');
 
-            const mpSelect = container.querySelector('#dealMp');
+            mpSelect = container.querySelector('#dealMp');
             mpSelect.innerHTML = '<option value="">Выберите МП</option>' + mps.map(mp => `<option value="${mp.id}">${escapeHtml(mp.name)}</option>`).join('');
+
+            typeSelect = container.querySelector('#dealType');
+
+            typeSelect.removeEventListener('change', updateDealTitle);
+            ipSelect.removeEventListener('change', updateDealTitle);
+            mpSelect.removeEventListener('change', updateDealTitle);
+
+            typeSelect.addEventListener('change', updateDealTitle);
+            ipSelect.addEventListener('change', updateDealTitle);
+            mpSelect.addEventListener('change', updateDealTitle);
 
             updateDealTitle();
         } catch (err) {
@@ -6523,26 +6534,40 @@ function initProcsetsTab() {
         }
     }
 
-    // ---- Импорт товаров: обработчики ----
-    if (importBtn && importFileInput) {
-        importBtn.addEventListener('click', function() {
-            importFileInput.click();
-        });
+    // ---- Импорт товаров: обработчики (АВТОМАТИЧЕСКИЙ) ----
+    if (importBtn) {
+        importBtn.addEventListener('click', async function() {
+            const typeSelect = container.querySelector('#dealType');
+            const ipSelect = container.querySelector('#dealIp');
+            const mpSelect = container.querySelector('#dealMp');
 
-        importFileInput.addEventListener('change', async function(e) {
-            const file = this.files[0];
-            if (!file) return;
+            const dealType = typeSelect.value;
+            const ipName = ipSelect.options[ipSelect.selectedIndex]?.text || '';
+            const mpName = mpSelect.options[mpSelect.selectedIndex]?.text || '';
 
-            const formData = new FormData();
-            formData.append('file', file);
+            // Извлекаем дату из названия сделки (первые 6 цифр)
+            const title = container.querySelector('#dealTitle').value;
+            const dateMatch = title.match(/^(\d{6})/);
+            const date = dateMatch ? dateMatch[1] : new Date().toISOString().slice(2,10).replace(/-/g,'');
 
+            if (!dealType) {
+                showToast('Сначала выберите тип сделки', true);
+                return;
+            }
+
+            importStatus.textContent = 'Загрузка...';
             try {
-                importStatus.textContent = 'Загрузка...';
-                const resp = await apiFetch('/api/sandbox/import/preview', {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'Content-Type': undefined }
-                });
+                const url = new URL('/api/sandbox/import/auto', window.location.origin);
+                url.searchParams.append('deal_type', dealType);
+                if (ipName) url.searchParams.append('ip_name', ipName);
+                if (mpName) url.searchParams.append('mp_name', mpName);
+                url.searchParams.append('date', date);
+
+                const resp = await fetch(url, { credentials: 'include' });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || 'Ошибка импорта');
+                }
                 const data = await resp.json();
                 importedProducts = data.products;
                 renderImportPreview(importedProducts);
@@ -6552,8 +6577,6 @@ function initProcsetsTab() {
             } catch (err) {
                 showToast(err.message, true);
                 importStatus.textContent = 'Ошибка загрузки';
-            } finally {
-                this.value = '';
             }
         });
 
@@ -6651,7 +6674,6 @@ function initProcsetsTab() {
         try {
             const resp = await apiFetch('/api/sandbox/product-types');
             products = await resp.json();
-            // также загружаем техкарты для группировки
             const techResp = await apiFetch('/api/sandbox/tech-cards');
             techCards = await techResp.json();
             renderProductsGrouped();
@@ -6702,7 +6724,6 @@ function initProcsetsTab() {
         }
         containerEl.innerHTML = html;
 
-        // Обработчики для кнопок товаров
         containerEl.querySelectorAll('.add-product-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 const techCardId = this.dataset.techId ? parseInt(this.dataset.techId) : null;
@@ -6930,7 +6951,6 @@ function initProcsetsTab() {
             return;
         }
 
-        // Маппинг задача -> роли
         const taskToRoles = {};
         roles.forEach(role => {
             role.tasks.forEach(task => {
@@ -6987,7 +7007,6 @@ function initProcsetsTab() {
         }
         leftPanel.innerHTML = html;
 
-        // Обработчики
         leftPanel.querySelectorAll('.task-item[draggable="true"]').forEach(el => {
             el.removeEventListener('dragstart', handleDragStart);
             el.removeEventListener('dragend', handleDragEnd);
@@ -7197,7 +7216,6 @@ function initProcsetsTab() {
         clearConstructorBtn = document.getElementById('clearConstructorBtn');
 
         if (!constructorListEl) return;
-
         if (constructorInitialized) return;
 
         populateTechCardSelect();
@@ -7405,7 +7423,7 @@ function initProcsetsTab() {
             roles = await resp.json();
             renderRoles();
             renderRolesSimpleList();
-            renderTasksGrouped(); // обновляем задачи с ролями
+            renderTasksGrouped();
         } catch (err) {
             showToast('Ошибка загрузки ролей: ' + err.message, true);
         }
@@ -7636,7 +7654,6 @@ function initProcsetsTab() {
         });
     }
 
-    // Обработчики для кнопки "Добавить должность" (вкладка Роли)
     function initRolesTabButtons() {
         const refreshRolesBtn = document.getElementById('refreshRolesBtn');
         if (refreshRolesBtn) {
@@ -7694,10 +7711,8 @@ function initProcsetsTab() {
     loadAllEmployees();
     loadRoles();
 
-    // ---- Инициализация обработчиков контрагентов ----
     initCounterpartiesHandlers();
 
-    // ---- Обработчики кнопок модалок ----
     if (createBtn) createBtn.addEventListener('click', openCreateModal);
     if (closeCreate) closeCreate.addEventListener('click', closeCreateModal);
     if (cancelCreate) cancelCreate.addEventListener('click', closeCreateModal);
@@ -7708,21 +7723,14 @@ function initProcsetsTab() {
     if (closeDetail) closeDetail.addEventListener('click', () => detailModal.style.display = 'none');
     if (refreshBtn) refreshBtn.addEventListener('click', loadDeals);
 
-    // ---- Инициализация конструктора (если ещё не инициализирован) ----
     if (!constructorInitialized) {
-        // отложим инициализацию до первого переключения на вкладку tasks
-        // но для надёжности можно вызвать сейчас, если вкладка активна
         if (document.getElementById('panel-tasks').classList.contains('active')) {
             initConstructorUI();
         }
     }
 
-    // ---- Инициализация кнопок вкладки "Роли" ----
     initRolesTabButtons();
-
-    // ---- Автообновление сделок каждые 30 секунд ----
     setInterval(loadDeals, 30000);
-}
-</script>
+}</script>
 </body>
 </html>
