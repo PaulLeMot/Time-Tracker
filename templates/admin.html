@@ -6276,12 +6276,12 @@ function initProcsetsTab() {
 
         let path = '';
         if (typeName === 'FBS') {
-            path = `${BASE_PATH}\\!FBS\\${date}_FBS\\Книга1.xlsx`;
+            path = `${BASE_PATH}/!FBS/${date}_FBS/Книга1.xlsx`;
         } else if (typeName === 'FSK') {
-            path = `${BASE_PATH}\\${date}_FSk\\b24.xlsx`;
+            path = `${BASE_PATH}/${date}_FSk/b24.xlsx`;
         } else if (typeName === 'FBO') {
             if (ipText && mpText) {
-                path = `${BASE_PATH}\\${date}_${ipText}_${mpText}\\b24.xlsx`;
+                path = `${BASE_PATH}/${date}_${ipText}_${mpText}/b24.xlsx`;
             }
         }
         importPathInput.value = path;
