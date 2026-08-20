@@ -6234,6 +6234,41 @@ function initProcsetsTab() {
         return resp;
     }
 
+    // ---- Функция обновления названия сделки (автозаполнение) ----
+    function updateDealTitle() {
+        const typeSelect = container.querySelector('#dealType');
+        const ipSelect = container.querySelector('#dealIp');
+        const mpSelect = container.querySelector('#dealMp');
+        const titleInput = container.querySelector('#dealTitle');
+        if (!typeSelect || !titleInput) return;
+
+        const type = typeSelect.value;
+        const ip = ipSelect ? ipSelect.value : '';
+        const mp = mpSelect ? mpSelect.value : '';
+
+        // Текущая дата в формате YYMMDD
+        const now = new Date();
+        const year = String(now.getFullYear()).slice(2);
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const dateStr = year + month + day;
+
+        let title = '';
+        if (type === 'FBS' || type === 'FSK') {
+            title = dateStr + '_' + type;
+        } else if (type === 'FBO') {
+            if (ip && mp) {
+                const ipText = ipSelect.options[ipSelect.selectedIndex]?.text || '';
+                const mpText = mpSelect.options[mpSelect.selectedIndex]?.text || '';
+                title = dateStr + '_' + ipText + '_' + mpText;
+            } else {
+                title = '';
+            }
+        }
+        // Для других типов – оставляем пустым
+        titleInput.value = title;
+    }
+
     // ---- Загрузка типов сделок ----
     async function loadDealTypes() {
         try {
@@ -6250,7 +6285,7 @@ function initProcsetsTab() {
     function populateDealTypeSelect() {
         const typeSelect = container.querySelector('#dealType');
         if (typeSelect) {
-            typeSelect.innerHTML = dealTypes.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+            typeSelect.innerHTML = dealTypes.map(t => `<option value="${t.name}">${escapeHtml(t.name)}</option>`).join('');
         }
     }
 
@@ -6285,7 +6320,7 @@ function initProcsetsTab() {
             </thead>
             <tbody>`;
         for (const deal of dealsList) {
-            const typeName = dealTypes.find(t => t.id === deal.deal_type_id)?.name || '—';
+            const typeName = dealTypes.find(t => t.name === deal.deal_type_id)?.name || '—';
             html += `<tr>
                 <td>${deal.id}</td>
                 <td><strong>${escapeHtml(deal.title)}</strong></td>
@@ -6362,6 +6397,9 @@ function initProcsetsTab() {
 
             const mpSelect = container.querySelector('#dealMp');
             mpSelect.innerHTML = '<option value="">Выберите МП</option>' + mps.map(mp => `<option value="${mp.id}">${escapeHtml(mp.name)}</option>`).join('');
+
+            // Автозаполнение названия
+            updateDealTitle();
         } catch (err) {
             showToast('Не удалось загрузить ИП/МП', true);
         }
@@ -7204,7 +7242,7 @@ function initProcsetsTab() {
         const tbody = document.getElementById('rolesSimpleList');
         if (!tbody) return;
 
-        // Сортируем роли по названию (по алфавиту, с учётом русского языка)
+        // Сортировка по алфавиту с учётом русских букв
         const sortedRoles = [...roles].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
         if (!sortedRoles.length) {
@@ -7302,6 +7340,7 @@ function initProcsetsTab() {
             });
         });
     }
+
     // ----- Инициализация конструктора (только техкарты) -----
     function initConstructorUI() {
         const rightPanel = document.getElementById('tasksRightPanel');
@@ -7594,7 +7633,7 @@ function initProcsetsTab() {
             createForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const title = container.querySelector('#dealTitle').value.trim();
-                const dealTypeId = parseInt(container.querySelector('#dealType').value);
+                const dealTypeId = container.querySelector('#dealType').value;
                 const ipSelect = container.querySelector('#dealIp');
                 const mpSelect = container.querySelector('#dealMp');
                 const ipId = ipSelect ? parseInt(ipSelect.value) || null : null;
@@ -7666,11 +7705,11 @@ function initProcsetsTab() {
 
         // ---- Обработчик inline-поля для добавления должности ----
         const addRoleInlineBtn = document.getElementById('addRoleInlineBtn');
-        const newRoleNameInput = document.getElementById('newRoleNameInline');
-        if (addRoleInlineBtn && newRoleNameInput) {
+        const newRoleNameInputInline = document.getElementById('newRoleNameInline');
+        if (addRoleInlineBtn && newRoleNameInputInline) {
             // Добавление по клику
             addRoleInlineBtn.addEventListener('click', async function() {
-                const name = newRoleNameInput.value.trim();
+                const name = newRoleNameInputInline.value.trim();
                 if (!name) {
                     showToast('Введите название должности', true);
                     return;
@@ -7681,7 +7720,7 @@ function initProcsetsTab() {
                         body: JSON.stringify({ name: name })
                     });
                     showToast('Должность создана');
-                    newRoleNameInput.value = '';
+                    newRoleNameInputInline.value = '';
                     await loadRoles();
                 } catch (err) {
                     showToast(err.message, true);
@@ -7689,11 +7728,25 @@ function initProcsetsTab() {
             });
 
             // Добавление по Enter
-            newRoleNameInput.addEventListener('keypress', function(e) {
+            newRoleNameInputInline.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     addRoleInlineBtn.click();
                 }
             });
+        }
+
+        // ---- Обработчики автозаполнения названия сделки ----
+        const dealTypeSelect = container.querySelector('#dealType');
+        const dealIpSelect = container.querySelector('#dealIp');
+        const dealMpSelect = container.querySelector('#dealMp');
+        if (dealTypeSelect) {
+            dealTypeSelect.addEventListener('change', updateDealTitle);
+        }
+        if (dealIpSelect) {
+            dealIpSelect.addEventListener('change', updateDealTitle);
+        }
+        if (dealMpSelect) {
+            dealMpSelect.addEventListener('change', updateDealTitle);
         }
 
         // ---- НАВИГАЦИЯ ПО ВКЛАДКАМ ----
