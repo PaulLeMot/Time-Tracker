@@ -6172,6 +6172,9 @@ function initProcsetsTab() {
     // ---- Переменные для импорта товаров ----
     let importedProducts = [];
 
+    // ---- Базовый путь для импорта ----
+    const BASE_PATH = "w:\\!МП_(FSk)";
+
     // ---- Элементы ----
     const container = document.getElementById('procsets-tab');
     const dealsListEl = container.querySelector('#dealsList');
@@ -6194,6 +6197,8 @@ function initProcsetsTab() {
     const importPreviewContainer = container.querySelector('#importPreviewContainer');
     const importPreviewBody = container.querySelector('#importPreviewBody');
     const clearImportBtn = container.querySelector('#clearImportBtn');
+    const importPathInput = container.querySelector('#importPathInput');
+    const resetPathBtn = container.querySelector('#resetPathBtn');
 
     // ---- Вспомогательная функция apiFetch ----
     async function apiFetch(url, options = {}) {
@@ -6223,7 +6228,10 @@ function initProcsetsTab() {
         const titleInput = container.querySelector('#dealTitle');
         if (!typeSelect || !titleInput) return;
 
-        const type = typeSelect.value;
+        const typeId = parseInt(typeSelect.value);
+        const typeObj = dealTypes.find(t => t.id === typeId);
+        const typeName = typeObj ? typeObj.name : '';
+
         const ip = ipSelect ? ipSelect.value : '';
         const mp = mpSelect ? mpSelect.value : '';
 
@@ -6234,9 +6242,9 @@ function initProcsetsTab() {
         const dateStr = year + month + day;
 
         let title = '';
-        if (type === 'FBS' || type === 'FSK') {
-            title = dateStr + '_' + type;
-        } else if (type === 'FBO') {
+        if (typeName === 'FBS' || typeName === 'FSK') {
+            title = dateStr + '_' + typeName;
+        } else if (typeName === 'FBO') {
             if (ip && mp) {
                 const ipText = ipSelect.options[ipSelect.selectedIndex]?.text || '';
                 const mpText = mpSelect.options[mpSelect.selectedIndex]?.text || '';
@@ -6246,6 +6254,43 @@ function initProcsetsTab() {
             }
         }
         titleInput.value = title;
+    }
+
+    // ---- Обновление пути импорта ----
+    function updateImportPath() {
+        if (!importPathInput) return;
+
+        const typeSelect = container.querySelector('#dealType');
+        const ipSelect = container.querySelector('#dealIp');
+        const mpSelect = container.querySelector('#dealMp');
+        const titleInput = container.querySelector('#dealTitle');
+
+        const typeId = parseInt(typeSelect?.value || 0);
+        const typeObj = dealTypes.find(t => t.id === typeId);
+        const typeName = typeObj ? typeObj.name : '';
+        const ipText = ipSelect ? ipSelect.options[ipSelect.selectedIndex]?.text || '' : '';
+        const mpText = mpSelect ? mpSelect.options[mpSelect.selectedIndex]?.text || '' : '';
+        const title = titleInput ? titleInput.value : '';
+        const dateMatch = title.match(/^(\d{6})/);
+        const date = dateMatch ? dateMatch[1] : new Date().toISOString().slice(2,10).replace(/-/g,'');
+
+        let path = '';
+        if (typeName === 'FBS') {
+            path = `${BASE_PATH}\\!FBS\\${date}_FBS\\Книга1.xlsx`;
+        } else if (typeName === 'FSK') {
+            path = `${BASE_PATH}\\${date}_FSk\\b24.xlsx`;
+        } else if (typeName === 'FBO') {
+            if (ipText && mpText) {
+                path = `${BASE_PATH}\\${date}_${ipText}_${mpText}\\b24.xlsx`;
+            }
+        }
+        importPathInput.value = path;
+    }
+
+    // ---- Функция, вызываемая при изменении параметров ----
+    function onParametersChanged() {
+        updateDealTitle();
+        updateImportPath();
     }
 
     // ---- Загрузка типов сделок ----
@@ -6358,6 +6403,10 @@ function initProcsetsTab() {
 
     // ---- Открытие модалки создания ----
     async function openCreateModal() {
+        if (dealTypes.length === 0) {
+            await loadDealTypes();
+        }
+
         modalCreate.style.display = 'block';
         container.querySelector('#dealTitle').value = '';
         createError.textContent = '';
@@ -6387,15 +6436,18 @@ function initProcsetsTab() {
 
             typeSelect = container.querySelector('#dealType');
 
-            typeSelect.removeEventListener('change', updateDealTitle);
-            ipSelect.removeEventListener('change', updateDealTitle);
-            mpSelect.removeEventListener('change', updateDealTitle);
+            // Удаляем старые обработчики
+            typeSelect.removeEventListener('change', onParametersChanged);
+            ipSelect.removeEventListener('change', onParametersChanged);
+            mpSelect.removeEventListener('change', onParametersChanged);
 
-            typeSelect.addEventListener('change', updateDealTitle);
-            ipSelect.addEventListener('change', updateDealTitle);
-            mpSelect.addEventListener('change', updateDealTitle);
+            // Добавляем новые
+            typeSelect.addEventListener('change', onParametersChanged);
+            ipSelect.addEventListener('change', onParametersChanged);
+            mpSelect.addEventListener('change', onParametersChanged);
 
-            updateDealTitle();
+            // Генерируем всё сразу
+            onParametersChanged();
         } catch (err) {
             showToast('Не удалось загрузить ИП/МП', true);
         }
@@ -6534,36 +6586,23 @@ function initProcsetsTab() {
         }
     }
 
-    // ---- Импорт товаров: обработчики (АВТОМАТИЧЕСКИЙ) ----
+    // ---- Импорт товаров: обработчики (автоматический) ----
     if (importBtn) {
         importBtn.addEventListener('click', async function() {
-            const typeSelect = container.querySelector('#dealType');
-            const ipSelect = container.querySelector('#dealIp');
-            const mpSelect = container.querySelector('#dealMp');
-
-            const dealType = typeSelect.value;
-            const ipName = ipSelect.options[ipSelect.selectedIndex]?.text || '';
-            const mpName = mpSelect.options[mpSelect.selectedIndex]?.text || '';
-
-            // Извлекаем дату из названия сделки (первые 6 цифр)
-            const title = container.querySelector('#dealTitle').value;
-            const dateMatch = title.match(/^(\d{6})/);
-            const date = dateMatch ? dateMatch[1] : new Date().toISOString().slice(2,10).replace(/-/g,'');
-
-            if (!dealType) {
-                showToast('Сначала выберите тип сделки', true);
+            const path = importPathInput ? importPathInput.value.trim() : '';
+            if (!path) {
+                showToast('Путь не указан. Сгенерируйте его автоматически или введите вручную.', true);
                 return;
             }
 
             importStatus.textContent = 'Загрузка...';
             try {
-                const url = new URL('/api/sandbox/import/auto', window.location.origin);
-                url.searchParams.append('deal_type', dealType);
-                if (ipName) url.searchParams.append('ip_name', ipName);
-                if (mpName) url.searchParams.append('mp_name', mpName);
-                url.searchParams.append('date', date);
-
-                const resp = await fetch(url, { credentials: 'include' });
+                const resp = await fetch('/api/sandbox/import/by-path', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: path }),
+                    credentials: 'include'
+                });
                 if (!resp.ok) {
                     const err = await resp.json();
                     throw new Error(err.detail || 'Ошибка импорта');
@@ -6579,42 +6618,51 @@ function initProcsetsTab() {
                 importStatus.textContent = 'Ошибка загрузки';
             }
         });
+    }
 
-        clearImportBtn?.addEventListener('click', function() {
+    if (resetPathBtn) {
+        resetPathBtn.addEventListener('click', function() {
+            updateImportPath();
+            showToast('Путь обновлён по текущим параметрам');
+        });
+    }
+
+    if (clearImportBtn) {
+        clearImportBtn.addEventListener('click', function() {
             importedProducts = [];
             importPreviewBody.innerHTML = '';
             importPreviewContainer.style.display = 'none';
             this.style.display = 'none';
             importStatus.textContent = '';
         });
+    }
 
-        function renderImportPreview(products) {
-            importPreviewBody.innerHTML = '';
-            products.forEach((p, index) => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${escapeHtml(p.name)}</td>
-                    <td>${escapeHtml(p.full_name || '')}</td>
-                    <td>${p.quantity}</td>
-                    <td><button class="btn-sm btn-danger remove-import-item" data-index="${index}">✖</button></td>
-                `;
-                importPreviewBody.appendChild(tr);
+    function renderImportPreview(products) {
+        importPreviewBody.innerHTML = '';
+        products.forEach((p, index) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHtml(p.name)}</td>
+                <td>${escapeHtml(p.full_name || '')}</td>
+                <td>${p.quantity}</td>
+                <td><button class="btn-sm btn-danger remove-import-item" data-index="${index}">✖</button></td>
+            `;
+            importPreviewBody.appendChild(tr);
+        });
+        importPreviewBody.querySelectorAll('.remove-import-item').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const idx = parseInt(this.dataset.index);
+                importedProducts.splice(idx, 1);
+                renderImportPreview(importedProducts);
+                if (importedProducts.length === 0) {
+                    clearImportBtn.style.display = 'none';
+                    importPreviewContainer.style.display = 'none';
+                    importStatus.textContent = '';
+                } else {
+                    importStatus.textContent = `Загружено ${importedProducts.length} товаров`;
+                }
             });
-            importPreviewBody.querySelectorAll('.remove-import-item').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const idx = parseInt(this.dataset.index);
-                    importedProducts.splice(idx, 1);
-                    renderImportPreview(importedProducts);
-                    if (importedProducts.length === 0) {
-                        clearImportBtn.style.display = 'none';
-                        importPreviewContainer.style.display = 'none';
-                        importStatus.textContent = '';
-                    } else {
-                        importStatus.textContent = `Загружено ${importedProducts.length} товаров`;
-                    }
-                });
-            });
-        }
+        });
     }
 
     // ---- Обработчик создания сделки ----
@@ -7731,6 +7779,7 @@ function initProcsetsTab() {
 
     initRolesTabButtons();
     setInterval(loadDeals, 30000);
-}</script>
+}
+</script>
 </body>
 </html>
