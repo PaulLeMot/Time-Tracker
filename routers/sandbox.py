@@ -914,3 +914,106 @@ async def import_by_path(data: ImportPathRequest, db: AsyncSession = Depends(get
             })
 
     return {"products": result}
+
+@router.post("/deals/{deal_id}/start")
+async def start_deal(
+    deal_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    # 1. Загружаем сделку со всеми зависимостями
+    deal = await crud.get_deal_with_products_and_tech_cards(db, deal_id)
+    if not deal:
+        raise HTTPException(404, "Сделка не найдена")
+
+    # 2. Собираем словарь: task_id -> список товаров с количеством
+    task_products = {}  # {task_id: [{'name': product_name, 'quantity': qty}, ...]}
+    for dp in deal.deal_products:
+        product_type = dp.product_type
+        if not product_type or not product_type.tech_card:
+            continue
+        tech_card = product_type.tech_card
+        # Получаем задачи техкарты в порядке sequence
+        tasks = sorted(tech_card.tech_card_tasks, key=lambda x: x.sequence)
+        for tct in tasks:
+            task = tct.task
+            if not task:
+                continue
+            task_id = task.id
+            task_products.setdefault(task_id, []).append({
+                "name": product_type.name,
+                "full_name": product_type.full_name or product_type.name,
+                "quantity": dp.quantity
+            })
+
+    if not task_products:
+        raise HTTPException(400, "Нет товаров с техкартами")
+
+    # 3. Получаем роли для всех задач
+    task_ids = list(task_products.keys())
+    task_roles = await crud.get_task_roles(db, task_ids)
+
+    # 4. Собираем всех сотрудников, которым нужно отправить уведомления
+    # Словарь: (employee_id, task_id) -> список товаров
+    notifications_data = {}  # ключ: (emp_id, task_id), значение: list of products
+    for task_id, products in task_products.items():
+        role_ids = task_roles.get(task_id, [])
+        if not role_ids:
+            continue
+        # Получаем сотрудников для этих ролей
+        role_employees = await crud.get_employees_for_roles(db, role_ids)
+        # Для каждого сотрудника добавляем задачу и товары
+        employees = set()
+        for role_id in role_ids:
+            employees.update(role_employees.get(role_id, []))
+        for emp_id in employees:
+            key = (emp_id, task_id)
+            if key not in notifications_data:
+                notifications_data[key] = []
+            notifications_data[key].extend(products)  # добавляем товары для этой задачи
+
+    if not notifications_data:
+        raise HTTPException(400, "Нет сотрудников, назначенных на задачи")
+
+    # 5. Формируем и сохраняем уведомления
+    from models import Notification, NotificationStatus
+    from sse import notify_employee
+
+    created_count = 0
+    for (emp_id, task_id), products in notifications_data.items():
+        # Находим задачу (первый попавшийся продукт даст имя задачи)
+        # Но лучше получить имя задачи из БД
+        task = await crud.get_task(db, task_id)
+        if not task:
+            continue
+        # Группируем товары по имени (суммируем количества)
+        product_quantities = {}
+        for p in products:
+            key = p['full_name']  # или p['name']
+            if key not in product_quantities:
+                product_quantities[key] = 0
+            product_quantities[key] += p['quantity']
+        # Формируем текст
+        items_text = ", ".join([f"{name} — {qty} шт." for name, qty in product_quantities.items()])
+        message = f"📋 Задача: {task.name}\nТовары: {items_text}"
+
+        notification = Notification(
+            employee_id=emp_id,
+            admin_id=admin.id,
+            type=NotificationType.TASK_ASSIGNMENT,
+            message=message,
+            status=NotificationStatus.SENT,
+            source="admin",
+            extra_data={"deal_id": deal_id, "task_id": task_id}
+        )
+        db.add(notification)
+        created_count += 1
+
+    await db.commit()
+
+    # 6. Уведомляем сотрудников через SSE (опционально)
+    for (emp_id, _), _ in notifications_data.items():
+        await notify_employee(emp_id)
+
+    return {"message": f"Сделка запущена, отправлено {created_count} уведомлений"}

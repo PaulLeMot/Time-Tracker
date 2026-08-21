@@ -13,6 +13,7 @@ class NotificationType(str, enum.Enum):
     WARNING = "warning"
     COMMENDATION = "commendation"
     PERFORMANCE_REVIEW = "performance_review"
+    TASK_ASSIGNMENT = "task_assignment"
 
 class NotificationStatus(str, enum.Enum):
     DRAFT = "draft"

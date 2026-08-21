@@ -1353,3 +1353,35 @@ async def set_deal_type_tasks(db: AsyncSession, data: dict):
         for task_id in task_ids:
             db.add(DealTypeTask(deal_type_id=deal_type_id, task_id=task_id, is_enabled=True))
     await db.commit()
+
+async def get_deal_with_products_and_tech_cards(db: AsyncSession, deal_id: int):
+    """Загружает сделку с товарами, типами товаров, техкартами и задачами."""
+    stmt = select(Deal).where(Deal.id == deal_id).options(
+        joinedload(Deal.deal_products).joinedload(DealProductType.product_type).options(
+            joinedload(ProductType.tech_card).options(
+                selectinload(TechCard.tech_card_tasks).selectinload(TechCardTask.task)
+            )
+        )
+    )
+    result = await db.execute(stmt)
+    return result.unique().scalar_one_or_none()
+
+async def get_task_roles(db: AsyncSession, task_ids: List[int]) -> Dict[int, List[int]]:
+    """Возвращает словарь {task_id: [role_id, ...]} для переданных task_ids."""
+    stmt = select(RoleTask).where(RoleTask.task_id.in_(task_ids))
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    task_roles = {}
+    for rt in rows:
+        task_roles.setdefault(rt.task_id, []).append(rt.role_id)
+    return task_roles
+
+async def get_employees_for_roles(db: AsyncSession, role_ids: List[int]) -> Dict[int, List[int]]:
+    """Возвращает словарь {role_id: [employee_id, ...]} для переданных role_ids."""
+    stmt = select(EmployeeRole).where(EmployeeRole.role_id.in_(role_ids))
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    role_employees = {}
+    for er in rows:
+        role_employees.setdefault(er.role_id, []).append(er.employee_id)
+    return role_employees
