@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import select, update, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from datetime import datetime, time, timedelta, date
 from typing import Optional, List, Dict
 from schemas import DealProductItem
