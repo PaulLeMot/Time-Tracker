@@ -3,7 +3,7 @@ from sqlalchemy import select, update, delete, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from datetime import datetime, time, timedelta, date
-from typing import Optional, List
+from typing import Optional, List, Dict
 from schemas import DealProductItem
 from models import (
     Employee,
