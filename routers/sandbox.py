@@ -860,3 +860,25 @@ async def import_by_path(data: ImportPathRequest, db: AsyncSession = Depends(get
             })
 
     return {"products": result}
+
+@router.get("/deal-types/tasks")
+async def get_deal_type_tasks(db: AsyncSession = Depends(get_db)):
+    # Получаем все типы и задачи
+    deal_types = await crud.get_deal_types(db)
+    tasks = await crud.get_tasks(db)
+    settings = await crud.get_deal_type_tasks(db)
+    result = []
+    for task in tasks:
+        task_data = {"id": task.id, "name": task.name}
+        for dt in deal_types:
+            is_enabled = settings.get(dt.id, {}).get(task.id, True)
+            task_data[f"type_{dt.id}"] = is_enabled
+        result.append(task_data)
+    # Также возвращаем список типов для заголовков
+    return {"types": [{"id": dt.id, "name": dt.name} for dt in deal_types], "tasks": result}
+
+@router.put("/deal-types/tasks")
+async def update_deal_type_tasks(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
+    # data: {deal_type_id: [task_id, task_id, ...]}
+    await crud.set_deal_type_tasks(db, data)
+    return {"message": "Settings updated"}

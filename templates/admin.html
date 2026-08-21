@@ -7833,21 +7833,121 @@ function initProcsetsTab() {
         const settingsModal = document.getElementById('dealTypeSettingsModal');
         const closeSettings = document.querySelector('.close-deal-type-settings');
 
-        if (!settingsBtn || !settingsModal) return;
+        if (!settingsBtn || !settingsModal) {
+            console.warn('Элементы настроек типа сделки не найдены');
+            return;
+        }
 
-        // Открытие
+        // ---- Загрузка данных с бекенда ----
+        async function loadDealTypeSettings() {
+            const body = document.getElementById('dealTypeSettingsBody');
+            if (!body) return;
+            body.innerHTML = '<p>Загрузка...</p>';
+            try {
+                const resp = await apiFetch('/api/sandbox/deal-types/tasks');
+                const data = await resp.json();
+                renderSettingsTable(data);
+            } catch (err) {
+                body.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
+                showToast(err.message, true);
+            }
+        }
+
+        // ---- Отрисовка таблицы ----
+        function renderSettingsTable(data) {
+            const body = document.getElementById('dealTypeSettingsBody');
+            if (!body) return;
+
+            const types = data.types || [];
+            const tasks = data.tasks || [];
+
+            if (!types.length || !tasks.length) {
+                body.innerHTML = '<p style="color:#94a3b8;">Нет типов сделок или задач для настройки</p>';
+                return;
+            }
+
+            let html = `<table style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th style="padding:8px; text-align:left; border-bottom:2px solid #e2e8f0;">Задача</th>`;
+            for (const t of types) {
+                html += `<th style="padding:8px; text-align:center; border-bottom:2px solid #e2e8f0;">${escapeHtml(t.name)}</th>`;
+            }
+            html += `</tr></thead><tbody>`;
+
+            for (const task of tasks) {
+                html += `<tr>
+                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(task.name)}</td>`;
+                for (const t of types) {
+                    const checked = task[`type_${t.id}`] ? 'checked' : '';
+                    html += `<td style="text-align:center; border-bottom:1px solid #e2e8f0;">
+                        <input type="checkbox" class="deal-type-task-checkbox" data-task-id="${task.id}" data-type-id="${t.id}" ${checked}>
+                    </td>`;
+                }
+                html += `</tr>`;
+            }
+            html += `</tbody></table>
+                <div style="margin-top:16px; display:flex; gap:12px; justify-content:flex-end;">
+                    <button id="saveDealTypeSettingsBtn" class="success" style="padding:8px 24px;">💾 Сохранить</button>
+                </div>`;
+            body.innerHTML = html;
+
+            // Обработчик сохранения
+            const saveBtn = document.getElementById('saveDealTypeSettingsBtn');
+            if (saveBtn) {
+                saveBtn.removeEventListener('click', saveDealTypeSettings);
+                saveBtn.addEventListener('click', saveDealTypeSettings);
+            }
+        }
+
+        // ---- Сохранение настроек ----
+        async function saveDealTypeSettings() {
+            const checkboxes = document.querySelectorAll('.deal-type-task-checkbox:checked');
+            const data = {};
+
+            // Собираем выбранные задачи по типам
+            checkboxes.forEach(cb => {
+                const typeId = parseInt(cb.dataset.typeId);
+                const taskId = parseInt(cb.dataset.taskId);
+                if (!data[typeId]) data[typeId] = [];
+                data[typeId].push(taskId);
+            });
+
+            // Получаем все типы, которые есть в таблице (для типов без галочек отправляем пустой массив)
+            const allCheckboxes = document.querySelectorAll('.deal-type-task-checkbox');
+            const allTypeIds = new Set();
+            allCheckboxes.forEach(cb => {
+                allTypeIds.add(parseInt(cb.dataset.typeId));
+            });
+            for (const typeId of allTypeIds) {
+                if (!data[typeId]) data[typeId] = [];
+            }
+
+            try {
+                await apiFetch('/api/sandbox/deal-types/tasks', {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+                showToast('Настройки сохранены');
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        }
+
+        // ---- Открытие модалки ----
         settingsBtn.addEventListener('click', () => {
             settingsModal.style.display = 'block';
+            loadDealTypeSettings();
         });
 
-        // Закрытие через крестик
+        // ---- Закрытие по крестику ----
         if (closeSettings) {
             closeSettings.addEventListener('click', () => {
                 settingsModal.style.display = 'none';
             });
         }
 
-        // Закрытие по клику вне модалки
+        // ---- Закрытие по клику вне модалки ----
         window.addEventListener('click', (e) => {
             if (e.target === settingsModal) {
                 settingsModal.style.display = 'none';
@@ -7858,34 +7958,6 @@ function initProcsetsTab() {
     initRolesTabButtons();
     initDealTypeSettings();
     setInterval(loadDeals, 30000);
-}
-
-// ---- Настройки типа сделки ----
-function initDealTypeSettings() {
-    const settingsBtn = container.querySelector('#dealTypeSettingsBtn');
-    const settingsModal = document.getElementById('dealTypeSettingsModal');
-    const closeSettings = document.querySelector('.close-deal-type-settings');
-
-    if (!settingsBtn || !settingsModal) return;
-
-    // Открытие
-    settingsBtn.addEventListener('click', () => {
-        settingsModal.style.display = 'block';
-    });
-
-    // Закрытие через крестик
-    if (closeSettings) {
-        closeSettings.addEventListener('click', () => {
-            settingsModal.style.display = 'none';
-        });
-    }
-
-    // Закрытие по клику вне модалки
-    window.addEventListener('click', (e) => {
-        if (e.target === settingsModal) {
-            settingsModal.style.display = 'none';
-        }
-    });
 }
 </script>
 </body>

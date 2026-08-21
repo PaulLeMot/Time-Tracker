@@ -138,6 +138,7 @@ class DealType(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False)
     deals = relationship("Deal", back_populates="deal_type")
+    deal_type_tasks = relationship("DealTypeTask", back_populates="deal_type", cascade="all, delete-orphan")
 
 class Deal(Base):
     __tablename__ = "deals"
@@ -161,6 +162,14 @@ class DealProductType(Base):
 
     deal = relationship("Deal", back_populates="deal_products")
     product_type = relationship("ProductType", back_populates="deal_products")
+
+class DealTypeTask(Base):
+    __tablename__ = "deal_type_tasks"
+    deal_type_id = Column(Integer, ForeignKey("deal_types.id", ondelete="CASCADE"), primary_key=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    is_enabled = Column(Boolean, default=True)
+    deal_type = relationship("DealType", back_populates="deal_type_tasks")
+    task = relationship("Task", back_populates="deal_type_tasks")
 
 class ProductType(Base):
     __tablename__ = "product_types"
@@ -193,6 +202,7 @@ class Task(Base):
     task_type = relationship("TaskType", back_populates="tasks")
     tech_card_tasks = relationship("TechCardTask", back_populates="task")
     role_tasks = relationship("RoleTask", back_populates="task", cascade="all, delete-orphan")
+    deal_type_tasks = relationship("DealTypeTask", back_populates="task", cascade="all, delete-orphan")
 
 class TechCardTask(Base):
     __tablename__="tech_card_tasks"

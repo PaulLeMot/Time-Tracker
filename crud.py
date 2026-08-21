@@ -1331,3 +1331,24 @@ async def add_products_to_deal(
         )
         db.add(deal_product)
     await db.commit()
+
+async def get_deal_type_tasks(db: AsyncSession) -> dict:
+    """Возвращает словарь: {deal_type_id: {task_id: is_enabled}}"""
+    stmt = select(DealTypeTask)
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    data = {}
+    for row in rows:
+        if row.deal_type_id not in data:
+            data[row.deal_type_id] = {}
+        data[row.deal_type_id][row.task_id] = row.is_enabled
+    return data
+
+async def set_deal_type_tasks(db: AsyncSession, data: dict):
+    """data: {deal_type_id: [task_ids, ...]} — список задач, которые должны быть включены"""
+    # Удаляем все старые записи для указанных типов
+    for deal_type_id, task_ids in data.items():
+        await db.execute(delete(DealTypeTask).where(DealTypeTask.deal_type_id == deal_type_id))
+        for task_id in task_ids:
+            db.add(DealTypeTask(deal_type_id=deal_type_id, task_id=task_id, is_enabled=True))
+    await db.commit()
