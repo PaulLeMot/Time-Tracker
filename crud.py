@@ -1346,12 +1346,27 @@ async def get_deal_type_tasks(db: AsyncSession) -> dict:
     return data
 
 async def set_deal_type_tasks(db: AsyncSession, data: dict):
-    """data: {deal_type_id: [task_ids, ...]} — список задач, которые должны быть включены"""
-    # Удаляем все старые записи для указанных типов
-    for deal_type_id, task_ids in data.items():
+    """
+    data: {deal_type_id: [task_ids, ...]} — список задач, которые должны быть включены (True).
+    Все остальные задачи для этого типа будут сохранены как False.
+    """
+    # Получаем все задачи (чтобы знать, какие существуют)
+    all_tasks = await get_tasks(db)  # предполагаем, что get_tasks возвращает список Task
+    all_task_ids = [task.id for task in all_tasks]
+
+    for deal_type_id, enabled_task_ids in data.items():
+        # Удаляем старые записи для этого типа
         await db.execute(delete(DealTypeTask).where(DealTypeTask.deal_type_id == deal_type_id))
-        for task_id in task_ids:
-            db.add(DealTypeTask(deal_type_id=deal_type_id, task_id=task_id, is_enabled=True))
+        
+        # Создаём записи для ВСЕХ задач
+        for task_id in all_task_ids:
+            is_enabled = task_id in enabled_task_ids
+            db.add(DealTypeTask(
+                deal_type_id=deal_type_id,
+                task_id=task_id,
+                is_enabled=is_enabled
+            ))
+    
     await db.commit()
 
 async def get_deal_with_products_and_tech_cards(db: AsyncSession, deal_id: int):
