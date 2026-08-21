@@ -187,11 +187,20 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
     deal = await crud.get_deal_by_id(db, deal_id)
     if not deal:
         raise HTTPException(404, "Deal not found")
+    products = []
+    for dp in deal.deal_products:
+        if dp.product_type:
+            products.append({
+                "name": dp.product_type.name,
+                "full_name": dp.product_type.full_name,
+                "quantity": dp.quantity
+            })
     return {
         "id": deal.id,
         "title": deal.title,
         "deal_type_id": deal.deal_type_id,
-        "deal_type": deal.deal_type.name if deal.deal_type else None
+        "deal_type": deal.deal_type.name if deal.deal_type else None,
+        "products": products
     }
 
 @router.delete("/deals/{deal_id}", status_code=204)

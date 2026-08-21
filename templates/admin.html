@@ -6414,6 +6414,28 @@ function initProcsetsTab() {
                 <div><strong>ID:</strong> ${deal.id}</div>
             </div>
         `;
+        if (deal.products && deal.products.length > 0) {
+            html += `<h4>📦 Товары в сделке</h4>
+                    <table style="width:100%; border-collapse:collapse; margin-top:8px;">
+                        <thead>
+                            <tr style="background:#f1f5f9;">
+                                <th style="padding:8px; text-align:left;">Наименование</th>
+                                <th style="padding:8px; text-align:left;">Полное наименование</th>
+                                <th style="padding:8px; text-align:center;">Количество</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+            for (const p of deal.products) {
+                html += `<tr>
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(p.name)}</td>
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(p.full_name || '—')}</td>
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">${p.quantity}</td>
+                        </tr>`;
+            }
+            html += `</tbody></table>`;
+        } else {
+            html += `<p style="color:#94a3b8; margin-top:12px;">Нет товаров в этой сделке</p>`;
+        }
         detailBody.innerHTML = html;
         detailModal.style.display = 'block';
     }
