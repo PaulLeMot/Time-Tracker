@@ -6289,21 +6289,29 @@ function initProcsetsTab() {
 
     function toggleIpMpVisibility() {
         const typeSelect = container.querySelector('#dealType');
-        const ipGroup = container.querySelector('#dealIp')?.closest('.form-group');
-        const mpGroup = container.querySelector('#dealMp')?.closest('.form-group');
+        const ipSelect = container.querySelector('#dealIp');
+        const mpSelect = container.querySelector('#dealMp');
+        const ipGroup = ipSelect?.closest('.form-group');
+        const mpGroup = mpSelect?.closest('.form-group');
         if (!typeSelect || !ipGroup || !mpGroup) return;
 
         const typeId = parseInt(typeSelect.value);
         const typeObj = dealTypes.find(t => t.id === typeId);
         const typeName = typeObj ? typeObj.name : '';
 
-        // Для FBS и FSK скрываем, для остальных (FBO) показываем
         if (typeName === 'FBS' || typeName === 'FSK') {
             ipGroup.style.display = 'none';
             mpGroup.style.display = 'none';
+            ipSelect.removeAttribute('required');
+            mpSelect.removeAttribute('required');
+            // Сбрасываем значения, чтобы не передавались
+            ipSelect.value = '';
+            mpSelect.value = '';
         } else {
             ipGroup.style.display = '';
             mpGroup.style.display = '';
+            ipSelect.setAttribute('required', 'required');
+            mpSelect.setAttribute('required', 'required');
         }
     }
 
