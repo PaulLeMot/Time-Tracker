@@ -6287,10 +6287,31 @@ function initProcsetsTab() {
         importPathInput.value = path;
     }
 
+    function toggleIpMpVisibility() {
+        const typeSelect = container.querySelector('#dealType');
+        const ipGroup = container.querySelector('#dealIp')?.closest('.form-group');
+        const mpGroup = container.querySelector('#dealMp')?.closest('.form-group');
+        if (!typeSelect || !ipGroup || !mpGroup) return;
+
+        const typeId = parseInt(typeSelect.value);
+        const typeObj = dealTypes.find(t => t.id === typeId);
+        const typeName = typeObj ? typeObj.name : '';
+
+        // Для FBS и FSK скрываем, для остальных (FBO) показываем
+        if (typeName === 'FBS' || typeName === 'FSK') {
+            ipGroup.style.display = 'none';
+            mpGroup.style.display = 'none';
+        } else {
+            ipGroup.style.display = '';
+            mpGroup.style.display = '';
+        }
+    }
+
     // ---- Функция, вызываемая при изменении параметров ----
     function onParametersChanged() {
         updateDealTitle();
         updateImportPath();
+        toggleIpMpVisibility();
     }
 
     // ---- Загрузка типов сделок ----
@@ -6429,10 +6450,10 @@ function initProcsetsTab() {
             const mps = await mpsResp.json();
 
             ipSelect = container.querySelector('#dealIp');
-            ipSelect.innerHTML = '<option value="">Выберите ИП</option>' + ips.map(ip => `<option value="${ip.id}">${escapeHtml(ip.name)}</option>`).join('');
+            ipSelect.innerHTML = '<option value="">ИП</option>' + ips.map(ip => `<option value="${ip.id}">${escapeHtml(ip.name)}</option>`).join('');
 
             mpSelect = container.querySelector('#dealMp');
-            mpSelect.innerHTML = '<option value="">Выберите МП</option>' + mps.map(mp => `<option value="${mp.id}">${escapeHtml(mp.name)}</option>`).join('');
+            mpSelect.innerHTML = '<option value="">МП</option>' + mps.map(mp => `<option value="${mp.id}">${escapeHtml(mp.name)}</option>`).join('');
 
             typeSelect = container.querySelector('#dealType');
 
