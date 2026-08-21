@@ -7926,7 +7926,7 @@ function initProcsetsTab() {
             try {
                 await apiFetch('/api/sandbox/deal-types/tasks', {
                     method: 'PUT',
-                    body: JSON.stringify(data)
+                    body: JSON.stringify({ tasks: data })
                 });
                 showToast('Настройки сохранены');
             } catch (err) {

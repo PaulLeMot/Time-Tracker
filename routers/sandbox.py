@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 from database import get_db
 import crud
@@ -129,6 +129,60 @@ async def create_deal_type(data: DealTypeCreate, db: AsyncSession = Depends(get_
     except Exception as e:
         raise HTTPException(400, detail=str(e))
     return deal_type
+
+# ==================== ЭНДПОИНТЫ ДЛЯ ТИПОВ СДЕЛОК ====================
+@router.get("/deal-types", response_model=List[DealTypeResponse])
+async def get_deal_types(db: AsyncSession = Depends(get_db)):
+    return await crud.get_deal_types(db)
+
+@router.post("/deal-types", status_code=201, response_model=DealTypeResponse)
+async def create_deal_type(data: DealTypeCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        deal_type = await crud.create_deal_type(db, data.name)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e))
+    return deal_type
+
+# ---- СТАВИМ СПЕЦИФИЧНЫЕ ПУТИ РАНЬШЕ ДИНАМИЧЕСКИХ ----
+@router.get("/deal-types/tasks")
+async def get_deal_type_tasks(db: AsyncSession = Depends(get_db)):
+    deal_types = await crud.get_deal_types(db)
+    tasks = await crud.get_tasks(db)
+    settings = await crud.get_deal_type_tasks(db)
+    result = []
+    for task in tasks:
+        task_data = {"id": task.id, "name": task.name}
+        for dt in deal_types:
+            is_enabled = settings.get(dt.id, {}).get(task.id, True)
+            task_data[f"type_{dt.id}"] = is_enabled
+        result.append(task_data)
+    return {"types": [{"id": dt.id, "name": dt.name} for dt in deal_types], "tasks": result}
+
+from fastapi import Request
+import logging
+
+@router.put("/deal-types/tasks")
+async def update_deal_type_tasks(request: Request, db: AsyncSession = Depends(get_db)):
+    logging.info("=== ENTERED update_deal_type_tasks ===")
+    try:
+        data = await request.json()
+        logging.info(f"PARSED JSON: {data}")
+    except Exception as e:
+        logging.error(f"Error reading JSON: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    tasks_dict = data.get("tasks", data)
+    converted = {}
+    for key, value in tasks_dict.items():
+        try:
+            deal_type_id = int(key)
+            task_ids = [int(x) for x in value]
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid data format")
+        converted[deal_type_id] = task_ids
+
+    await crud.set_deal_type_tasks(db, converted)
+    return {"message": "Settings updated"}
 
 @router.put("/deal-types/{type_id}", response_model=DealTypeResponse)
 async def update_deal_type(type_id: int, data: DealTypeUpdate, db: AsyncSession = Depends(get_db)):
@@ -860,25 +914,3 @@ async def import_by_path(data: ImportPathRequest, db: AsyncSession = Depends(get
             })
 
     return {"products": result}
-
-@router.get("/deal-types/tasks")
-async def get_deal_type_tasks(db: AsyncSession = Depends(get_db)):
-    # Получаем все типы и задачи
-    deal_types = await crud.get_deal_types(db)
-    tasks = await crud.get_tasks(db)
-    settings = await crud.get_deal_type_tasks(db)
-    result = []
-    for task in tasks:
-        task_data = {"id": task.id, "name": task.name}
-        for dt in deal_types:
-            is_enabled = settings.get(dt.id, {}).get(task.id, True)
-            task_data[f"type_{dt.id}"] = is_enabled
-        result.append(task_data)
-    # Также возвращаем список типов для заголовков
-    return {"types": [{"id": dt.id, "name": dt.name} for dt in deal_types], "tasks": result}
-
-@router.put("/deal-types/tasks")
-async def update_deal_type_tasks(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
-    # data: {deal_type_id: [task_id, task_id, ...]}
-    await crud.set_deal_type_tasks(db, data)
-    return {"message": "Settings updated"}
