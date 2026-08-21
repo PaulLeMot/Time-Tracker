@@ -603,6 +603,7 @@
             <!-- ==================== ПАНЕЛЬ: СДЕЛКИ ==================== -->
             <div class="sandbox-panel active" id="panel-deals">
                 <div class="toolbar">
+                    <button id="dealTypeSettingsBtn" class="btn" style="background: #3b82f6; margin-left: 8px;" title="Настройки типа сделки">⚙️</button>
                     <button id="createDealBtn" class="success">➕ Создать сделку</button>
                     <span style="margin-left:auto; color:#64748b; font-size:0.9rem;" id="dealsCount">Загрузка...</span>
                 </div>
@@ -838,5 +839,15 @@
                 </form>
             </div>
         </div>
-
+        <!-- Модальное окно настроек типа сделки -->
+        <div id="dealTypeSettingsModal" class="modal">
+            <div class="modal-content" style="max-width: 600px;">
+                <span class="close-deal-type-settings" style="float:right; font-size:1.8rem; cursor:pointer;">&times;</span>
+                <h3>⚙️ Настройки типа сделки</h3>
+                <div id="dealTypeSettingsBody">
+                    <!-- Здесь будет содержимое позже -->
+                    <p style="color: #94a3b8;">Содержимое настроек будет добавлено позже.</p>
+                </div>
+            </div>
+        </div>
     </div>

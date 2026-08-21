@@ -7827,9 +7827,65 @@ function initProcsetsTab() {
             initConstructorUI();
         }
     }
+    // ---- Настройки типа сделки ----
+    function initDealTypeSettings() {
+        const settingsBtn = container.querySelector('#dealTypeSettingsBtn');
+        const settingsModal = document.getElementById('dealTypeSettingsModal');
+        const closeSettings = document.querySelector('.close-deal-type-settings');
+
+        if (!settingsBtn || !settingsModal) return;
+
+        // Открытие
+        settingsBtn.addEventListener('click', () => {
+            settingsModal.style.display = 'block';
+        });
+
+        // Закрытие через крестик
+        if (closeSettings) {
+            closeSettings.addEventListener('click', () => {
+                settingsModal.style.display = 'none';
+            });
+        }
+
+        // Закрытие по клику вне модалки
+        window.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                settingsModal.style.display = 'none';
+            }
+        });
+    }
 
     initRolesTabButtons();
+    initDealTypeSettings();
     setInterval(loadDeals, 30000);
+}
+
+// ---- Настройки типа сделки ----
+function initDealTypeSettings() {
+    const settingsBtn = container.querySelector('#dealTypeSettingsBtn');
+    const settingsModal = document.getElementById('dealTypeSettingsModal');
+    const closeSettings = document.querySelector('.close-deal-type-settings');
+
+    if (!settingsBtn || !settingsModal) return;
+
+    // Открытие
+    settingsBtn.addEventListener('click', () => {
+        settingsModal.style.display = 'block';
+    });
+
+    // Закрытие через крестик
+    if (closeSettings) {
+        closeSettings.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+    }
+
+    // Закрытие по клику вне модалки
+    window.addEventListener('click', (e) => {
+        if (e.target === settingsModal) {
+            settingsModal.style.display = 'none';
+        }
+    });
 }
 </script>
 </body>
