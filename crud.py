@@ -29,6 +29,8 @@ from models import (
     IP,
     MP,
     DealTypeTask,
+    TaskExecution,
+    TaskExecutionStatus,
 )
 import secrets
 import string
@@ -1457,3 +1459,29 @@ async def get_task_assignment_notifications(db: AsyncSession, skip: int = 0, lim
             "created_at": n.created_at.isoformat() if n.created_at else None,
         })
     return output
+
+# ========== TaskExecution CRUD ==========
+
+async def get_task_execution_by_notification(db: AsyncSession, notification_id: int) -> Optional[TaskExecution]:
+    stmt = select(TaskExecution).where(TaskExecution.notification_id == notification_id)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+async def update_task_execution_status(
+    db: AsyncSession,
+    notification_id: int,
+    status: TaskExecutionStatus,
+    started_at: Optional[datetime] = None,
+    completed_at: Optional[datetime] = None
+) -> TaskExecution:
+    task_exec = await get_task_execution_by_notification(db, notification_id)
+    if not task_exec:
+        raise ValueError("Task execution not found")
+    task_exec.status = status
+    if started_at is not None:
+        task_exec.started_at = started_at
+    if completed_at is not None:
+        task_exec.completed_at = completed_at
+    await db.commit()
+    await db.refresh(task_exec)
+    return task_exec

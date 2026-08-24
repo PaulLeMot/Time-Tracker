@@ -887,6 +887,7 @@ async def list_notifications(
         .outerjoin(Explanation, Explanation.notification_id == Notification.id)
         .outerjoin(models.Employee, models.Employee.id == Notification.employee_id)
         .outerjoin(AdminEmp, AdminEmp.id == Notification.admin_id)
+        .where(Notification.type != NotificationType.TASK_ASSIGNMENT)
         .order_by(Notification.created_at.desc())
     )
 
@@ -1116,6 +1117,15 @@ async def delete_notification(
     notif = result.scalar_one_or_none()
     if not notif:
         raise HTTPException(404, "Notification not found")
+    
+    # ---- Удаляем связанную TaskExecution, если есть ----
+    te_stmt = select(TaskExecution).where(TaskExecution.notification_id == notification_id)
+    te_result = await db.execute(te_stmt)
+    task_exec = te_result.scalar_one_or_none()
+    if task_exec:
+        await db.delete(task_exec)
+    
+    # ---- Удаляем объяснительную, если есть ----
     exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
     exp_result = await db.execute(exp_stmt)
     explanation = exp_result.scalar_one_or_none()

@@ -6414,6 +6414,8 @@ function initProcsetsTab() {
                 <div><strong>ID:</strong> ${deal.id}</div>
             </div>
         `;
+        
+        // ---- Товары ----
         if (deal.products && deal.products.length > 0) {
             html += `<h4>📦 Товары в сделке</h4>
                     <table style="width:100%; border-collapse:collapse; margin-top:8px;">
@@ -6437,7 +6439,76 @@ function initProcsetsTab() {
             html += `<p style="color:#94a3b8; margin-top:12px;">Нет товаров в этой сделке</p>`;
         }
 
-        // Кнопка "Запустить"
+        // ---- Задачи по сделке (таблица) ----
+        if (deal.tasks && deal.tasks.length > 0) {
+            html += `<h4 style="margin-top:20px;">📋 Задачи по сделке</h4>
+                    <table style="width:100%; border-collapse:collapse; margin-top:8px;">
+                        <thead>
+                            <tr style="background:#f1f5f9;">
+                                <th style="padding:8px; text-align:left;">Задача</th>
+                                <th style="padding:8px; text-align:left;">Сотрудник</th>
+                                <th style="padding:8px; text-align:left;">Статус</th>
+                                <th style="padding:8px; text-align:left;">Начало</th>
+                                <th style="padding:8px; text-align:left;">Завершение</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+            for (const task of deal.tasks) {
+                const taskName = escapeHtml(task.task_name);
+                // Для каждой задачи может быть несколько исполнителей
+                // Если их несколько, делаем объединение ячеек по задаче (rowspan)
+                const assignees = task.assignees || [];
+                if (assignees.length === 0) {
+                    // На случай если исполнителей нет
+                    html += `<tr>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${taskName}</td>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">—</td>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">—</td>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">—</td>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">—</td>
+                            </tr>`;
+                } else {
+                    // Первая строка с задачей и первым исполнителем
+                    const first = assignees[0];
+                    const statusText = {
+                        'not_started': '❌ Не начата',
+                        'in_progress': '🔄 В процессе',
+                        'completed': '✅ Завершена'
+                    }[first.status] || first.status;
+                    const started = first.started_at ? new Date(first.started_at).toLocaleString('ru-RU') : '—';
+                    const completed = first.completed_at ? new Date(first.completed_at).toLocaleString('ru-RU') : '—';
+                    html += `<tr>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; vertical-align:middle;" rowspan="${assignees.length}">${taskName}</td>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(first.employee_name)}</td>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${statusText}</td>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${started}</td>
+                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${completed}</td>
+                            </tr>`;
+                    // Остальные исполнители
+                    for (let i = 1; i < assignees.length; i++) {
+                        const a = assignees[i];
+                        const st = {
+                            'not_started': '❌ Не начата',
+                            'in_progress': '🔄 В процессе',
+                            'completed': '✅ Завершена'
+                        }[a.status] || a.status;
+                        const s = a.started_at ? new Date(a.started_at).toLocaleString('ru-RU') : '—';
+                        const c = a.completed_at ? new Date(a.completed_at).toLocaleString('ru-RU') : '—';
+                        html += `<tr>
+                                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(a.employee_name)}</td>
+                                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${st}</td>
+                                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${s}</td>
+                                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${c}</td>
+                                </tr>`;
+                    }
+                }
+            }
+            html += `</tbody></table>`;
+        } else {
+            html += `<p style="color:#94a3b8; margin-top:12px;">Нет задач по этой сделке</p>`;
+        }
+
+        // ---- Кнопка "Запустить" ----
         html += `<div style="margin-top: 20px; text-align: right;">
                     <button id="startDealBtn" class="btn" style="background: #22c55e; padding: 8px 24px;">▶️ Запустить</button>
                 </div>`;
@@ -6445,7 +6516,7 @@ function initProcsetsTab() {
         detailBody.innerHTML = html;
         detailModal.style.display = 'block';
 
-        // Обработчик кнопки
+        // Обработчик кнопки запуска
         const startBtn = document.getElementById('startDealBtn');
         if (startBtn) {
             startBtn.addEventListener('click', async function() {
@@ -6461,6 +6532,10 @@ function initProcsetsTab() {
                     }
                     const data = await resp.json();
                     showToast(`✅ ${data.message}`);
+                    // Обновляем список сделок, чтобы увидеть изменения
+                    loadDeals();
+                    // Можно также перезагрузить детали, но проще закрыть модалку и открыть заново
+                    detailModal.style.display = 'none';
                 } catch (err) {
                     showToast(`❌ Ошибка: ${err.message}`, true);
                 }
@@ -7964,22 +8039,79 @@ function initProcsetsTab() {
             <th>Сотрудник</th>
             <th>Задача</th>
             <th>Сделка</th>
-            <th>Сообщение</th>
-            <th>Дата</th>
+            <th>Товары</th>
+            <th>Статус</th>
+            <th>Начало</th>
+            <th>Завершение</th>
+            <th>Действия</th>
         </tr></thead><tbody>`;
         for (const n of notifications) {
+            // ---- Извлекаем товары из extra_data или парсим сообщение ----
+            let productsHtml = '';
+            const extra = n.extra_data || {};
+            let products = extra.products || [];
+            if (products.length) {
+                productsHtml = products.map(p => `${escapeHtml(p.name)} (${p.quantity})`).join(', ');
+            } else {
+                // fallback: парсим из сообщения
+                const match = n.message.match(/Товары:\s*(.*)/);
+                if (match) {
+                    const items = match[1].split(',').map(s => s.trim());
+                    productsHtml = items.map(item => {
+                        const m = item.match(/^(.*?)\s*[—\-]\s*(\d+)\s*шт\.?/);
+                        if (m) return `${m[1].trim()} (${m[2]})`;
+                        return item;
+                    }).join(', ');
+                } else {
+                    productsHtml = '—';
+                }
+            }
+
+            const statusText = {
+                'not_started': '❌ Не начата',
+                'in_progress': '🔄 В процессе',
+                'completed': '✅ Завершена'
+            }[n.execution_status] || n.execution_status || '—';
+
+            const startedAt = n.started_at ? new Date(n.started_at).toLocaleString('ru-RU') : '—';
+            const completedAt = n.completed_at ? new Date(n.completed_at).toLocaleString('ru-RU') : '—';
+
             html += `<tr>
                 <td>${escapeHtml(n.employee_name || '—')}</td>
                 <td>${escapeHtml(n.task_name || '—')}</td>
                 <td>${escapeHtml(n.deal_title || '—')}</td>
-                <td>${escapeHtml(n.message)}</td>
-                <td>${new Date(n.created_at).toLocaleString('ru-RU')}</td>
+                <td>${productsHtml}</td>
+                <td>${statusText}</td>
+                <td>${startedAt}</td>
+                <td>${completedAt}</td>
+                <td><button class="btn-sm btn-danger delete-mailing-btn" data-id="${n.id}">🗑️</button></td>
             </tr>`;
         }
         html += '</tbody></table></div>';
         container.innerHTML = html;
-    }
 
+        // Обработчики удаления
+        container.querySelectorAll('.delete-mailing-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const id = this.dataset.id;
+                if (!confirm('Удалить это уведомление?')) return;
+                try {
+                    const resp = await fetch(`/api/sandbox/mailing/notifications/${id}`, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+                    if (!resp.ok) {
+                        const err = await resp.json();
+                        throw new Error(err.detail || 'Ошибка удаления');
+                    }
+                    showToast('✅ Уведомление удалено');
+                    loadMailingNotifications(); // перезагружаем таблицу
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+    }
     // ---- Настройки типа сделки ----
     function initDealTypeSettings() {
         const settingsBtn = container.querySelector('#dealTypeSettingsBtn');

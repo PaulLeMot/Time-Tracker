@@ -1,18 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Request, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete, cast, Integer, text
 from typing import List, Optional, Dict
 from pydantic import BaseModel
 from database import get_db
 import crud
-from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role
-from models import Notification, NotificationType, NotificationStatus
+from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role, Notification, NotificationType, NotificationStatus, TaskExecution, TaskExecutionStatus, Explanation
 from routers.auth import get_current_admin
 import pandas as pd
 import io
-from fastapi import UploadFile, File
 from schemas import DealProductItem
 import os
-from sqlalchemy import cast, Integer
+import logging
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
 # ==================== СХЕМЫ ====================
@@ -251,12 +250,60 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
                 "full_name": dp.product_type.full_name,
                 "quantity": dp.quantity
             })
+
+    # ---- Получение задач и их выполнения ----
+    # Используем сырой SQL для извлечения значений из JSON
+    from sqlalchemy import text
+    stmt = text("""
+        SELECT 
+            n.id as notif_id,
+            n.extra_data,
+            te.status as exec_status,
+            te.started_at,
+            te.completed_at,
+            e.full_name,
+            t.id as task_id,
+            t.name as task_name
+        FROM notifications n
+        LEFT JOIN task_executions te ON te.notification_id = n.id
+        JOIN employees e ON e.id = n.employee_id
+        JOIN tasks t ON t.id = (n.extra_data->>'task_id')::integer
+        WHERE n.type = 'task_assignment'
+            AND n.status = 'sent'
+            AND (n.extra_data->>'deal_id')::integer = :deal_id
+        ORDER BY t.name, e.full_name
+    """)
+    result = await db.execute(stmt, {"deal_id": deal_id})
+    rows = result.fetchall()
+
+    tasks_dict = {}
+    for row in rows:
+        task_id = row.task_id
+        if task_id not in tasks_dict:
+            tasks_dict[task_id] = {
+                "task_id": task_id,
+                "task_name": row.task_name,
+                "assignees": []
+            }
+        status_value = row.exec_status if row.exec_status else "not_started"
+        started_at = row.started_at.isoformat() if row.started_at else None
+        completed_at = row.completed_at.isoformat() if row.completed_at else None
+        tasks_dict[task_id]["assignees"].append({
+            "employee_name": row.full_name,
+            "status": status_value,
+            "started_at": started_at,
+            "completed_at": completed_at
+        })
+
+    tasks_list = list(tasks_dict.values())
+
     return {
         "id": deal.id,
         "title": deal.title,
         "deal_type_id": deal.deal_type_id,
         "deal_type": deal.deal_type.name if deal.deal_type else None,
-        "products": products
+        "products": products,
+        "tasks": tasks_list
     }
 
 @router.delete("/deals/{deal_id}", status_code=204)
@@ -1007,9 +1054,25 @@ async def start_deal(
             message=message,
             status=NotificationStatus.SENT,
             source="admin",
-            extra_data={"deal_id": deal_id, "task_id": task_id}
+            extra_data={
+                "deal_id": deal_id,
+                "task_id": task_id,
+                "deal_title": deal.title,
+                "task_name": task.name,
+                "products": [
+                    {"name": p['full_name'], "quantity": p['quantity']}
+                    for p in products
+                ]
+            }
         )
         db.add(notification)
+        await db.flush()
+        task_exec = TaskExecution(
+            notification_id=notification.id,
+            employee_id=emp_id,
+            status=TaskExecutionStatus.NOT_STARTED
+        )
+        db.add(task_exec)
         created_count += 1
 
     await db.commit()
@@ -1026,5 +1089,76 @@ async def get_mailing_notifications(
     skip: int = 0,
     limit: int = 100
 ):
-    notifications = await crud.get_task_assignment_notifications(db, skip, limit)
-    return notifications
+    stmt = text("""
+        SELECT 
+            n.id,
+            n.extra_data,
+            n.message,
+            n.created_at,
+            te.status AS exec_status,
+            te.started_at,
+            te.completed_at,
+            e.full_name AS employee_name,
+            t.name AS task_name,
+            d.title AS deal_title
+        FROM notifications n
+        LEFT JOIN task_executions te ON te.notification_id = n.id
+        JOIN employees e ON e.id = n.employee_id
+        JOIN tasks t ON t.id = (n.extra_data->>'task_id')::integer
+        JOIN deals d ON d.id = (n.extra_data->>'deal_id')::integer
+        WHERE n.type = 'task_assignment'
+            AND n.status = 'sent'
+        ORDER BY n.created_at DESC
+        OFFSET :skip LIMIT :limit
+    """)
+    result = await db.execute(stmt, {"skip": skip, "limit": limit})
+    rows = result.fetchall()
+
+    output = []
+    for row in rows:
+        output.append({
+            "id": row.id,
+            "employee_name": row.employee_name,
+            "task_name": row.task_name,
+            "deal_title": row.deal_title,
+            "message": row.message,
+            "extra_data": row.extra_data,  # JSON
+            "execution_status": row.exec_status if row.exec_status else "not_started",
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+        })
+    return output
+
+@router.delete("/mailing/notifications/{notification_id}")
+async def delete_mailing_notification(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    # Проверяем, что уведомление существует и имеет тип TASK_ASSIGNMENT
+    stmt = select(Notification).where(
+        Notification.id == notification_id,
+        Notification.type == NotificationType.TASK_ASSIGNMENT
+    )
+    result = await db.execute(stmt)
+    notification = result.scalar_one_or_none()
+    if not notification:
+        raise HTTPException(404, detail="Уведомление не найдено или не относится к рассылке")
+    
+    # Удаляем связанную TaskExecution, если есть
+    te_stmt = select(TaskExecution).where(TaskExecution.notification_id == notification_id)
+    te_result = await db.execute(te_stmt)
+    task_exec = te_result.scalar_one_or_none()
+    if task_exec:
+        await db.delete(task_exec)
+    
+    # Удаляем объяснительную, если есть
+    exp_stmt = select(Explanation).where(Explanation.notification_id == notification_id)
+    exp_result = await db.execute(exp_stmt)
+    explanation = exp_result.scalar_one_or_none()
+    if explanation:
+        await db.delete(explanation)
+    
+    await db.delete(notification)
+    await db.commit()
+    return {"message": "Уведомление удалено"}

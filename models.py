@@ -26,6 +26,11 @@ class DayType(str, Enum):
     VACATION = "VACATION"
     SICK = "SICK"
 
+class TaskExecutionStatus(str, enum.Enum):
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
 # ========================== СУЩЕСТВУЮЩИЕ МОДЕЛИ ==========================
 
 class Employee(Base):
@@ -43,6 +48,7 @@ class Employee(Base):
     employee_roles = relationship("EmployeeRole", back_populates="employee", cascade="all, delete-orphan")
     notifications = relationship("Notification", foreign_keys="Notification.employee_id", back_populates="employee")
     admin_notifications = relationship("Notification", foreign_keys="Notification.admin_id", back_populates="admin")
+    task_executions = relationship("TaskExecution", back_populates="employee")
 
 
 class TimeEntry(Base):
@@ -93,6 +99,7 @@ class Notification(Base):
 
     employee = relationship("Employee", foreign_keys=[employee_id], back_populates="notifications")
     admin = relationship("Employee", foreign_keys=[admin_id], back_populates="admin_notifications")
+    task_execution = relationship("TaskExecution", back_populates="notification", uselist=False)
 
 
 class Explanation(Base):
@@ -250,3 +257,29 @@ class MP(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(20), unique=True, nullable=False)
     deals = relationship("Deal", back_populates="mp")
+
+class TaskExecution(Base):
+    __tablename__ = "task_executions"
+
+    id = Column(Integer, primary_key=True)
+    notification_id = Column(Integer, ForeignKey("notifications.id"), unique=True, nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+
+    status = Column(
+        SAEnum(
+            TaskExecutionStatus,
+            name="taskexecutionstatus",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        default=TaskExecutionStatus.NOT_STARTED,
+        nullable=False,
+    )
+
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Связи
+    notification = relationship("Notification", back_populates="task_execution")
+    employee = relationship("Employee", back_populates="task_executions")
+
+    __table_args__ = (UniqueConstraint('notification_id', name='uq_notification_task'),)

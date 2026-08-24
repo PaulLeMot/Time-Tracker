@@ -393,6 +393,49 @@
                 display: none !important;
             }
         }
+
+        /* Аккордеон для задач */
+        .task-accordion-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            background: white;
+            overflow: hidden;
+        }
+        .task-accordion-header {
+            background: #f8fafc;
+            padding: 14px 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1rem;
+        }
+        .task-accordion-header:after {
+            content: "▼";
+            font-size: 0.8rem;
+            transition: transform 0.2s;
+        }
+        .task-accordion-item.open .task-accordion-header:after {
+            transform: rotate(180deg);
+        }
+        .task-accordion-details {
+            display: none;
+            padding: 16px;
+            border-top: 1px solid #e2e8f0;
+            background: white;
+        }
+        .task-accordion-item.open .task-accordion-details {
+            display: block;
+        }
+        .task-accordion-details div {
+            margin-bottom: 8px;
+        }
+        .task-accordion-details ul {
+            margin: 0;
+            padding-left: 20px;
+        }
     </style>
 </head>
 <body>
@@ -421,6 +464,7 @@
             <button class="tab-btn" data-tab="monitor" id="monitorTab" style="display: none;" title="Мониторинг">📊</button>
             <button class="tab-btn" data-tab="notifications" title="Уведомления">🔔 <span id="notifBadge"></span></button>
             <button class="tab-btn" data-tab="all-notifications" id="allNotifTab" style="display: none;">📋</button>
+            <button class="tab-btn" data-tab="tasks">✅</button>
         </div>
 
         <!-- ===== ОБЁРТКА ДЛЯ КОНТЕНТА (добавлена!) ===== -->
@@ -491,6 +535,10 @@
                     <button id="refreshAllNotifBtn" class="btn">Обновить</button>
                 </div>
                 <div id="allNotificationsContainer">Загрузка...</div>
+            </div>
+            <div id="tasks-tab" class="tab-content" style="display: none;">
+                <h2>✅ Мои задачи</h2>
+                <div id="tasksContainer">Загрузка...</div>
             </div>
         </div>
     </div>
@@ -855,6 +903,7 @@
         const monitorTabDiv = document.getElementById('monitor-tab');
         const notificationsTab = document.getElementById('notifications-tab');
         const allNotifTabDiv = document.getElementById('all-notifications-tab');
+        const tasksTab = document.getElementById('tasks-tab');
         const weekPicker = document.getElementById('weekPicker');
         const loadWeeklyBtn = document.getElementById('loadWeeklyBtn');
 
@@ -877,6 +926,7 @@
                 if (monitorTabDiv) monitorTabDiv.style.display = 'none';
                 if (notificationsTab) notificationsTab.style.display = 'none';
                 if (allNotifTabDiv) allNotifTabDiv.style.display = 'none';
+                if (tasksTab) tasksTab.style.display = 'none';
 
                 if (tabId === 'daily') {
                     dailyTab.style.display = 'block';
@@ -920,6 +970,9 @@
                 } else if (tabId === 'all-notifications') {
                     if (allNotifTabDiv) allNotifTabDiv.style.display = 'block';
                     loadAllNotifications();
+                } else if (tabId === 'tasks') {
+                    if (tasksTab) tasksTab.style.display = 'block';
+                    loadTaskNotifications();
                 }
             });
         });
@@ -1932,6 +1985,182 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Загрузка уведомлений о задачах
+async function loadTaskNotifications() {
+    const container = document.getElementById('tasksContainer');
+    container.innerHTML = 'Загрузка...';
+    try {
+        const resp = await fetch('/api/employee/tasks', { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки');
+        const data = await resp.json();
+        renderTaskNotifications(data, container);
+    } catch (err) {
+        container.innerHTML = `<p>Ошибка: ${err.message}</p>`;
+    }
+}
+
+function renderTaskNotifications(notifications, container) {
+    if (!notifications.length) {
+        container.innerHTML = '<p>Нет назначенных задач</p>';
+        return;
+    }
+    let html = '<div class="task-accordion">';
+    for (const n of notifications) {
+        const { taskName, dealTitle, products } = parseTaskNotification(n);
+        const createdDate = new Date(n.created_at).toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+
+        let productsHtml = '';
+        if (products.length) {
+            productsHtml = '<ul>' + products.map(p =>
+                `<li>${escapeHtml(p.name)} (${p.quantity})</li>`
+            ).join('') + '</ul>';
+        } else {
+            productsHtml = '<p>Товары не указаны</p>';
+        }
+
+        // Статус выполнения
+        const status = n.status || 'not_started';
+        let statusText = '';
+        let statusColor = '';
+        let actionButtons = '';
+        if (status === 'not_started') {
+            statusText = 'Не начата';
+            statusColor = '#64748b';
+            actionButtons = `<button class="btn btn-sm task-start" data-id="${n.id}">▶️ Начать</button>`;
+        } else if (status === 'in_progress') {
+            statusText = 'В процессе';
+            statusColor = '#f59e0b';
+            actionButtons = `<button class="btn btn-sm btn-warning task-complete" data-id="${n.id}">⏹️ Завершить</button>`;
+        } else if (status === 'completed') {
+            statusText = 'Выполнена';
+            statusColor = '#22c55e';
+            actionButtons = `<span style="color:#22c55e;">✅ Выполнена</span>`;
+        }
+
+        // Время начала/завершения
+        let timeInfo = '';
+        if (n.started_at) {
+            const startTime = new Date(n.started_at).toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+            timeInfo += `<div><strong>Начало:</strong> ${startTime}</div>`;
+        }
+        if (n.completed_at) {
+            const endTime = new Date(n.completed_at).toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+            timeInfo += `<div><strong>Завершение:</strong> ${endTime}</div>`;
+        }
+
+        html += `
+            <div class="task-accordion-item">
+                <div class="task-accordion-header">
+                    <span>${escapeHtml(taskName)}</span>
+                    <span style="color:${statusColor}; font-size:0.85rem;">${statusText}</span>
+                </div>
+                <div class="task-accordion-details">
+                    <div><strong>Сделка:</strong> ${escapeHtml(dealTitle)}</div>
+                    <div><strong>Дата:</strong> ${createdDate}</div>
+                    <div><strong>Товары:</strong></div>
+                    ${productsHtml}
+                    ${timeInfo}
+                    <div style="margin-top:12px;">${actionButtons}</div>
+                </div>
+            </div>
+        `;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Обработчики для аккордеона
+    container.querySelectorAll('.task-accordion-header').forEach(header => {
+        header.addEventListener('click', function() {
+            const item = this.closest('.task-accordion-item');
+            item.classList.toggle('open');
+        });
+    });
+
+    // Обработчики кнопок
+    container.querySelectorAll('.task-start').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const id = this.dataset.id;
+            startTask(id);
+        });
+    });
+    container.querySelectorAll('.task-complete').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const id = this.dataset.id;
+            completeTask(id);
+        });
+    });
+}
+
+function parseTaskNotification(notif) {
+    const extra = notif.extra_data || {};
+    let taskName = extra.task_name || '';
+    let dealTitle = extra.deal_title || '—';
+    let products = extra.products || [];
+
+    // Если в extra нет данных – парсим из сообщения (fallback)
+    if (!taskName && notif.message) {
+        const msg = notif.message;
+        const taskMatch = msg.match(/Задача:\s*(.*?)(?:\s*Товары:|$)/);
+        if (taskMatch) taskName = taskMatch[1].trim();
+        const productsMatch = msg.match(/Товары:\s*(.*)/);
+        if (productsMatch) {
+            const items = productsMatch[1].split(',').map(s => s.trim()).filter(s => s);
+            products = items.map(item => {
+                const match = item.match(/^(.*?)\s*[—\-]\s*(\d+)\s*шт\.?/);
+                if (match) {
+                    return { name: match[1].trim(), quantity: parseInt(match[2]) };
+                } else {
+                    return { name: item, quantity: 1 };
+                }
+            });
+        }
+    }
+    return { taskName, dealTitle, products };
+}
+
+async function startTask(notificationId) {
+    try {
+        const resp = await fetch(`/api/employee/tasks/${notificationId}/start`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (resp.ok) {
+            showToast('Задача начата');
+            loadTaskNotifications(); // обновить список
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || 'Ошибка', true);
+        }
+    } catch (err) {
+        showToast('Ошибка сети', true);
+    }
+}
+
+async function completeTask(notificationId) {
+    try {
+        const resp = await fetch(`/api/employee/tasks/${notificationId}/complete`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (resp.ok) {
+            showToast('Задача завершена');
+            loadTaskNotifications();
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || 'Ошибка', true);
+        }
+    } catch (err) {
+        showToast('Ошибка сети', true);
+    }
+}
 </script>
 </body>
 </html>

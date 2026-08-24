@@ -9,6 +9,8 @@ from routers.auth import get_current_employee
 import models
 from models import Notification, Explanation, NotificationStatus, NotificationType
 from sse import notify_admin_clients
+from models import TaskExecution, TaskExecutionStatus
+from crud import get_task_execution_by_notification, update_task_execution_status
 
 router = APIRouter(prefix="/api/employee", tags=["employee"])
 
@@ -34,15 +36,29 @@ class ExplanationResponse(BaseModel):
 @router.get("/notifications", response_model=List[NotificationResponse])
 async def get_employee_notifications(
     employee: models.Employee = Depends(get_current_employee),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    type: Optional[str] = None
 ):
+    conditions = [
+        Notification.employee_id == employee.id,
+        Notification.status == NotificationStatus.SENT
+    ]
+    
+    if type is None:
+        # Если тип не указан – исключаем уведомления о задачах
+        conditions.append(Notification.type != NotificationType.TASK_ASSIGNMENT)
+    else:
+        # Если тип указан – фильтруем по нему
+        try:
+            notif_type = NotificationType(type)
+            conditions.append(Notification.type == notif_type)
+        except ValueError:
+            raise HTTPException(400, "Invalid notification type")
+
     stmt = (
         select(Notification, Explanation.explanation_text)
         .outerjoin(Explanation, Explanation.notification_id == Notification.id)
-        .where(
-            Notification.employee_id == employee.id,
-            Notification.status == NotificationStatus.SENT
-        )
+        .where(*conditions)
         .order_by(Notification.created_at.desc())
     )
     result = await db.execute(stmt)
@@ -163,3 +179,144 @@ async def propose_end_time(
     await notify_admin_clients()
 
     return {"message": "Предложение отправлено администратору"}
+
+@router.post("/tasks/{notification_id}/start")
+async def start_task(
+    notification_id: int,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db)
+):
+    # 1. Проверяем, что уведомление существует, принадлежит сотруднику и это task_assignment
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Уведомление не найдено")
+    if notif.employee_id != employee.id:
+        raise HTTPException(403, "Это не ваше уведомление")
+    if notif.type != NotificationType.TASK_ASSIGNMENT:
+        raise HTTPException(400, "Это уведомление не является задачей")
+
+    # 2. Получаем запись выполнения
+    task_exec = await get_task_execution_by_notification(db, notification_id)
+    if not task_exec:
+        # Создаём, если вдруг нет (на случай, если не создалось автоматически)
+        task_exec = TaskExecution(
+            notification_id=notification_id,
+            employee_id=employee.id,
+            status=TaskExecutionStatus.NOT_STARTED
+        )
+        db.add(task_exec)
+        await db.flush()
+
+    # 3. Проверяем, не начата ли уже задача
+    if task_exec.status == TaskExecutionStatus.IN_PROGRESS:
+        raise HTTPException(400, "Задача уже начата")
+    if task_exec.status == TaskExecutionStatus.COMPLETED:
+        raise HTTPException(400, "Задача уже завершена")
+
+    # 4. Обновляем статус и время начала
+    task_exec.status = TaskExecutionStatus.IN_PROGRESS
+    task_exec.started_at = datetime.now()
+    await db.commit()
+
+    return {"message": "Задача начата", "started_at": task_exec.started_at.isoformat()}
+
+
+@router.post("/tasks/{notification_id}/complete")
+async def complete_task(
+    notification_id: int,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db)
+):
+    # 1. Проверяем уведомление
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Уведомление не найдено")
+    if notif.employee_id != employee.id:
+        raise HTTPException(403, "Это не ваше уведомление")
+    if notif.type != NotificationType.TASK_ASSIGNMENT:
+        raise HTTPException(400, "Это уведомление не является задачей")
+
+    # 2. Получаем запись выполнения
+    task_exec = await get_task_execution_by_notification(db, notification_id)
+    if not task_exec:
+        raise HTTPException(404, "Запись о выполнении не найдена")
+
+    # 3. Проверяем статус
+    if task_exec.status == TaskExecutionStatus.NOT_STARTED:
+        raise HTTPException(400, "Задача ещё не начата")
+    if task_exec.status == TaskExecutionStatus.COMPLETED:
+        raise HTTPException(400, "Задача уже завершена")
+
+    # 4. Обновляем статус и время завершения
+    task_exec.status = TaskExecutionStatus.COMPLETED
+    task_exec.completed_at = datetime.now()
+    await db.commit()
+
+    return {"message": "Задача завершена", "completed_at": task_exec.completed_at.isoformat()}
+
+
+@router.get("/tasks/{notification_id}/status")
+async def get_task_status(
+    notification_id: int,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db)
+):
+    # 1. Проверяем уведомление
+    stmt = select(Notification).where(Notification.id == notification_id)
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Уведомление не найдено")
+    if notif.employee_id != employee.id:
+        raise HTTPException(403, "Это не ваше уведомление")
+    if notif.type != NotificationType.TASK_ASSIGNMENT:
+        raise HTTPException(400, "Это уведомление не является задачей")
+
+    # 2. Получаем запись выполнения
+    task_exec = await get_task_execution_by_notification(db, notification_id)
+    if not task_exec:
+        # Возвращаем статус по умолчанию
+        return {
+            "status": TaskExecutionStatus.NOT_STARTED.value,
+            "started_at": None,
+            "completed_at": None
+        }
+
+    return {
+        "status": task_exec.status.value,
+        "started_at": task_exec.started_at.isoformat() if task_exec.started_at else None,
+        "completed_at": task_exec.completed_at.isoformat() if task_exec.completed_at else None
+    }
+
+@router.get("/tasks")
+async def get_my_tasks(
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db)
+):
+    # Получаем все уведомления типа task_assignment для сотрудника
+    stmt = select(Notification).where(
+        Notification.employee_id == employee.id,
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT
+    ).order_by(Notification.created_at.desc())
+    result = await db.execute(stmt)
+    notifications = result.scalars().all()
+
+    # Для каждого уведомления подгружаем статус выполнения
+    output = []
+    for notif in notifications:
+        task_exec = await get_task_execution_by_notification(db, notif.id)
+        output.append({
+            "id": notif.id,
+            "message": notif.message,
+            "created_at": notif.created_at,
+            "extra_data": notif.extra_data,
+            "status": task_exec.status.value if task_exec else TaskExecutionStatus.NOT_STARTED.value,
+            "started_at": task_exec.started_at.isoformat() if task_exec and task_exec.started_at else None,
+            "completed_at": task_exec.completed_at.isoformat() if task_exec and task_exec.completed_at else None
+        })
+    return output
