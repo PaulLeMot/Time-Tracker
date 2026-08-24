@@ -1400,3 +1400,60 @@ async def get_employees_for_roles(db: AsyncSession, role_ids: List[int]) -> Dict
     for er in rows:
         role_employees.setdefault(er.role_id, []).append(er.employee_id)
     return role_employees
+
+from sqlalchemy import cast, Integer
+from sqlalchemy.orm import selectinload
+from models import Notification, Employee, Task, Deal, NotificationType
+
+async def get_task_assignment_notifications(db: AsyncSession, skip: int = 0, limit: int = 100):
+    stmt = select(Notification).where(Notification.type == NotificationType.TASK_ASSIGNMENT).order_by(Notification.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(stmt)
+    notifications = result.scalars().all()
+    
+    if not notifications:
+        return []
+    
+    employee_ids = set()
+    task_ids = set()
+    deal_ids = set()
+    for n in notifications:
+        if n.employee_id:
+            employee_ids.add(n.employee_id)
+        if n.extra_data:
+            task_ids.add(n.extra_data.get('task_id'))
+            deal_ids.add(n.extra_data.get('deal_id'))
+    
+    employees = {}
+    if employee_ids:
+        stmt_emp = select(Employee).where(Employee.id.in_(employee_ids))
+        emp_result = await db.execute(stmt_emp)
+        for e in emp_result.scalars():
+            employees[e.id] = e.full_name
+    
+    tasks = {}
+    if task_ids:
+        stmt_task = select(Task).where(Task.id.in_(task_ids))
+        task_result = await db.execute(stmt_task)
+        for t in task_result.scalars():
+            tasks[t.id] = t.name
+    
+    deals = {}
+    if deal_ids:
+        stmt_deal = select(Deal).where(Deal.id.in_(deal_ids))
+        deal_result = await db.execute(stmt_deal)
+        for d in deal_result.scalars():
+            deals[d.id] = d.title
+    
+    output = []
+    for n in notifications:
+        task_id = n.extra_data.get('task_id') if n.extra_data else None
+        deal_id = n.extra_data.get('deal_id') if n.extra_data else None
+        output.append({
+            "id": n.id,
+            "employee_name": employees.get(n.employee_id),
+            "task_name": tasks.get(task_id) if task_id else None,
+            "deal_title": deals.get(deal_id) if deal_id else None,
+            "message": n.message,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        })
+    return output

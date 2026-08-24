@@ -593,6 +593,7 @@
             <button class="nav-btn" data-target="counterparties"><span class="icon">🏢</span> ИП/МП</button>
             <button class="nav-btn" data-target="products"><span class="icon">📦</span> Товары</button>
             <button class="nav-btn" data-target="tasks"><span class="icon">⚙️</span> Задачи</button>
+            <button class="nav-btn" data-target="mailing"><span class="icon">📋</span> Рассылка</button>
             <!-- Кнопка "Должности" скрыта, но панель доступна, если добавить кнопку вручную -->
             <!-- <button class="nav-btn" data-target="roles"><span class="icon">👥</span>Должности</button> -->
         </div>
@@ -774,6 +775,15 @@
                     <div style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
                         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                             <button type="button" id="importProductsBtn" class="btn" style="background: #3b82f6;">📥 Импорт товаров</button>
+                            <button type="button" id="manualAddBtn" class="btn" style="background: #8b5cf6;">➕ Добавить вручную</button>
+                            <div id="manualAddForm" style="display: none; margin-top: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                                <select id="manualProductSelect" style="flex: 2; min-width: 150px; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 20px;">
+                                    <option value="">-- Выберите товар --</option>
+                                </select>
+                                <input type="number" id="manualProductQuantity" placeholder="Количество" style="width: 100px; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 20px;" min="1" value="1">
+                                <button type="button" id="manualAddConfirmBtn" class="btn" style="background: #22c55e;">➕ Добавить</button>
+                                <button type="button" id="manualAddCancelBtn" class="btn" style="background: #94a3b8;">Отмена</button>
+                            </div>
                             <button type="button" id="clearImportBtn" class="btn btn-warning" style="display: none;">🗑️ Очистить</button>
                             <span id="importStatus" style="color: #64748b; font-size: 0.9rem;"></span>
                         </div>
@@ -848,6 +858,14 @@
                     <!-- Здесь будет содержимое позже -->
                     <p style="color: #94a3b8;">Содержимое настроек будет добавлено позже.</p>
                 </div>
+            </div>
+        </div>
+        <!-- ==================== ПАНЕЛЬ: РАССЫЛКА ==================== -->
+        <div class="sandbox-panel" id="panel-mailing">
+            <h3>📋 Рассылка</h3>
+            <div id="mailingContainer">
+                <p style="color: #94a3b8;">Список уведомлений по задачам будет отображаться здесь.</p>
+                <!-- Позже добавим таблицу с уведомлениями -->
             </div>
         </div>
     </div>

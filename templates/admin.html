@@ -6496,7 +6496,8 @@ function initProcsetsTab() {
         importPreviewContainer.style.display = 'none';
         clearImportBtn.style.display = 'none';
         importStatus.textContent = '';
-
+        if (manualAddForm) manualAddForm.style.display = 'none';
+        if (manualAddBtn) manualAddBtn.style.display = 'inline-block';
         let typeSelect, ipSelect, mpSelect;
 
         try {
@@ -6539,6 +6540,8 @@ function initProcsetsTab() {
         importPreviewContainer.style.display = 'none';
         clearImportBtn.style.display = 'none';
         importStatus.textContent = '';
+        if (manualAddForm) manualAddForm.style.display = 'none';
+        if (manualAddBtn) manualAddBtn.style.display = 'inline-block';
     }
 
     // ---- Загрузка ИП и МП (для вкладки контрагентов) ----
@@ -6695,6 +6698,86 @@ function initProcsetsTab() {
             } catch (err) {
                 showToast(err.message, true);
                 importStatus.textContent = 'Ошибка загрузки';
+            }
+        });
+    }
+
+    // ---- Ручное добавление товара ----
+    const manualAddBtn = container.querySelector('#manualAddBtn');
+    const manualAddForm = container.querySelector('#manualAddForm');
+    const manualProductSelect = container.querySelector('#manualProductSelect');
+    const manualProductQuantity = container.querySelector('#manualProductQuantity');
+    const manualAddConfirmBtn = container.querySelector('#manualAddConfirmBtn');
+    const manualAddCancelBtn = container.querySelector('#manualAddCancelBtn');
+
+    // Загрузка списка товаров для select
+    async function loadManualProductSelect() {
+        if (!manualProductSelect) return;
+        try {
+            const resp = await apiFetch('/api/sandbox/product-types');
+            const products = await resp.json();
+            manualProductSelect.innerHTML = '<option value="">-- Выберите товар --</option>';
+            products.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.full_name || p.name;
+                opt.dataset.name = p.name;
+                opt.dataset.fullName = p.full_name || p.name;
+                manualProductSelect.appendChild(opt);
+            });
+        } catch (err) {
+            console.error('Ошибка загрузки списка товаров:', err);
+            showToast('Не удалось загрузить список товаров', true);
+        }
+    }
+
+    if (manualAddBtn && manualAddForm) {
+        manualAddBtn.addEventListener('click', function() {
+            manualAddForm.style.display = 'flex';
+            manualAddBtn.style.display = 'none';
+            manualProductQuantity.value = 1;
+            if (manualProductSelect) manualProductSelect.selectedIndex = 0;
+            loadManualProductSelect(); // подгружаем актуальный список
+        });
+
+        manualAddCancelBtn.addEventListener('click', function() {
+            manualAddForm.style.display = 'none';
+            manualAddBtn.style.display = 'inline-block';
+        });
+
+        manualAddConfirmBtn.addEventListener('click', function() {
+            const select = manualProductSelect;
+            const selectedOption = select.options[select.selectedIndex];
+            if (!selectedOption || !selectedOption.value) {
+                showToast('Выберите товар из списка', true);
+                return;
+            }
+            const quantity = parseInt(manualProductQuantity.value) || 1;
+            if (quantity < 1) {
+                showToast('Количество должно быть больше 0', true);
+                return;
+            }
+            const name = selectedOption.dataset.name;
+            const fullName = selectedOption.dataset.fullName;
+            importedProducts.push({
+                name: name,
+                full_name: fullName,
+                quantity: quantity
+            });
+            renderImportPreview(importedProducts);
+            importStatus.textContent = `Загружено ${importedProducts.length} товаров`;
+            clearImportBtn.style.display = 'inline-block';
+            importPreviewContainer.style.display = 'block';
+            manualAddForm.style.display = 'none';
+            manualAddBtn.style.display = 'inline-block';
+            showToast(`✅ Товар "${name}" добавлен`);
+        });
+
+        // Enter в поле количества
+        manualProductQuantity.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                manualAddConfirmBtn.click();
             }
         });
     }
@@ -7824,6 +7907,8 @@ function initProcsetsTab() {
             } else if (target === 'roles') {
                 if (!allEmployees.length) loadAllEmployees();
                 loadRoles();
+            } else if (target === 'mailing') {
+                loadMailingNotifications();
             }
         });
     });
@@ -7855,6 +7940,46 @@ function initProcsetsTab() {
             initConstructorUI();
         }
     }
+
+    // ---- Загрузка уведомлений для вкладки "Рассылка" ----
+    async function loadMailingNotifications() {
+        const container = document.getElementById('mailingContainer');
+        if (!container) return;
+        container.innerHTML = '<p>Загрузка...</p>';
+        try {
+            const resp = await apiFetch('/api/sandbox/mailing/notifications');
+            const data = await resp.json();
+            renderMailingTable(data, container);
+        } catch (err) {
+            container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
+        }
+    }
+
+    function renderMailingTable(notifications, container) {
+        if (!notifications || notifications.length === 0) {
+            container.innerHTML = '<p style="color:#94a3b8;">Нет уведомлений по задачам</p>';
+            return;
+        }
+        let html = `<div class="recent-table"><table><thead><tr>
+            <th>Сотрудник</th>
+            <th>Задача</th>
+            <th>Сделка</th>
+            <th>Сообщение</th>
+            <th>Дата</th>
+        </tr></thead><tbody>`;
+        for (const n of notifications) {
+            html += `<tr>
+                <td>${escapeHtml(n.employee_name || '—')}</td>
+                <td>${escapeHtml(n.task_name || '—')}</td>
+                <td>${escapeHtml(n.deal_title || '—')}</td>
+                <td>${escapeHtml(n.message)}</td>
+                <td>${new Date(n.created_at).toLocaleString('ru-RU')}</td>
+            </tr>`;
+        }
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+    }
+
     // ---- Настройки типа сделки ----
     function initDealTypeSettings() {
         const settingsBtn = container.querySelector('#dealTypeSettingsBtn');

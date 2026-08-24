@@ -12,6 +12,7 @@ import io
 from fastapi import UploadFile, File
 from schemas import DealProductItem
 import os
+from sqlalchemy import cast, Integer
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
 # ==================== СХЕМЫ ====================
@@ -1018,3 +1019,12 @@ async def start_deal(
         await notify_employee(emp_id)
 
     return {"message": f"Сделка запущена, отправлено {created_count} уведомлений"}
+
+@router.get("/mailing/notifications")
+async def get_mailing_notifications(
+    db: AsyncSession = Depends(get_db),
+    skip: int = 0,
+    limit: int = 100
+):
+    notifications = await crud.get_task_assignment_notifications(db, skip, limit)
+    return notifications
