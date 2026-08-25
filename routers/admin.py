@@ -15,7 +15,7 @@ from routers.auth import get_current_employee, get_current_admin, get_current_mo
 import models
 from sse import notify_admin_clients, notify_monitor_clients, notify_employee
 from fastapi.responses import RedirectResponse
-from models import Notification, NotificationType, NotificationStatus, Explanation, Employee, DayStatus, DayType
+from models import Notification, NotificationType, NotificationStatus, Explanation, Employee, DayStatus, DayType, TaskExecution
 from sqlalchemy.orm import aliased
 class EmployeeCreate(BaseModel):
     username: str
