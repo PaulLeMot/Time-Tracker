@@ -17,6 +17,7 @@ from sse import notify_admin_clients, notify_monitor_clients, notify_employee
 from fastapi.responses import RedirectResponse
 from models import Notification, NotificationType, NotificationStatus, Explanation, Employee, DayStatus, DayType, TaskExecution
 from sqlalchemy.orm import aliased
+from urllib.parse import quote
 class EmployeeCreate(BaseModel):
     username: str
     full_name: str
@@ -1877,3 +1878,108 @@ async def update_day_status(
             db.add(day_status)
     await db.commit()
     return {"status": "ok", "updated": len(updates)}
+
+from io import BytesIO
+from openpyxl import Workbook
+from fastapi.responses import StreamingResponse
+from datetime import datetime, time
+
+@notifications_router.get("/export")
+async def export_notifications(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Экспорт уведомлений в Excel за указанный период.
+    start_date и end_date в формате YYYY-MM-DD.
+    """
+    # Строим запрос (аналогично list_notifications, но без пагинации)
+    AdminEmp = aliased(models.Employee, name="admin_emp")
+    stmt = (
+        select(
+            Notification,
+            Explanation.explanation_text.label("explanation_text"),
+            models.Employee.full_name.label("emp_full_name"),
+            AdminEmp.full_name.label("admin_full_name")
+        )
+        .outerjoin(Explanation, Explanation.notification_id == Notification.id)
+        .outerjoin(models.Employee, models.Employee.id == Notification.employee_id)
+        .outerjoin(AdminEmp, AdminEmp.id == Notification.admin_id)
+        .where(Notification.type != NotificationType.TASK_ASSIGNMENT)
+        .order_by(Notification.created_at.desc())
+    )
+
+    # Фильтр по датам
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            stmt = stmt.where(Notification.created_at >= datetime.combine(start_dt, time(5, 0, 0)))
+        except ValueError:
+            raise HTTPException(400, "Invalid start_date format")
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+            stmt = stmt.where(Notification.created_at < datetime.combine(end_dt, time(5, 0, 0)) + timedelta(days=1))
+        except ValueError:
+            raise HTTPException(400, "Invalid end_date format")
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    # Создаём Excel-файл
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Уведомления"
+
+    # Заголовки
+    headers = ["ФИО", "Тип", "Дата создания", "Автор", "Сообщение", "Объяснительная", "Статус"]
+    ws.append(headers)
+
+    # Маппинг типов и статусов
+    type_map = {
+        "reprimand": "❌ Замечание",
+        "warning": "⚠️ Предупреждение",
+        "commendation": "✅ Похвала",
+        "performance_review": "⭐ Оценка работы"
+    }
+    status_map = {
+        "draft": "Черновик",
+        "sent": "Отправлено",
+        "rejected": "Отклонено"
+    }
+
+    for notif, explanation_text, emp_name, admin_name in rows:
+        # Пропускаем уведомления о задачах (уже отфильтрованы)
+        type_display = type_map.get(notif.type.value, notif.type.value)
+        status_display = status_map.get(notif.status.value, notif.status.value)
+        created_date = notif.created_at.strftime("%d.%m.%Y, %H:%M") if notif.created_at else ""
+        author = "Авто" if notif.source == "auto" else (admin_name or "Админ")
+
+        ws.append([
+            emp_name or "—",
+            type_display,
+            created_date,
+            author,
+            notif.message or "",
+            explanation_text or "—",
+            status_display
+        ])
+
+    # Сохраняем в BytesIO
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    from urllib.parse import quote
+
+    filename = f"уведомления_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    encoded_filename = quote(filename)
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename={encoded_filename}; filename*=UTF-8''{encoded_filename}"
+        }
+    )

@@ -1089,6 +1089,7 @@
                 
                 <button id="refreshNotificationsBtn" class="btn">Обновить</button>
                 <button id="clearDateFilterBtn" class="btn btn-warning">Сбросить даты</button>
+                <button id="exportNotificationsBtn" class="btn" style="background: #10b981;">📥 Экспорт</button>
             </div>
             <div id="notificationsContainer">Загрузка...</div>
         </div>
@@ -2634,6 +2635,28 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
             changeDay(1);
         });
         updateFilterVisibility();
+
+        document.getElementById('exportNotificationsBtn').addEventListener('click', async function() {
+            const params = new URLSearchParams();
+            if (startDate) params.append('start_date', startDate);
+            if (endDate) params.append('end_date', endDate);
+            
+            const url = `/api/admin/notifications/export?${params.toString()}`;
+            try {
+                const response = await fetch(url, { credentials: 'include' });
+                if (!response.ok) throw new Error('Ошибка экспорта');
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'уведомления.xlsx';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(link.href);
+            } catch (err) {
+                showToast('Ошибка скачивания: ' + err.message, true);
+            }
+        });
     });
     async function loadRecentEntries(limit = 100) {
         const container = document.getElementById('recentContainer');
