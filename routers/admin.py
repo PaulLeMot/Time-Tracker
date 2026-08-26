@@ -1983,3 +1983,19 @@ async def export_notifications(
             "Content-Disposition": f"attachment; filename={encoded_filename}; filename*=UTF-8''{encoded_filename}"
         }
     )
+
+@router.post("/trigger-auto-close")
+async def trigger_auto_close(
+    admin: models.Employee = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Ручной запуск автозакрытия смен для всех активных сотрудников.
+    Создаёт записи 'end' с источником 'auto' и уведомления о незавершённом дне.
+    """
+    try:
+        await crud.auto_close_shifts(db)
+        return {"message": "Автозакрытие смен выполнено, уведомления отправлены"}
+    except Exception as e:
+        # Можно залогировать, но для простоты вернём ошибку
+        raise HTTPException(status_code=500, detail=str(e))

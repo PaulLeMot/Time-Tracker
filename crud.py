@@ -259,7 +259,7 @@ async def auto_close_shifts(db: AsyncSession):
                 Notification.employee_id == emp.id,
                 Notification.type == NotificationType.WARNING,
                 Notification.message == "Не был завершен рабочий день",
-                Notification.extra_data['workday_date'].astext == workday_date.isoformat()
+                cast(Notification.extra_data['workday_date'], String) == workday_date.isoformat()
             )
             existing = await db.execute(notif_stmt)
             existing_notif = existing.scalar_one_or_none()

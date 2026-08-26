@@ -953,6 +953,7 @@
         <h1 style="margin:0;">📋 Админ-панель TimeTracker</h1>
         <div style="display: flex; align-items: center; gap: 15px;">
             <button id="importProductsBtn" class="btn" style="background: #10b981;">📥</button>
+            <button id="triggerAutoCloseBtn" class="btn" style="background: #8b5cf6;">⏰ Автозакрытие</button>
             <span id="adminNameLink" style="color: #3b82f6; font-size: 1.1rem; cursor: pointer; text-decoration: underline;"></span>
             <button id="logoutAdminBtn" class="btn" style="background: #ef4444;">Выйти</button>
         </div>
@@ -3938,7 +3939,26 @@ document.getElementById('importProductsBtn')?.addEventListener('click', async ()
         showToast('Ошибка сети', true);
     }
 });
-
+document.getElementById('triggerAutoCloseBtn')?.addEventListener('click', async () => {
+    if (!confirm('Запустить автозакрытие смен для всех активных сотрудников? Будут созданы отметки "end" и уведомления о незавершённых днях.')) return;
+    try {
+        const resp = await fetch('/api/employees/trigger-auto-close', {
+            method: 'POST',
+            credentials: 'include'
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            showToast(data.message || '✅ Автозакрытие выполнено');
+            // Обновить текущие отчёты, чтобы сразу увидеть изменения
+            refreshCurrentReport();
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || '❌ Ошибка выполнения', true);
+        }
+    } catch (err) {
+        showToast('❌ Ошибка сети', true);
+    }
+});
 // --- Функция загрузки списка сотрудников для выпадающего списка ---
 async function loadTrafficEmployees() {
     try {
@@ -6399,10 +6419,13 @@ function initProcsetsTab() {
             const typeName = dealTypes.find(t => t.id === deal.deal_type_id)?.name || '—';
             html += `<tr>
                 <td>${deal.id}</td>
-                <td><strong>${escapeHtml(deal.title)}</strong></td>
+                <td>
+                    <strong class="deal-title-link" data-id="${deal.id}" style="cursor:pointer; color:#3b82f6; text-decoration:underline;">
+                        ${escapeHtml(deal.title)}
+                    </strong>
+                </td>
                 <td>${escapeHtml(typeName)}</td>
                 <td>
-                    <button class="view-deal-btn" data-id="${deal.id}" style="background:#3b82f6; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">👁️</button>
                     <button class="delete-deal-btn" data-id="${deal.id}" style="background:#ef4444; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">🗑️</button>
                 </td>
             </tr>`;
@@ -6410,9 +6433,7 @@ function initProcsetsTab() {
         html += `</tbody></table>`;
         dealsListEl.innerHTML = html;
 
-        dealsListEl.querySelectorAll('.view-deal-btn').forEach(btn => {
-            btn.addEventListener('click', () => viewDeal(parseInt(btn.dataset.id)));
-        });
+        // Обработчики для удаления (кнопка 🗑️)
         dealsListEl.querySelectorAll('.delete-deal-btn').forEach(btn => {
             btn.addEventListener('click', () => deleteDeal(parseInt(btn.dataset.id)));
         });
@@ -6428,7 +6449,7 @@ function initProcsetsTab() {
             showToast(err.message, true);
         }
     }
-
+    window.viewDeal = viewDeal;
     function showDetail(deal) {
         detailTitle.textContent = `Сделка #${deal.id}: ${deal.title}`;
         let html = `
@@ -6842,7 +6863,13 @@ function initProcsetsTab() {
             manualAddForm.style.display = 'none';
             manualAddBtn.style.display = 'inline-block';
         });
-
+        dealsListEl.addEventListener('click', function(e) {
+            const target = e.target.closest('.deal-title-link');
+            if (target) {
+                const dealId = parseInt(target.dataset.id);
+                viewDeal(dealId);
+            }
+        });
         manualAddConfirmBtn.addEventListener('click', function() {
             const select = manualProductSelect;
             const selectedOption = select.options[select.selectedIndex];
