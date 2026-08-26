@@ -554,6 +554,7 @@ async def mark_barcode(barcode: str):
                 products[key]["Маркировки"].add(marking)
                 products[key]["entries"].append((marking, is_id))
 
+    # ---- ВЫЧИСЛЯЕМ sticker_markings ДЛЯ ВСЕХ ПРОДУКТОВ (первый раз) ----
     for key, data_item in products.items():
         if data_item["skip_stickers"]:
             data_item["sticker_markings"] = set()
@@ -615,7 +616,6 @@ async def mark_barcode(barcode: str):
 
         found_markings = list(data_item["sticker_markings"])
 
-        # Определяем отображаемую "Маркировку":
         if found_via_qr and data_item["qr_markings"]:
             display_marking = ", ".join(sorted(f"{mk}_OZ" for mk in data_item["qr_markings"]))
         else:
@@ -695,7 +695,27 @@ async def mark_barcode(barcode: str):
                         new_prod["entries"].append((marking, is_id))
                 products[key] = new_prod
 
-            # Теперь строим таблицы для новых продуктов и добавляем в results
+            # ---- ПЕРЕСЧИТЫВАЕМ sticker_markings ДЛЯ ВСЕХ ПРОДУКТОВ (включая новые) ----
+            for key, data_item in products.items():
+                if data_item["skip_stickers"]:
+                    data_item["sticker_markings"] = set()
+                    continue
+
+                qr_markings = {f"{mk}_OZ" for mk in data_item["qr_markings"]}
+                id_markings = {marking for marking, is_id in data_item["entries"] if is_id is True}
+                barcode_markings = {marking for marking, is_id in data_item["entries"] if is_id is False}
+
+                all_markings = set()
+                if id_markings:
+                    all_markings.update(id_markings)
+                if barcode_markings:
+                    all_markings.update(barcode_markings)
+                if qr_markings:
+                    all_markings.update(qr_markings)
+
+                data_item["sticker_markings"] = all_markings
+
+            # ---- Строим таблицы для новых продуктов и добавляем в results ----
             for key, data_item in products.items():
                 # Пропускаем уже обработанные (первые results)
                 if any(res["Код"] == data_item["Код"] and res["Вид"] == data_item["Вид"] for res in results):
