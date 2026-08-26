@@ -953,7 +953,7 @@
         <h1 style="margin:0;">📋 Админ-панель TimeTracker</h1>
         <div style="display: flex; align-items: center; gap: 15px;">
             <button id="importProductsBtn" class="btn" style="background: #10b981;">📥</button>
-            <button id="triggerAutoCloseBtn" class="btn" style="background: #8b5cf6;">⏰ Автозакрытие</button>
+            <!--button id="triggerAutoCloseBtn" class="btn" style="background: #8b5cf6;">⏰ Автозакрытие</button-->
             <span id="adminNameLink" style="color: #3b82f6; font-size: 1.1rem; cursor: pointer; text-decoration: underline;"></span>
             <button id="logoutAdminBtn" class="btn" style="background: #ef4444;">Выйти</button>
         </div>
@@ -6459,10 +6459,10 @@ function initProcsetsTab() {
             </div>
         `;
         
-        // ---- Товары ----
+        // ---- Товары (таблица с редактируемыми количествами) ----
         if (deal.products && deal.products.length > 0) {
             html += `<h4>📦 Товары в сделке</h4>
-                    <table style="width:100%; border-collapse:collapse; margin-top:8px;">
+                    <table style="width:100%; border-collapse:collapse; margin-top:8px;" id="deal-products-table">
                         <thead>
                             <tr style="background:#f1f5f9;">
                                 <th style="padding:8px; text-align:left;">Наименование</th>
@@ -6472,10 +6472,13 @@ function initProcsetsTab() {
                         </thead>
                         <tbody>`;
             for (const p of deal.products) {
-                html += `<tr>
+                html += `<tr data-product-id="${p.id}">
                             <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(p.name)}</td>
                             <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(p.full_name || '—')}</td>
-                            <td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">${p.quantity}</td>
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">
+                                <span class="product-quantity-display" style="cursor:pointer;">${p.quantity}</span>
+                                <input type="number" class="product-quantity-input" value="${p.quantity}" min="1" style="display:none; width:70px; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; text-align:center; font-size:0.95rem;" data-product-id="${p.id}">
+                            </td>
                         </tr>`;
             }
             html += `</tbody></table>`;
@@ -6483,10 +6486,10 @@ function initProcsetsTab() {
             html += `<p style="color:#94a3b8; margin-top:12px;">Нет товаров в этой сделке</p>`;
         }
 
-        // ---- Задачи по сделке (таблица) ----
+        // ---- Задачи по сделке (таблица с редактированием) ----
         if (deal.tasks && deal.tasks.length > 0) {
             html += `<h4 style="margin-top:20px;">📋 Задачи по сделке</h4>
-                    <table style="width:100%; border-collapse:collapse; margin-top:8px;">
+                    <table style="width:100%; border-collapse:collapse; margin-top:8px;" id="deal-tasks-table">
                         <thead>
                             <tr style="background:#f1f5f9;">
                                 <th style="padding:8px; text-align:left;">Задача</th>
@@ -6498,54 +6501,46 @@ function initProcsetsTab() {
                         </thead>
                         <tbody>`;
             for (const task of deal.tasks) {
+                const taskId = task.task_id;
                 const taskName = escapeHtml(task.task_name);
-                // Для каждой задачи может быть несколько исполнителей
-                // Если их несколько, делаем объединение ячеек по задаче (rowspan)
-                const assignees = task.assignees || [];
-                if (assignees.length === 0) {
-                    // На случай если исполнителей нет
-                    html += `<tr>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${taskName}</td>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">—</td>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">—</td>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">—</td>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">—</td>
-                            </tr>`;
-                } else {
-                    // Первая строка с задачей и первым исполнителем
-                    const first = assignees[0];
-                    const statusText = {
-                        'not_started': '❌ Не начата',
-                        'in_progress': '🔄 В процессе',
-                        'completed': '✅ Завершена'
-                    }[first.status] || first.status;
-                    const started = first.started_at ? new Date(first.started_at).toLocaleString('ru-RU') : '—';
-                    const completed = first.completed_at ? new Date(first.completed_at).toLocaleString('ru-RU') : '—';
-                    html += `<tr>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0; vertical-align:middle;" rowspan="${assignees.length}">${taskName}</td>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(first.employee_name)}</td>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${statusText}</td>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${started}</td>
-                                <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${completed}</td>
-                            </tr>`;
-                    // Остальные исполнители
-                    for (let i = 1; i < assignees.length; i++) {
-                        const a = assignees[i];
-                        const st = {
-                            'not_started': '❌ Не начата',
-                            'in_progress': '🔄 В процессе',
-                            'completed': '✅ Завершена'
-                        }[a.status] || a.status;
-                        const s = a.started_at ? new Date(a.started_at).toLocaleString('ru-RU') : '—';
-                        const c = a.completed_at ? new Date(a.completed_at).toLocaleString('ru-RU') : '—';
-                        html += `<tr>
-                                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${escapeHtml(a.employee_name)}</td>
-                                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${st}</td>
-                                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${s}</td>
-                                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${c}</td>
-                                </tr>`;
-                    }
-                }
+                const assignee = task.assignees && task.assignees.length > 0 ? task.assignees[0] : null;
+                const employeeName = assignee ? assignee.employee_name : '—';
+                const status = assignee ? assignee.status : 'not_started';
+                const startedAt = assignee && assignee.started_at ? new Date(assignee.started_at).toISOString().slice(0,16) : '';
+                const completedAt = assignee && assignee.completed_at ? new Date(assignee.completed_at).toISOString().slice(0,16) : '';
+                
+                const statusDisplayMap = {
+                    'not_started': '❌ Не начата',
+                    'in_progress': '🔄 В процессе',
+                    'completed': '✅ Завершена'
+                };
+                const statusDisplay = statusDisplayMap[status] || status;
+
+                html += `<tr data-task-id="${taskId}">
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${taskName}</td>
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
+                                <span class="task-employee-display" style="cursor:pointer;">${escapeHtml(employeeName)}</span>
+                                <select class="task-employee-select" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
+                                    ${allEmployees && allEmployees.length ? allEmployees.map(e => `<option value="${e.id}" ${e.full_name === employeeName ? 'selected' : ''}>${escapeHtml(e.full_name)}</option>`).join('') : '<option value="">Нет сотрудников</option>'}
+                                </select>
+                            </td>
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
+                                <span class="task-status-display" style="cursor:pointer;">${statusDisplay}</span>
+                                <select class="task-status-select" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
+                                    <option value="not_started" ${status === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
+                                    <option value="in_progress" ${status === 'in_progress' ? 'selected' : ''}>🔄 В процессе</option>
+                                    <option value="completed" ${status === 'completed' ? 'selected' : ''}>✅ Завершена</option>
+                                </select>
+                            </td>
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
+                                <span class="task-started-display" style="cursor:pointer;">${startedAt ? new Date(startedAt).toLocaleString() : '—'}</span>
+                                <input type="datetime-local" class="task-started-input" value="${startedAt}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
+                            </td>
+                            <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
+                                <span class="task-completed-display" style="cursor:pointer;">${completedAt ? new Date(completedAt).toLocaleString() : '—'}</span>
+                                <input type="datetime-local" class="task-completed-input" value="${completedAt}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
+                            </td>
+                        </tr>`;
             }
             html += `</tbody></table>`;
         } else {
@@ -6560,7 +6555,10 @@ function initProcsetsTab() {
         detailBody.innerHTML = html;
         detailModal.style.display = 'block';
 
-        // Обработчик кнопки запуска
+        // ---- Активируем редактирование по клику ----
+        enableInlineEditing(deal.id);
+
+        // ---- Обработчик кнопки запуска ----
         const startBtn = document.getElementById('startDealBtn');
         if (startBtn) {
             startBtn.addEventListener('click', async function() {
@@ -6576,18 +6574,377 @@ function initProcsetsTab() {
                     }
                     const data = await resp.json();
                     showToast(`✅ ${data.message}`);
-                    // Обновляем список сделок, чтобы увидеть изменения
                     loadDeals();
-                    // Можно также перезагрузить детали, но проще закрыть модалку и открыть заново
                     detailModal.style.display = 'none';
                 } catch (err) {
                     showToast(`❌ Ошибка: ${err.message}`, true);
                 }
             });
         }
-    }
 
-    // ---- Удаление сделки ----
+        // ----- Сохранение всех изменений при закрытии модалки -----
+        function saveAllFields() {
+            const dealId = deal.id;
+
+            // Товары (количество)
+            document.querySelectorAll('.product-quantity-input:visible').forEach(input => {
+                const display = input.closest('td').querySelector('.product-quantity-display');
+                if (display && parseInt(input.value) !== parseInt(display.textContent)) {
+                    saveProductQuantity(input, dealId);
+                } else {
+                    // Если не изменилось, просто скрываем поле
+                    input.style.display = 'none';
+                    if (display) display.style.display = 'inline';
+                }
+            });
+
+            // Сотрудник
+            document.querySelectorAll('.task-employee-select:visible').forEach(select => {
+                saveTaskEmployee(select, dealId);
+            });
+
+            // Статус
+            document.querySelectorAll('.task-status-select:visible').forEach(select => {
+                saveTaskStatus(select, dealId);
+            });
+
+            // Время начала
+            document.querySelectorAll('.task-started-input:visible').forEach(input => {
+                const display = input.closest('td').querySelector('.task-started-display');
+                const newVal = input.value;
+                const oldVal = display.textContent === '—' ? '' : new Date(display.textContent).toISOString().slice(0, 16);
+                if (newVal !== oldVal) {
+                    saveTaskTime(input, dealId, 'started_at');
+                } else {
+                    input.style.display = 'none';
+                    if (display) display.style.display = 'inline';
+                }
+            });
+
+            // Время завершения
+            document.querySelectorAll('.task-completed-input:visible').forEach(input => {
+                const display = input.closest('td').querySelector('.task-completed-display');
+                const newVal = input.value;
+                const oldVal = display.textContent === '—' ? '' : new Date(display.textContent).toISOString().slice(0, 16);
+                if (newVal !== oldVal) {
+                    saveTaskTime(input, dealId, 'completed_at');
+                } else {
+                    input.style.display = 'none';
+                    if (display) display.style.display = 'inline';
+                }
+            });
+        }
+
+        // Удаляем старые обработчики, если они были добавлены ранее
+        if (window._closeDetailHandler) {
+            closeDetail.removeEventListener('click', window._closeDetailHandler);
+        }
+        if (window._windowClickHandler) {
+            window.removeEventListener('click', window._windowClickHandler);
+        }
+
+        // Новый обработчик для кнопки закрытия (крестик)
+        window._closeDetailHandler = function(e) {
+            e.preventDefault();
+            saveAllFields();
+            detailModal.style.display = 'none';
+        };
+
+        // Новый обработчик для клика вне модалки
+        window._windowClickHandler = function(e) {
+            if (e.target === detailModal) {
+                saveAllFields();
+                detailModal.style.display = 'none';
+            }
+        };
+
+        closeDetail.addEventListener('click', window._closeDetailHandler);
+        window.addEventListener('click', window._windowClickHandler);
+        // Сохранение при нажатии Escape
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape' && detailModal.style.display === 'block') {
+                saveAllFields();
+                detailModal.style.display = 'none';
+                document.removeEventListener('keydown', escHandler);
+            }
+        });
+    }    // ---- Удаление сделки ----
+    
+// ---- Включение редактирования по клику ----
+function enableInlineEditing(dealId) {
+    // Товары: количество
+    document.querySelectorAll('.product-quantity-display').forEach(span => {
+        span.style.cursor = 'pointer';
+        span.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const td = this.closest('td');
+            const input = td.querySelector('.product-quantity-input');
+            if (!input) return;
+            this.style.display = 'none';
+            input.style.display = 'inline';
+            input.focus();
+            input.select();
+        });
+        const input = span.closest('td').querySelector('.product-quantity-input');
+        if (input) {
+            input.addEventListener('blur', function() {
+                saveProductQuantity(this, dealId);
+            });
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.blur();
+                }
+                if (e.key === 'Escape') {
+                    this.value = this.defaultValue;
+                    this.blur();
+                }
+            });
+        }
+    });
+
+    // Задачи: сотрудник
+    document.querySelectorAll('.task-employee-display').forEach(span => {
+        span.style.cursor = 'pointer';
+        span.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const td = this.closest('td');
+            const select = td.querySelector('.task-employee-select');
+            if (!select) return;
+            this.style.display = 'none';
+            select.style.display = 'inline';
+            select.focus();
+        });
+        const select = span.closest('td').querySelector('.task-employee-select');
+        if (select) {
+            select.addEventListener('change', function() {
+                saveTaskEmployee(this, dealId);
+            });
+            select.addEventListener('blur', function() {
+                const span = this.closest('td').querySelector('.task-employee-display');
+                if (span) {
+                    const selectedOption = this.options[this.selectedIndex];
+                    span.textContent = selectedOption.textContent;
+                    span.style.display = 'inline';
+                    this.style.display = 'none';
+                }
+            });
+        }
+    });
+
+    // Задачи: статус
+    document.querySelectorAll('.task-status-display').forEach(span => {
+        span.style.cursor = 'pointer';
+        span.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const td = this.closest('td');
+            const select = td.querySelector('.task-status-select');
+            if (!select) return;
+            this.style.display = 'none';
+            select.style.display = 'inline';
+            select.focus();
+        });
+        const select = span.closest('td').querySelector('.task-status-select');
+        if (select) {
+            select.addEventListener('change', function() {
+                saveTaskStatus(this, dealId);
+            });
+            select.addEventListener('blur', function() {
+                const span = this.closest('td').querySelector('.task-status-display');
+                if (span) {
+                    const selectedOption = this.options[this.selectedIndex];
+                    span.textContent = selectedOption.textContent;
+                    span.style.display = 'inline';
+                    this.style.display = 'none';
+                }
+            });
+        }
+    });
+
+    // Задачи: время начала
+    document.querySelectorAll('.task-started-display').forEach(span => {
+        span.style.cursor = 'pointer';
+        span.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const td = this.closest('td');
+            const input = td.querySelector('.task-started-input');
+            if (!input) return;
+            this.style.display = 'none';
+            input.style.display = 'inline';
+            input.focus();
+            input.select();
+        });
+        const input = span.closest('td').querySelector('.task-started-input');
+        if (input) {
+            input.addEventListener('blur', function() {
+                saveTaskTime(this, dealId, 'started_at');
+            });
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.blur();
+                }
+                if (e.key === 'Escape') {
+                    this.value = this.defaultValue;
+                    this.blur();
+                }
+            });
+        }
+    });
+
+    // Задачи: время завершения
+    document.querySelectorAll('.task-completed-display').forEach(span => {
+        span.style.cursor = 'pointer';
+        span.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const td = this.closest('td');
+            const input = td.querySelector('.task-completed-input');
+            if (!input) return;
+            this.style.display = 'none';
+            input.style.display = 'inline';
+            input.focus();
+            input.select();
+        });
+        const input = span.closest('td').querySelector('.task-completed-input');
+        if (input) {
+            input.addEventListener('blur', function() {
+                saveTaskTime(this, dealId, 'completed_at');
+            });
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.blur();
+                }
+                if (e.key === 'Escape') {
+                    this.value = this.defaultValue;
+                    this.blur();
+                }
+            });
+        }
+    });
+}
+
+// ---- Функции сохранения ----
+async function saveProductQuantity(input, dealId) {
+    const productId = parseInt(input.dataset.productId);
+    const quantity = parseInt(input.value);
+    if (isNaN(productId) || isNaN(quantity) || quantity < 1) {
+        const span = input.closest('td').querySelector('.product-quantity-display');
+        input.value = span.textContent;
+        span.style.display = 'inline';
+        input.style.display = 'none';
+        return;
+    }
+    try {
+        await apiFetch(`/api/sandbox/deals/${dealId}/products`, {
+            method: 'PUT',
+            body: JSON.stringify([{ product_id: productId, quantity: quantity }])
+        });
+        const span = input.closest('td').querySelector('.product-quantity-display');
+        span.textContent = quantity;
+        span.style.display = 'inline';
+        input.style.display = 'none';
+        showToast('Количество обновлено');
+    } catch (err) {
+        showToast('Ошибка: ' + err.message, true);
+        const span = input.closest('td').querySelector('.product-quantity-display');
+        input.value = span.textContent;
+        span.style.display = 'inline';
+        input.style.display = 'none';
+    }
+}
+
+async function saveTaskEmployee(select, dealId) {
+    const row = select.closest('tr');
+    const taskId = parseInt(row.dataset.taskId);
+    const employeeId = parseInt(select.value);
+    if (isNaN(taskId) || isNaN(employeeId)) return;
+    try {
+        await apiFetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/assignee`, {
+            method: 'PUT',
+            body: JSON.stringify({ employee_id: employeeId })
+        });
+        showToast('Исполнитель обновлён');
+    } catch (err) {
+        showToast('Ошибка: ' + err.message, true);
+        const span = select.closest('td').querySelector('.task-employee-display');
+        const originalEmployee = span.textContent;
+        for (let opt of select.options) {
+            if (opt.textContent === originalEmployee) {
+                select.value = opt.value;
+                break;
+            }
+        }
+        span.style.display = 'inline';
+        select.style.display = 'none';
+    }
+}
+
+async function saveTaskStatus(select, dealId) {
+    const row = select.closest('tr');
+    const taskId = parseInt(row.dataset.taskId);
+    const status = select.value;
+    if (isNaN(taskId) || !status) return;
+    try {
+        await apiFetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/status`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: status })
+        });
+        const span = select.closest('td').querySelector('.task-status-display');
+        const statusDisplayMap = {
+            'not_started': '❌ Не начата',
+            'in_progress': '🔄 В процессе',
+            'completed': '✅ Завершена'
+        };
+        span.textContent = statusDisplayMap[status] || status;
+        span.style.display = 'inline';
+        select.style.display = 'none';
+        showToast('Статус обновлён');
+    } catch (err) {
+        showToast('Ошибка: ' + err.message, true);
+        const span = select.closest('td').querySelector('.task-status-display');
+        const originalStatus = span.textContent;
+        for (let opt of select.options) {
+            if (opt.textContent === originalStatus) {
+                select.value = opt.value;
+                break;
+            }
+        }
+        span.style.display = 'inline';
+        select.style.display = 'none';
+    }
+}
+
+async function saveTaskTime(input, dealId, field) {
+    const row = input.closest('tr');
+    const taskId = parseInt(row.dataset.taskId);
+    const value = input.value;
+    if (isNaN(taskId)) return;
+    const payload = {};
+    payload[field] = value || null;
+    try {
+        await apiFetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/time`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+        const span = input.closest('td').querySelector(`.task-${field === 'started_at' ? 'started' : 'completed'}-display`);
+        if (value) {
+            span.textContent = new Date(value).toLocaleString();
+        } else {
+            span.textContent = '—';
+        }
+        span.style.display = 'inline';
+        input.style.display = 'none';
+        showToast('Время обновлено');
+    } catch (err) {
+        showToast('Ошибка: ' + err.message, true);
+        const span = input.closest('td').querySelector(`.task-${field === 'started_at' ? 'started' : 'completed'}-display`);
+        input.value = span.textContent === '—' ? '' : new Date(span.textContent).toISOString().slice(0,16);
+        span.style.display = 'inline';
+        input.style.display = 'none';
+    }
+}
+
     async function deleteDeal(dealId) {
         if (!confirm('Удалить эту сделку?')) return;
         try {
@@ -6657,8 +7014,6 @@ function initProcsetsTab() {
         importPreviewContainer.style.display = 'none';
         clearImportBtn.style.display = 'none';
         importStatus.textContent = '';
-        if (manualAddForm) manualAddForm.style.display = 'none';
-        if (manualAddBtn) manualAddBtn.style.display = 'inline-block';
     }
 
     // ---- Загрузка ИП и МП (для вкладки контрагентов) ----
@@ -6930,14 +7285,29 @@ function initProcsetsTab() {
             tr.innerHTML = `
                 <td>${escapeHtml(p.name)}</td>
                 <td>${escapeHtml(p.full_name || '')}</td>
-                <td>${p.quantity}</td>
+                <td>
+                    <input type="number" class="quantity-input" value="${p.quantity}" data-index="${index}" min="1" style="width:60px; padding:4px; border:1px solid #cbd5e1; border-radius:8px; text-align:center;">
+                </td>
                 <td><button class="btn-sm btn-danger remove-import-item" data-index="${index}">✖</button></td>
             `;
             importPreviewBody.appendChild(tr);
         });
+
+        // Обработчики изменения количества
+        importPreviewBody.querySelectorAll('.quantity-input').forEach(input => {
+            input.addEventListener('change', function() {
+                const idx = parseInt(this.dataset.index, 10);
+                let val = parseInt(this.value, 10);
+                if (isNaN(val) || val < 1) val = 1;
+                importedProducts[idx].quantity = val;
+                updateImportStatus();
+            });
+        });
+
+        // Обработчики удаления (уже были, но переопределим)
         importPreviewBody.querySelectorAll('.remove-import-item').forEach(btn => {
             btn.addEventListener('click', function() {
-                const idx = parseInt(this.dataset.index);
+                const idx = parseInt(this.dataset.index, 10);
                 importedProducts.splice(idx, 1);
                 renderImportPreview(importedProducts);
                 if (importedProducts.length === 0) {
@@ -6945,10 +7315,14 @@ function initProcsetsTab() {
                     importPreviewContainer.style.display = 'none';
                     importStatus.textContent = '';
                 } else {
-                    importStatus.textContent = `Загружено ${importedProducts.length} товаров`;
+                    updateImportStatus();
                 }
             });
         });
+    }
+
+    function updateImportStatus() {
+        importStatus.textContent = `Загружено ${importedProducts.length} товаров`;
     }
 
     // ---- Обработчик создания сделки ----

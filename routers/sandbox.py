@@ -251,11 +251,9 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
                 "quantity": dp.quantity
             })
 
-    # ---- Получение задач и их выполнения ----
-    # Используем сырой SQL для извлечения значений из JSON
     from sqlalchemy import text
     stmt = text("""
-        SELECT 
+        SELECT DISTINCT ON (t.id)
             n.id as notif_id,
             n.extra_data,
             te.status as exec_status,
@@ -271,7 +269,9 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
         WHERE n.type = 'task_assignment'
             AND n.status = 'sent'
             AND (n.extra_data->>'deal_id')::integer = :deal_id
-        ORDER BY t.name, e.full_name
+        ORDER BY t.id, 
+                 CASE WHEN te.id IS NOT NULL THEN 0 ELSE 1 END, 
+                 n.created_at DESC
     """)
     result = await db.execute(stmt, {"deal_id": deal_id})
     rows = result.fetchall()
@@ -1162,3 +1162,185 @@ async def delete_mailing_notification(
     await db.delete(notification)
     await db.commit()
     return {"message": "Уведомление удалено"}
+
+    class UpdateProductQuantity(BaseModel):
+        product_id: int
+        quantity: int
+
+    @router.put("/deals/{deal_id}/products")
+    async def update_deal_products(
+        deal_id: int,
+        products: List[UpdateProductQuantity],
+        db: AsyncSession = Depends(get_db),
+        admin: Employee = Depends(get_current_admin)
+    ):
+        deal = await crud.get_deal_by_id(db, deal_id)
+        if not deal:
+            raise HTTPException(404, "Сделка не найдена")
+        
+        # Обновляем количества
+        for item in products:
+            # Ищем DealProductType
+            stmt = select(DealProductType).where(
+                DealProductType.deal_id == deal_id,
+                DealProductType.product_id == item.product_id
+            )
+            result = await db.execute(stmt)
+            dp = result.scalar_one_or_none()
+            if dp:
+                dp.quantity = item.quantity
+            else:
+                # Если товара нет – создаём (опционально)
+                dp = DealProductType(
+                    deal_id=deal_id,
+                    product_id=item.product_id,
+                    quantity=item.quantity
+                )
+                db.add(dp)
+        await db.commit()
+        return {"message": "Обновлено"}
+
+class UpdateTaskAssignee(BaseModel):
+    employee_id: int
+
+@router.put("/deals/{deal_id}/tasks/{task_id}/assignee")
+async def update_task_assignee(
+    deal_id: int,
+    task_id: int,
+    data: UpdateTaskAssignee,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    # Используем сырой SQL для поиска уведомления
+    stmt = text("""
+        SELECT id FROM notifications
+        WHERE type = 'task_assignment'
+            AND status = 'sent'
+            AND (extra_data->>'deal_id')::integer = :deal_id
+            AND (extra_data->>'task_id')::integer = :task_id
+    """)
+    result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Уведомление не найдено")
+    notif_id = row[0]
+
+    # Проверяем сотрудника
+    emp = await crud.get_employee_by_id(db, data.employee_id)
+    if not emp:
+        raise HTTPException(404, "Сотрудник не найден")
+
+    # Обновляем employee_id
+    update_stmt = text("UPDATE notifications SET employee_id = :emp_id WHERE id = :notif_id")
+    await db.execute(update_stmt, {"emp_id": data.employee_id, "notif_id": notif_id})
+    await db.commit()
+    return {"message": "Исполнитель обновлён"}
+
+class UpdateTaskStatus(BaseModel):
+    status: str  # not_started, in_progress, completed
+
+@router.put("/deals/{deal_id}/tasks/{task_id}/status")
+async def update_task_status(
+    deal_id: int,
+    task_id: int,
+    data: UpdateTaskStatus,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    from sqlalchemy import text
+
+    # Находим самое свежее уведомление для этой задачи
+    stmt = text("""
+        SELECT id FROM notifications
+        WHERE type = 'task_assignment'
+            AND status = 'sent'
+            AND (extra_data->>'deal_id')::integer = :deal_id
+            AND (extra_data->>'task_id')::integer = :task_id
+        ORDER BY created_at DESC
+        LIMIT 1
+    """)
+    result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Уведомление не найдено")
+    notif_id = row[0]
+
+    # Ищем или создаём TaskExecution для этого уведомления
+    te_stmt = select(TaskExecution).where(TaskExecution.notification_id == notif_id)
+    te_result = await db.execute(te_stmt)
+    te = te_result.scalar_one_or_none()
+    if not te:
+        # Если нет – создаём
+        te = TaskExecution(
+            notification_id=notif_id,
+            employee_id=admin.id,  # лучше взять из уведомления
+            status=TaskExecutionStatus.NOT_STARTED
+        )
+        db.add(te)
+        await db.flush()
+
+    try:
+        new_status = TaskExecutionStatus(data.status)
+    except ValueError:
+        raise HTTPException(400, "Недопустимый статус")
+    
+    te.status = new_status
+    if new_status == TaskExecutionStatus.IN_PROGRESS and not te.started_at:
+        te.started_at = datetime.now()
+    if new_status == TaskExecutionStatus.COMPLETED and not te.completed_at:
+        te.completed_at = datetime.now()
+    
+    await db.commit()
+    return {"message": "Статус обновлён"}
+
+class UpdateTaskTime(BaseModel):
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+@router.put("/deals/{deal_id}/tasks/{task_id}/time")
+async def update_task_time(
+    deal_id: int,
+    task_id: int,
+    data: UpdateTaskTime,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    from sqlalchemy import text
+
+    # Находим самое свежее уведомление для этой задачи
+    stmt = text("""
+        SELECT id FROM notifications
+        WHERE type = 'task_assignment'
+            AND status = 'sent'
+            AND (extra_data->>'deal_id')::integer = :deal_id
+            AND (extra_data->>'task_id')::integer = :task_id
+        ORDER BY created_at DESC
+        LIMIT 1
+    """)
+    result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Уведомление не найдено")
+    notif_id = row[0]
+
+    # Ищем TaskExecution для этого уведомления
+    te_stmt = select(TaskExecution).where(TaskExecution.notification_id == notif_id)
+    te_result = await db.execute(te_stmt)
+    te = te_result.scalar_one_or_none()
+    if not te:
+        te = TaskExecution(
+            notification_id=notif_id,
+            employee_id=admin.id,
+            status=TaskExecutionStatus.NOT_STARTED
+        )
+        db.add(te)
+        await db.flush()
+
+    # Обновляем время
+    if data.started_at is not None:
+        te.started_at = data.started_at
+    if data.completed_at is not None:
+        te.completed_at = data.completed_at
+    
+    await db.commit()
+    return {"message": "Время обновлено"}
