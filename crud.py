@@ -204,35 +204,49 @@ async def auto_close_shifts(db: AsyncSession):
     from sse import notify_employee
     from models import Notification, NotificationType, NotificationStatus
     now = datetime.now()
+    # Время автозакрытия – сегодня в 5:00
     auto_time = datetime.combine(now.date(), time(5, 0, 0))
-    break_time = auto_time - timedelta(seconds=1)
+    # Рабочий день, который закрываем – предыдущий день (с 5:00 вчера до 5:00 сегодня)
+    workday_date = (now - timedelta(days=1)).date()
+    workday_start = datetime.combine(workday_date, time(5, 0, 0))
+    workday_end = workday_start + timedelta(days=1)  # сегодня в 5:00
+
     employees = await get_employees(db, active_only=True)
+
     admin_stmt = select(Employee).where(Employee.is_admin == 1).limit(1)
     admin_result = await db.execute(admin_stmt)
     admin = admin_result.scalar_one_or_none()
-    
-    workday_date = (now - timedelta(days=1)).date()
-    
+
     for emp in employees:
-        last_entry = await get_last_entry(db, emp.id)
-        if not last_entry:
-            continue
-        if last_entry.action == "end":
-            continue
-        
-        start_of_day = datetime.combine(now.date(), time(5, 0, 0))
-        stmt = select(TimeEntry).where(
-            TimeEntry.employee_id == emp.id,
-            TimeEntry.action == "end",
-            TimeEntry.source == "auto",
-            TimeEntry.timestamp >= start_of_day
+        # Получаем последнюю запись за этот рабочий день
+        stmt = (
+            select(TimeEntry)
+            .where(
+                TimeEntry.employee_id == emp.id,
+                TimeEntry.timestamp >= workday_start,
+                TimeEntry.timestamp < workday_end
+            )
+            .order_by(TimeEntry.timestamp.desc())
+            .limit(1)
         )
         result = await db.execute(stmt)
-        if result.scalar_one_or_none():
+        last_entry = result.scalar_one_or_none()
+
+        # Если записей за день нет – значит сотрудник не работал, пропускаем
+        if not last_entry:
             continue
-        
+
+        # Если последняя запись за день уже "end" – всё закрыто
+        if last_entry.action == "end":
+            continue
+
+        # Иначе – смена не завершена, нужно закрыть
         forced_end = False
+
+        # Если последняя запись – начало перерыва, нужно сначала закрыть перерыв
         if last_entry.action == "break_start":
+            # Добавляем break_end за секунду до автозакрытия
+            break_time = workday_end - timedelta(seconds=1)
             break_end_entry = TimeEntry(
                 employee_id=emp.id,
                 action="break_end",
@@ -240,7 +254,8 @@ async def auto_close_shifts(db: AsyncSession):
                 source="auto"
             )
             db.add(break_end_entry)
-        
+
+        # Создаём запись окончания рабочего дня в 5:00
         end_entry = TimeEntry(
             employee_id=emp.id,
             action="end",
@@ -253,8 +268,10 @@ async def auto_close_shifts(db: AsyncSession):
         await db.commit()
         await notify_admin_clients()
         await notify_monitor_clients()
-        
+
+        # Создаём уведомление о незавершённом дне
         if forced_end and admin:
+            # Проверяем, нет ли уже такого уведомления за этот день
             notif_stmt = select(Notification).where(
                 Notification.employee_id == emp.id,
                 Notification.type == NotificationType.WARNING,
