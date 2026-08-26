@@ -774,15 +774,14 @@
                     <!-- БЛОК ИМПОРТА ТОВАРОВ -->
                     <div style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
                         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                            <button type="button" id="importProductsBtn" class="btn" style="background: #3b82f6;">📥 Импорт товаров</button>
-                            <button type="button" id="manualAddBtn" class="btn" style="background: #8b5cf6;">➕ Добавить вручную</button>
-                            <div id="manualAddForm" style="display: none; margin-top: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+
+                            <div id="manualAddForm" style="display: flex; margin-top: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                                 <select id="manualProductSelect" style="flex: 2; min-width: 150px; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 20px;">
                                     <option value="">-- Выберите товар --</option>
                                 </select>
                                 <input type="number" id="manualProductQuantity" placeholder="Количество" style="width: 100px; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 20px;" min="1" value="1">
                                 <button type="button" id="manualAddConfirmBtn" class="btn" style="background: #22c55e;">➕ Добавить</button>
-                                <button type="button" id="manualAddCancelBtn" class="btn" style="background: #94a3b8;">Отмена</button>
+                                <button type="button" id="importProductsBtn" class="btn" style="background: #3b82f6;">📥 Импорт товаров</button>
                             </div>
                             <button type="button" id="clearImportBtn" class="btn btn-warning" style="display: none;">🗑️ Очистить</button>
                             <span id="importStatus" style="color: #64748b; font-size: 0.9rem;"></span>

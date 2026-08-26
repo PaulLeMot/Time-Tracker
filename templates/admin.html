@@ -6615,8 +6615,6 @@ function initProcsetsTab() {
         importPreviewContainer.style.display = 'none';
         clearImportBtn.style.display = 'none';
         importStatus.textContent = '';
-        if (manualAddForm) manualAddForm.style.display = 'none';
-        if (manualAddBtn) manualAddBtn.style.display = 'inline-block';
         let typeSelect, ipSelect, mpSelect;
 
         try {
@@ -6821,7 +6819,7 @@ function initProcsetsTab() {
         });
     }
 
-    // ---- Ручное добавление товара ----
+    // ---- Ручное добавление товара (всегда доступно) ----
     const manualAddBtn = container.querySelector('#manualAddBtn');
     const manualAddForm = container.querySelector('#manualAddForm');
     const manualProductSelect = container.querySelector('#manualProductSelect');
@@ -6850,26 +6848,24 @@ function initProcsetsTab() {
         }
     }
 
-    if (manualAddBtn && manualAddForm) {
-        manualAddBtn.addEventListener('click', function() {
-            manualAddForm.style.display = 'flex';
-            manualAddBtn.style.display = 'none';
-            manualProductQuantity.value = 1;
-            if (manualProductSelect) manualProductSelect.selectedIndex = 0;
-            loadManualProductSelect(); // подгружаем актуальный список
-        });
+    // Скрываем кнопку "Добавить вручную" и показываем форму всегда
+    if (manualAddForm) {
+        manualAddForm.style.display = 'flex';
+    }
 
+    // Загружаем список товаров при инициализации
+    loadManualProductSelect();
+
+    // Обработчик отмены – очищает поля, форма остаётся видимой
+    if (manualAddCancelBtn) {
         manualAddCancelBtn.addEventListener('click', function() {
-            manualAddForm.style.display = 'none';
-            manualAddBtn.style.display = 'inline-block';
+            if (manualProductSelect) manualProductSelect.selectedIndex = 0;
+            if (manualProductQuantity) manualProductQuantity.value = 1;
         });
-        dealsListEl.addEventListener('click', function(e) {
-            const target = e.target.closest('.deal-title-link');
-            if (target) {
-                const dealId = parseInt(target.dataset.id);
-                viewDeal(dealId);
-            }
-        });
+    }
+
+    // Обработчик добавления товара
+    if (manualAddConfirmBtn) {
         manualAddConfirmBtn.addEventListener('click', function() {
             const select = manualProductSelect;
             const selectedOption = select.options[select.selectedIndex];
@@ -6893,18 +6889,21 @@ function initProcsetsTab() {
             importStatus.textContent = `Загружено ${importedProducts.length} товаров`;
             clearImportBtn.style.display = 'inline-block';
             importPreviewContainer.style.display = 'block';
-            manualAddForm.style.display = 'none';
-            manualAddBtn.style.display = 'inline-block';
+            // Очищаем поля, но не скрываем форму
+            if (manualProductSelect) manualProductSelect.selectedIndex = 0;
+            if (manualProductQuantity) manualProductQuantity.value = 1;
             showToast(`✅ Товар "${name}" добавлен`);
         });
 
         // Enter в поле количества
-        manualProductQuantity.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                manualAddConfirmBtn.click();
-            }
-        });
+        if (manualProductQuantity) {
+            manualProductQuantity.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    manualAddConfirmBtn.click();
+                }
+            });
+        }
     }
 
     if (resetPathBtn) {
@@ -8059,6 +8058,19 @@ function initProcsetsTab() {
     });
     if (closeDetail) closeDetail.addEventListener('click', () => detailModal.style.display = 'none');
     if (refreshBtn) refreshBtn.addEventListener('click', loadDeals);
+
+    // ---- Обработчик клика по названию сделки ----
+    if (dealsListEl) {
+        dealsListEl.addEventListener('click', function(e) {
+            const target = e.target.closest('.deal-title-link');
+            if (target) {
+                const dealId = parseInt(target.dataset.id, 10);
+                if (!isNaN(dealId)) {
+                    viewDeal(dealId);
+                }
+            }
+        });
+    }
 
     if (!constructorInitialized) {
         if (document.getElementById('panel-tasks').classList.contains('active')) {
