@@ -5,7 +5,7 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel
 from database import get_db
 import crud
-from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role, Notification, NotificationType, NotificationStatus, TaskExecution, TaskExecutionStatus, Explanation
+from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role, Notification, NotificationType, NotificationStatus, TaskExecution, TaskExecutionStatus, Explanation, DealProductType
 from routers.auth import get_current_admin
 import pandas as pd
 import io
@@ -234,6 +234,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
     for dp in deal.deal_products:
         if dp.product_type:
             products.append({
+                "id": dp.product_type.id,
                 "name": dp.product_type.name,
                 "full_name": dp.product_type.full_name,
                 "quantity": dp.quantity
@@ -1460,3 +1461,43 @@ async def remove_task_assignee(
     await db.delete(notif)
     await db.commit()
     return {"message": "Соисполнитель удалён"}
+
+from pydantic import BaseModel
+from typing import List
+
+class UpdateProductQuantity(BaseModel):
+    product_id: int
+    quantity: int
+
+@router.put("/deals/{deal_id}/products")
+async def update_deal_products(
+    deal_id: int,
+    products: List[UpdateProductQuantity],
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    """Обновить количества товаров в сделке"""
+    deal = await crud.get_deal_by_id(db, deal_id)
+    if not deal:
+        raise HTTPException(404, "Сделка не найдена")
+    
+    for item in products:
+        # Ищем существующую связь DealProductType
+        stmt = select(DealProductType).where(
+            DealProductType.deal_id == deal_id,
+            DealProductType.product_id == item.product_id
+        )
+        result = await db.execute(stmt)
+        dp = result.scalar_one_or_none()
+        if dp:
+            dp.quantity = item.quantity
+        else:
+            # Если такого товара нет в сделке – создаём (на всякий случай)
+            dp = DealProductType(
+                deal_id=deal_id,
+                product_id=item.product_id,
+                quantity=item.quantity
+            )
+            db.add(dp)
+    await db.commit()
+    return {"message": "Обновлено", "deal_id": deal_id}

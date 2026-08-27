@@ -6190,6 +6190,48 @@ async function renderCurrentRoles(employeeId) {
         showToast(err.message, true);
     }
 }
+async function saveProductQuantity(input, dealId) {
+    const tr = input.closest('tr');
+    const productId = parseInt(tr ? tr.dataset.productId : input.dataset.productId);
+    const quantity = parseInt(input.value);
+    if (isNaN(productId) || isNaN(quantity) || quantity < 1) {
+        const span = input.closest('td').querySelector('.product-quantity-display');
+        if (span) {
+            input.value = span.textContent;
+            span.style.display = 'inline';
+        }
+        input.style.display = 'none';
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/sandbox/deals/${dealId}/products`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ product_id: productId, quantity: quantity }]),
+            credentials: 'include'
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Ошибка ${resp.status}: ${errText}`);
+        }
+        const span = input.closest('td').querySelector('.product-quantity-display');
+        if (span) {
+            span.textContent = quantity;
+            span.style.display = 'inline';
+        }
+        input.style.display = 'none';
+        showToast('Количество обновлено');
+    } catch (err) {
+        console.error('Ошибка сохранения количества:', err);
+        showToast('Ошибка: ' + err.message, true);
+        const span = input.closest('td').querySelector('.product-quantity-display');
+        if (span) {
+            input.value = span.textContent;
+            span.style.display = 'inline';
+        }
+        input.style.display = 'none';
+    }
+}
 function initProcsetsTab() {
     // ---- Глобальные переменные ----
     let deals = [];
@@ -7057,36 +7099,6 @@ function enableInlineEditing(dealId) {
             });
         }
     });
-}
-
-// ---- Функции сохранения ----
-async function saveProductQuantity(input, dealId) {
-    const productId = parseInt(input.dataset.productId);
-    const quantity = parseInt(input.value);
-    if (isNaN(productId) || isNaN(quantity) || quantity < 1) {
-        const span = input.closest('td').querySelector('.product-quantity-display');
-        input.value = span.textContent;
-        span.style.display = 'inline';
-        input.style.display = 'none';
-        return;
-    }
-    try {
-        await apiFetch(`/api/sandbox/deals/${dealId}/products`, {
-            method: 'PUT',
-            body: JSON.stringify([{ product_id: productId, quantity: quantity }])
-        });
-        const span = input.closest('td').querySelector('.product-quantity-display');
-        span.textContent = quantity;
-        span.style.display = 'inline';
-        input.style.display = 'none';
-        showToast('Количество обновлено');
-    } catch (err) {
-        showToast('Ошибка: ' + err.message, true);
-        const span = input.closest('td').querySelector('.product-quantity-display');
-        input.value = span.textContent;
-        span.style.display = 'inline';
-        input.style.display = 'none';
-    }
 }
 
 async function saveTaskEmployee(select, dealId) {
