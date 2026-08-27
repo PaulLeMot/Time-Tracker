@@ -6524,10 +6524,13 @@ function initProcsetsTab() {
                         employeeNamesHtml += `, ${othersHtml}`;
                     }
                 }
+
                 const first = assignees.length > 0 ? assignees[0] : null;
                 const status = first ? first.status : 'not_started';
-                const startedAt = first && first.started_at ? new Date(first.started_at).toISOString().slice(0,16) : '';
-                const completedAt = first && first.completed_at ? new Date(first.completed_at).toISOString().slice(0,16) : '';
+                // Получаем ISO-строки с Z (уже с Z)
+                const startedAt = first && first.started_at ? first.started_at : null;
+                const completedAt = first && first.completed_at ? first.completed_at : null;
+
                 const statusDisplayMap = {
                     'not_started': '❌ Не начата',
                     'in_progress': '🔄 В процессе',
@@ -6561,12 +6564,12 @@ function initProcsetsTab() {
                                 </select>
                             </td>
                             <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
-                                <span class="task-started-display" style="cursor:pointer;">${startedAt ? new Date(startedAt).toLocaleString() : '—'}</span>
-                                <input type="datetime-local" class="task-started-input" value="${startedAt}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
+                                <span class="task-started-display" data-iso="${startedAt || ''}" style="cursor:pointer;">${startedAt ? new Date(startedAt).toLocaleString() : '—'}</span>
+                                <input type="datetime-local" class="task-started-input" value="${startedAt ? new Date(startedAt).toISOString().slice(0,16) : ''}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
                             </td>
                             <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
-                                <span class="task-completed-display" style="cursor:pointer;">${completedAt ? new Date(completedAt).toLocaleString() : '—'}</span>
-                                <input type="datetime-local" class="task-completed-input" value="${completedAt}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
+                                <span class="task-completed-display" data-iso="${completedAt || ''}" style="cursor:pointer;">${completedAt ? new Date(completedAt).toLocaleString() : '—'}</span>
+                                <input type="datetime-local" class="task-completed-input" value="${completedAt ? new Date(completedAt).toISOString().slice(0,16) : ''}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
                             </td>
                         </tr>`;
             }
@@ -6575,6 +6578,7 @@ function initProcsetsTab() {
             html += `<p style="color:#94a3b8; margin-top:12px;">Нет задач по этой сделке</p>`;
         }
 
+        // ---- Кнопка "Запустить" ----
         html += `<div style="margin-top: 20px; text-align: right;">
                     <button id="startDealBtn" class="btn" style="background: #22c55e; padding: 8px 24px;">▶️ Запустить</button>
                 </div>`;
@@ -6582,6 +6586,7 @@ function initProcsetsTab() {
         detailBody.innerHTML = html;
         detailModal.style.display = 'block';
 
+        // ---- Активируем редактирование по клику (количества, статус, время) ----
         enableInlineEditing(deal.id);
 
         // ---- Обработчик кнопки запуска ----
@@ -6608,15 +6613,8 @@ function initProcsetsTab() {
             });
         }
 
-        // ---- Удаляем старые обработчики с detailBody ----
-        if (window._detailBodyHandlers) {
-            window._detailBodyHandlers.forEach(({ event, handler }) => {
-                detailBody.removeEventListener(event, handler);
-            });
-        }
-
-        // ---- Обработчик: смена основного исполнителя ----
-        const mainAssigneeHandler = async function(e) {
+        // ---- Смена основного исполнителя по клику на жирное имя (делегирование) ----
+        detailBody.addEventListener('click', async function(e) {
             const target = e.target.closest('.main-assignee');
             if (!target) return;
             e.preventDefault();
@@ -6624,10 +6622,6 @@ function initProcsetsTab() {
 
             const taskId = parseInt(target.dataset.taskId);
             const container = target.closest('.task-assignees-container');
-            if (!container) {
-                showToast('Ошибка: контейнер не найден', true);
-                return;
-            }
             const listSpan = container.querySelector('.task-employees-list');
             if (!listSpan) return;
 
@@ -6703,11 +6697,10 @@ function initProcsetsTab() {
                 newSpan.textContent = name;
                 form.replaceWith(newSpan);
             });
-        };
-        detailBody.addEventListener('click', mainAssigneeHandler);
+        });
 
-        // ---- Обработчик: добавление соисполнителя ----
-        const addAssigneeHandler = function(e) {
+        // ---- Обработчики для добавления соисполнителей (делегирование) ----
+        detailBody.addEventListener('click', function(e) {
             const btn = e.target.closest('.add-assignee-btn');
             if (!btn) return;
             e.stopPropagation();
@@ -6788,11 +6781,10 @@ function initProcsetsTab() {
                 const btn = container.querySelector('.add-assignee-btn');
                 if (btn) btn.style.display = 'inline';
             });
-        };
-        detailBody.addEventListener('click', addAssigneeHandler);
+        });
 
-        // ---- Обработчик: удаление соисполнителя ----
-        const removeAssigneeHandler = async function(e) {
+        // ---- Удаление соисполнителя (клик по крестику) ----
+        detailBody.addEventListener('click', async function(e) {
             const removeBtn = e.target.closest('.remove-assignee');
             if (!removeBtn) return;
             e.stopPropagation();
@@ -6817,21 +6809,13 @@ function initProcsetsTab() {
             } catch (err) {
                 showToast(err.message, true);
             }
-        };
-        detailBody.addEventListener('click', removeAssigneeHandler);
-
-        // Сохраняем ссылки на обработчики для удаления при следующем открытии
-        window._detailBodyHandlers = [
-            { event: 'click', handler: mainAssigneeHandler },
-            { event: 'click', handler: addAssigneeHandler },
-            { event: 'click', handler: removeAssigneeHandler }
-        ];
+        });
 
         // ----- Сохранение всех изменений при закрытии модалки -----
         function saveAllFields() {
             const dealId = deal.id;
 
-            // Товары (количество)
+            // Товары
             document.querySelectorAll('.product-quantity-input').forEach(input => {
                 if (input.style.display !== 'none') {
                     const display = input.closest('td').querySelector('.product-quantity-display');
@@ -6856,7 +6840,11 @@ function initProcsetsTab() {
                 if (input.style.display !== 'none') {
                     const display = input.closest('td').querySelector('.task-started-display');
                     const newVal = input.value;
-                    const oldVal = display.textContent === '—' ? '' : new Date(display.textContent).toISOString().slice(0, 16);
+                    const oldIso = display.dataset.iso || '';
+                    let oldVal = '';
+                    if (oldIso) {
+                        oldVal = new Date(oldIso).toISOString().slice(0,16);
+                    }
                     if (newVal !== oldVal) {
                         saveTaskTime(input, dealId, 'started_at');
                     } else {
@@ -6871,7 +6859,11 @@ function initProcsetsTab() {
                 if (input.style.display !== 'none') {
                     const display = input.closest('td').querySelector('.task-completed-display');
                     const newVal = input.value;
-                    const oldVal = display.textContent === '—' ? '' : new Date(display.textContent).toISOString().slice(0, 16);
+                    const oldIso = display.dataset.iso || '';
+                    let oldVal = '';
+                    if (oldIso) {
+                        oldVal = new Date(oldIso).toISOString().slice(0,16);
+                    }
                     if (newVal !== oldVal) {
                         saveTaskTime(input, dealId, 'completed_at');
                     } else {
@@ -6882,6 +6874,7 @@ function initProcsetsTab() {
             });
         }
 
+        // Удаляем старые обработчики
         if (window._closeDetailHandler) {
             closeDetail.removeEventListener('click', window._closeDetailHandler);
         }
