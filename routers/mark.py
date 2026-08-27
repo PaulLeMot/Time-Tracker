@@ -321,11 +321,11 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         wb_id_clean = wb_id if wb_id else '0'
         wb_bar_clean = wb_bar if wb_bar else '0'
         wb_stickers = []
-        sticker_to_articul = {}   # новый словарь
+        sticker_to_articul = {}   # словарь: стикер -> FSK-код
         if not skip_stickers and wb_id_clean != '0' and mk in sticker_indices:
             for st in sticker_indices[mk].get(wb_id_clean, []):
                 wb_stickers.append(st)
-                sticker_to_articul[st] = wb_id_clean   # сопоставляем стикер -> артикул
+                sticker_to_articul[st] = code   # code – это FSK-код из основной таблицы
         wb_rows.append({
             "marking": f"{mk}_WB",
             "platform": "WB",
