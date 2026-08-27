@@ -2107,11 +2107,13 @@
             html += `
                 <div class="task-accordion-item" data-task-id="${taskId}">
                     <div class="task-accordion-header">
-                        <span>${escapeHtml(taskName)}</span>
-                        <span style="color:${statusColor}; font-size:0.85rem;">${statusText}</span>
+                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                            <span style="font-size: 0.75rem; color: #64748b; font-weight: normal; line-height: 1.2;">${escapeHtml(dealTitle)}</span>
+                            <span style="font-weight: 600; font-size: 1rem; line-height: 1.2;">${escapeHtml(taskName)}</span>
+                        </div>
+                        <span style="color:${statusColor}; font-size:0.85rem; white-space: nowrap;">${statusText}</span>
                     </div>
                     <div class="task-accordion-details">
-                        <div><strong>Сделка:</strong> ${escapeHtml(dealTitle)}</div>
                         <div><strong>Дата:</strong> ${createdDate}</div>
                         <div><strong>Товары:</strong></div>
                         ${productsHtml}
