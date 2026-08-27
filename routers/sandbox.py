@@ -11,6 +11,7 @@ import pandas as pd
 import io
 from schemas import DealProductItem
 import os
+from sse import notify_employee
 import logging
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
@@ -117,19 +118,6 @@ class RoleUpdate(BaseModel):
 
 class RoleEmployeeAdd(BaseModel):
     employee_id: int
-
-# ==================== ЭНДПОИНТЫ ДЛЯ ТИПОВ СДЕЛОК ====================
-@router.get("/deal-types", response_model=List[DealTypeResponse])
-async def get_deal_types(db: AsyncSession = Depends(get_db)):
-    return await crud.get_deal_types(db)
-
-@router.post("/deal-types", status_code=201, response_model=DealTypeResponse)
-async def create_deal_type(data: DealTypeCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        deal_type = await crud.create_deal_type(db, data.name)
-    except Exception as e:
-        raise HTTPException(400, detail=str(e))
-    return deal_type
 
 # ==================== ЭНДПОИНТЫ ДЛЯ ТИПОВ СДЕЛОК ====================
 @router.get("/deal-types", response_model=List[DealTypeResponse])
@@ -253,12 +241,13 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
 
     from sqlalchemy import text
     stmt = text("""
-        SELECT DISTINCT ON (t.id)
+        SELECT 
             n.id as notif_id,
             n.extra_data,
             te.status as exec_status,
             te.started_at,
             te.completed_at,
+            e.id as employee_id,
             e.full_name,
             t.id as task_id,
             t.name as task_name
@@ -269,9 +258,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
         WHERE n.type = 'task_assignment'
             AND n.status = 'sent'
             AND (n.extra_data->>'deal_id')::integer = :deal_id
-        ORDER BY t.id, 
-                 CASE WHEN te.id IS NOT NULL THEN 0 ELSE 1 END, 
-                 n.created_at DESC
+        ORDER BY t.id, n.id ASC
     """)
     result = await db.execute(stmt, {"deal_id": deal_id})
     rows = result.fetchall()
@@ -290,6 +277,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
         completed_at = row.completed_at.isoformat() if row.completed_at else None
         tasks_dict[task_id]["assignees"].append({
             "employee_name": row.full_name,
+            "employee_id": row.employee_id,
             "status": status_value,
             "started_at": started_at,
             "completed_at": completed_at
@@ -971,19 +959,32 @@ async def start_deal(
     db: AsyncSession = Depends(get_db),
     admin: Employee = Depends(get_current_admin)
 ):
+    from models import Notification, NotificationStatus, TaskExecution, TaskExecutionStatus
+    from sse import notify_employee
+
+    # 0. Проверяем, не была ли сделка уже запущена
+    stmt_check = select(Notification).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id)
+    ).limit(1)
+    result_check = await db.execute(stmt_check)
+    existing = result_check.scalar_one_or_none()
+    if existing:
+        raise HTTPException(400, "Эта сделка уже запущена")
+
     # 1. Загружаем сделку со всеми зависимостями
     deal = await crud.get_deal_with_products_and_tech_cards(db, deal_id)
     if not deal:
         raise HTTPException(404, "Сделка не найдена")
 
     # 2. Собираем словарь: task_id -> список товаров с количеством
-    task_products = {}  # {task_id: [{'name': product_name, 'quantity': qty}, ...]}
+    task_products = {}
     for dp in deal.deal_products:
         product_type = dp.product_type
         if not product_type or not product_type.tech_card:
             continue
         tech_card = product_type.tech_card
-        # Получаем задачи техкарты в порядке sequence
         tasks = sorted(tech_card.tech_card_tasks, key=lambda x: x.sequence)
         for tct in tasks:
             task = tct.task
@@ -1004,15 +1005,12 @@ async def start_deal(
     task_roles = await crud.get_task_roles(db, task_ids)
 
     # 4. Собираем всех сотрудников, которым нужно отправить уведомления
-    # Словарь: (employee_id, task_id) -> список товаров
-    notifications_data = {}  # ключ: (emp_id, task_id), значение: list of products
+    notifications_data = {}
     for task_id, products in task_products.items():
         role_ids = task_roles.get(task_id, [])
         if not role_ids:
             continue
-        # Получаем сотрудников для этих ролей
         role_employees = await crud.get_employees_for_roles(db, role_ids)
-        # Для каждого сотрудника добавляем задачу и товары
         employees = set()
         for role_id in role_ids:
             employees.update(role_employees.get(role_id, []))
@@ -1020,30 +1018,23 @@ async def start_deal(
             key = (emp_id, task_id)
             if key not in notifications_data:
                 notifications_data[key] = []
-            notifications_data[key].extend(products)  # добавляем товары для этой задачи
+            notifications_data[key].extend(products)
 
     if not notifications_data:
         raise HTTPException(400, "Нет сотрудников, назначенных на задачи")
 
     # 5. Формируем и сохраняем уведомления
-    from models import Notification, NotificationStatus
-    from sse import notify_employee
-
     created_count = 0
     for (emp_id, task_id), products in notifications_data.items():
-        # Находим задачу (первый попавшийся продукт даст имя задачи)
-        # Но лучше получить имя задачи из БД
         task = await crud.get_task(db, task_id)
         if not task:
             continue
-        # Группируем товары по имени (суммируем количества)
         product_quantities = {}
         for p in products:
-            key = p['full_name']  # или p['name']
+            key = p['full_name']
             if key not in product_quantities:
                 product_quantities[key] = 0
             product_quantities[key] += p['quantity']
-        # Формируем текст
         items_text = ", ".join([f"{name} — {qty} шт." for name, qty in product_quantities.items()])
         message = f"📋 Задача: {task.name}\nТовары: {items_text}"
 
@@ -1077,7 +1068,7 @@ async def start_deal(
 
     await db.commit()
 
-    # 6. Уведомляем сотрудников через SSE (опционально)
+    # 6. Уведомляем сотрудников через SSE
     for (emp_id, _), _ in notifications_data.items():
         await notify_employee(emp_id)
 
@@ -1211,30 +1202,29 @@ async def update_task_assignee(
     db: AsyncSession = Depends(get_db),
     admin: Employee = Depends(get_current_admin)
 ):
-    # Используем сырой SQL для поиска уведомления
     stmt = text("""
         SELECT id FROM notifications
         WHERE type = 'task_assignment'
             AND status = 'sent'
             AND (extra_data->>'deal_id')::integer = :deal_id
             AND (extra_data->>'task_id')::integer = :task_id
+        ORDER BY id ASC
+        LIMIT 1
     """)
     result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
     row = result.first()
     if not row:
-        raise HTTPException(404, "Уведомление не найдено")
+        raise HTTPException(404, "Основной исполнитель не найден")
     notif_id = row[0]
-
-    # Проверяем сотрудника
     emp = await crud.get_employee_by_id(db, data.employee_id)
     if not emp:
         raise HTTPException(404, "Сотрудник не найден")
-
-    # Обновляем employee_id
     update_stmt = text("UPDATE notifications SET employee_id = :emp_id WHERE id = :notif_id")
     await db.execute(update_stmt, {"emp_id": data.employee_id, "notif_id": notif_id})
+    te_stmt = text("UPDATE task_executions SET employee_id = :emp_id WHERE notification_id = :notif_id")
+    await db.execute(te_stmt, {"emp_id": data.employee_id, "notif_id": notif_id})
     await db.commit()
-    return {"message": "Исполнитель обновлён"}
+    return {"message": "Основной исполнитель обновлён"}
 
 class UpdateTaskStatus(BaseModel):
     status: str  # not_started, in_progress, completed
@@ -1344,3 +1334,129 @@ async def update_task_time(
     
     await db.commit()
     return {"message": "Время обновлено"}
+
+@router.post("/deals/{deal_id}/tasks/{task_id}/assignees")
+async def add_task_assignee(
+    deal_id: int,
+    task_id: int,
+    data: UpdateTaskAssignee,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    # Проверка существования сделки, сотрудника и задачи
+    deal = await crud.get_deal_by_id(db, deal_id)
+    if not deal:
+        raise HTTPException(404, "Deal not found")
+    employee = await crud.get_employee_by_id(db, data.employee_id)
+    if not employee:
+        raise HTTPException(404, "Employee not found")
+    task = await crud.get_task(db, task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+
+    # Проверка, не назначен ли уже этот сотрудник на эту задачу в этой сделке
+    stmt = select(Notification).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.employee_id == data.employee_id,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    )
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(400, "Employee already assigned to this task")
+
+    # Найти существующее уведомление для этой задачи, чтобы скопировать данные
+    stmt_existing = select(Notification).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    ).limit(1)
+    result_existing = await db.execute(stmt_existing)
+    existing_notif = result_existing.scalar_one_or_none()
+    if not existing_notif:
+        raise HTTPException(404, "No existing notification for this task in this deal")
+
+    # Копируем extra_data и message
+    extra_data = dict(existing_notif.extra_data)  # копия
+    message = existing_notif.message
+
+    # Создаём новое уведомление
+    new_notification = Notification(
+        employee_id=data.employee_id,
+        admin_id=admin.id,
+        type=NotificationType.TASK_ASSIGNMENT,
+        message=message,
+        status=NotificationStatus.SENT,
+        source="admin",
+        extra_data=extra_data
+    )
+    db.add(new_notification)
+    await db.flush()
+
+    # Создаём запись выполнения
+    task_exec = TaskExecution(
+        notification_id=new_notification.id,
+        employee_id=data.employee_id,
+        status=TaskExecutionStatus.NOT_STARTED
+    )
+    db.add(task_exec)
+    await db.commit()
+
+    # SSE-уведомление сотруднику
+    await notify_employee(data.employee_id)
+
+    return {"message": "Assignee added", "notification_id": new_notification.id}
+
+@router.delete("/deals/{deal_id}/tasks/{task_id}/assignees/{employee_id}")
+async def remove_task_assignee(
+    deal_id: int,
+    task_id: int,
+    employee_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    # Найти уведомление для этой задачи, сделки и сотрудника
+    stmt = select(Notification).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.employee_id == employee_id,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    )
+    result = await db.execute(stmt)
+    notif = result.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(404, "Назначение не найдено")
+    
+    # Проверяем, что это не основной исполнитель (самый старый по id)
+    stmt_oldest = select(Notification.id).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    ).order_by(Notification.id.asc()).limit(1)
+    oldest_result = await db.execute(stmt_oldest)
+    oldest_id = oldest_result.scalar()
+    if oldest_id == notif.id:
+        raise HTTPException(400, "Нельзя удалить основного исполнителя")
+    
+    # Удаляем связанные записи
+    # TaskExecution
+    te_stmt = select(TaskExecution).where(TaskExecution.notification_id == notif.id)
+    te_result = await db.execute(te_stmt)
+    task_exec = te_result.scalar_one_or_none()
+    if task_exec:
+        await db.delete(task_exec)
+    # Explanation
+    exp_stmt = select(Explanation).where(Explanation.notification_id == notif.id)
+    exp_result = await db.execute(exp_stmt)
+    explanation = exp_result.scalar_one_or_none()
+    if explanation:
+        await db.delete(explanation)
+    # Само уведомление
+    await db.delete(notif)
+    await db.commit()
+    return {"message": "Соисполнитель удалён"}

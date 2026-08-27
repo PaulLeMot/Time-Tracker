@@ -6486,29 +6486,48 @@ function initProcsetsTab() {
             html += `<p style="color:#94a3b8; margin-top:12px;">Нет товаров в этой сделке</p>`;
         }
 
-        // ---- Задачи по сделке (таблица с редактированием) ----
+        // ---- Задачи по сделке (с поддержкой множественных исполнителей) ----
         if (deal.tasks && deal.tasks.length > 0) {
             html += `<h4 style="margin-top:20px;">📋 Задачи по сделке</h4>
                     <table style="width:100%; border-collapse:collapse; margin-top:8px;" id="deal-tasks-table">
                         <thead>
                             <tr style="background:#f1f5f9;">
                                 <th style="padding:8px; text-align:left;">Задача</th>
-                                <th style="padding:8px; text-align:left;">Сотрудник</th>
-                                <th style="padding:8px; text-align:left;">Статус</th>
-                                <th style="padding:8px; text-align:left;">Начало</th>
-                                <th style="padding:8px; text-align:left;">Завершение</th>
+                                <th style="padding:8px; text-align:left;">Сотрудники</th>
+                                <th style="padding:8px; text-align:left;">Статус (первый)</th>
+                                <th style="padding:8px; text-align:left;">Начало (первый)</th>
+                                <th style="padding:8px; text-align:left;">Завершение (первый)</th>
                             </tr>
                         </thead>
                         <tbody>`;
             for (const task of deal.tasks) {
                 const taskId = task.task_id;
                 const taskName = escapeHtml(task.task_name);
-                const assignee = task.assignees && task.assignees.length > 0 ? task.assignees[0] : null;
-                const employeeName = assignee ? assignee.employee_name : '—';
-                const status = assignee ? assignee.status : 'not_started';
-                const startedAt = assignee && assignee.started_at ? new Date(assignee.started_at).toISOString().slice(0,16) : '';
-                const completedAt = assignee && assignee.completed_at ? new Date(assignee.completed_at).toISOString().slice(0,16) : '';
-                
+                const assignees = task.assignees || [];
+                let employeeNamesHtml = '';
+                if (assignees.length === 0) {
+                    employeeNamesHtml = '—';
+                } else {
+                    const main = assignees[0];
+                    const mainName = escapeHtml(main.employee_name);
+                    employeeNamesHtml = `<span class="main-assignee" data-task-id="${taskId}" style="cursor:pointer; font-weight:bold;">${mainName}</span>`;
+                    const others = assignees.slice(1);
+                    if (others.length) {
+                        const othersHtml = others.map(a => {
+                            const name = escapeHtml(a.employee_name);
+                            const empId = a.employee_id;
+                            return `<span class="co-assignee" data-task-id="${taskId}" data-employee-id="${empId}" style="display:inline-flex; align-items:center; gap:4px; margin-left:4px; background:#f1f5f9; border-radius:16px; padding:0 8px 0 12px;">
+                                        ${name}
+                                        <span class="remove-assignee" data-task-id="${taskId}" data-employee-id="${empId}" style="cursor:pointer; color:#94a3b8; font-weight:bold; padding:0 2px;">✖</span>
+                                    </span>`;
+                        }).join(' ');
+                        employeeNamesHtml += `, ${othersHtml}`;
+                    }
+                }
+                const first = assignees.length > 0 ? assignees[0] : null;
+                const status = first ? first.status : 'not_started';
+                const startedAt = first && first.started_at ? new Date(first.started_at).toISOString().slice(0,16) : '';
+                const completedAt = first && first.completed_at ? new Date(first.completed_at).toISOString().slice(0,16) : '';
                 const statusDisplayMap = {
                     'not_started': '❌ Не начата',
                     'in_progress': '🔄 В процессе',
@@ -6519,10 +6538,19 @@ function initProcsetsTab() {
                 html += `<tr data-task-id="${taskId}">
                             <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${taskName}</td>
                             <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
-                                <span class="task-employee-display" style="cursor:pointer;">${escapeHtml(employeeName)}</span>
-                                <select class="task-employee-select" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
-                                    ${allEmployees && allEmployees.length ? allEmployees.map(e => `<option value="${e.id}" ${e.full_name === employeeName ? 'selected' : ''}>${escapeHtml(e.full_name)}</option>`).join('') : '<option value="">Нет сотрудников</option>'}
-                                </select>
+                                <div class="task-assignees-container">
+                                    <span class="task-employees-list">${employeeNamesHtml}</span>
+                                    <button class="add-assignee-btn" data-task-id="${taskId}" style="margin-left:8px; background:none; border:none; cursor:pointer; color:#3b82f6; font-size:1.2rem;" title="Добавить соисполнителя">➕</button>
+                                    <div class="add-assignee-form" style="display:none; margin-top:4px;">
+                                        <select class="new-assignee-select" style="width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
+                                            <!-- опции заполняются динамически -->
+                                        </select>
+                                        <div style="margin-top:4px; display:flex; gap:6px;">
+                                            <button class="confirm-add-assignee-btn" style="background:#22c55e; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">Добавить</button>
+                                            <button class="cancel-add-assignee-btn" style="background:#94a3b8; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">Отмена</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </td>
                             <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
                                 <span class="task-status-display" style="cursor:pointer;">${statusDisplay}</span>
@@ -6547,7 +6575,6 @@ function initProcsetsTab() {
             html += `<p style="color:#94a3b8; margin-top:12px;">Нет задач по этой сделке</p>`;
         }
 
-        // ---- Кнопка "Запустить" ----
         html += `<div style="margin-top: 20px; text-align: right;">
                     <button id="startDealBtn" class="btn" style="background: #22c55e; padding: 8px 24px;">▶️ Запустить</button>
                 </div>`;
@@ -6555,7 +6582,6 @@ function initProcsetsTab() {
         detailBody.innerHTML = html;
         detailModal.style.display = 'block';
 
-        // ---- Активируем редактирование по клику ----
         enableInlineEditing(deal.id);
 
         // ---- Обработчик кнопки запуска ----
@@ -6582,60 +6608,280 @@ function initProcsetsTab() {
             });
         }
 
+        // ---- Удаляем старые обработчики с detailBody ----
+        if (window._detailBodyHandlers) {
+            window._detailBodyHandlers.forEach(({ event, handler }) => {
+                detailBody.removeEventListener(event, handler);
+            });
+        }
+
+        // ---- Обработчик: смена основного исполнителя ----
+        const mainAssigneeHandler = async function(e) {
+            const target = e.target.closest('.main-assignee');
+            if (!target) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const taskId = parseInt(target.dataset.taskId);
+            const container = target.closest('.task-assignees-container');
+            if (!container) {
+                showToast('Ошибка: контейнер не найден', true);
+                return;
+            }
+            const listSpan = container.querySelector('.task-employees-list');
+            if (!listSpan) return;
+
+            const allNames = listSpan.textContent.split(',').map(s => s.trim()).filter(Boolean);
+            const assignedIds = [];
+            if (allEmployees && allEmployees.length) {
+                allEmployees.forEach(emp => {
+                    if (allNames.includes(emp.full_name)) {
+                        assignedIds.push(emp.id);
+                    }
+                });
+            }
+
+            const select = document.createElement('select');
+            select.style.cssText = 'width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;';
+            const available = allEmployees.filter(e => !assignedIds.includes(e.id) && e.is_active === 1);
+            if (available.length === 0) {
+                showToast('Нет доступных сотрудников для замены', true);
+                return;
+            }
+            select.innerHTML = '<option value="">-- Выберите нового основного --</option>';
+            available.forEach(emp => {
+                select.innerHTML += `<option value="${emp.id}">${escapeHtml(emp.full_name)}</option>`;
+            });
+
+            const form = document.createElement('div');
+            form.style.cssText = 'margin-top:4px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;';
+            form.appendChild(select);
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = '💾 Назначить';
+            saveBtn.style.cssText = 'background:#3b82f6; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = '❌ Отмена';
+            cancelBtn.style.cssText = 'background:#94a3b8; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;';
+            form.appendChild(saveBtn);
+            form.appendChild(cancelBtn);
+
+            const originalName = target.textContent;
+            form.dataset.originalName = originalName;
+            target.replaceWith(form);
+            select.focus();
+
+            saveBtn.addEventListener('click', async function() {
+                const empId = parseInt(select.value);
+                if (!empId) {
+                    showToast('Выберите сотрудника', true);
+                    return;
+                }
+                try {
+                    const resp = await fetch(`/api/sandbox/deals/${deal.id}/tasks/${taskId}/assignee`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ employee_id: empId }),
+                        credentials: 'include'
+                    });
+                    if (!resp.ok) {
+                        const err = await resp.json();
+                        throw new Error(err.detail || 'Ошибка обновления');
+                    }
+                    showToast('✅ Основной исполнитель обновлён');
+                    viewDeal(deal.id);
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+
+            cancelBtn.addEventListener('click', function() {
+                const name = form.dataset.originalName || '—';
+                const newSpan = document.createElement('span');
+                newSpan.className = 'main-assignee';
+                newSpan.dataset.taskId = taskId;
+                newSpan.style.cssText = 'cursor:pointer; font-weight:bold;';
+                newSpan.textContent = name;
+                form.replaceWith(newSpan);
+            });
+        };
+        detailBody.addEventListener('click', mainAssigneeHandler);
+
+        // ---- Обработчик: добавление соисполнителя ----
+        const addAssigneeHandler = function(e) {
+            const btn = e.target.closest('.add-assignee-btn');
+            if (!btn) return;
+            e.stopPropagation();
+
+            const taskId = parseInt(btn.dataset.taskId);
+            const container = btn.closest('.task-assignees-container');
+            if (!container) {
+                showToast('Ошибка: не найден контейнер задачи', true);
+                return;
+            }
+            const form = container.querySelector('.add-assignee-form');
+            if (!form) {
+                showToast('Ошибка: не найдена форма добавления', true);
+                return;
+            }
+
+            btn.style.display = 'none';
+            form.style.display = 'block';
+
+            const select = form.querySelector('.new-assignee-select');
+            const listSpan = container.querySelector('.task-employees-list');
+            let assignedNames = [];
+            if (listSpan) {
+                const raw = listSpan.textContent;
+                if (raw.trim() !== '—') {
+                    assignedNames = raw.split(',').map(s => s.trim()).filter(Boolean);
+                }
+            }
+            const assignedIds = [];
+            if (allEmployees && allEmployees.length) {
+                allEmployees.forEach(emp => {
+                    if (assignedNames.includes(emp.full_name)) {
+                        assignedIds.push(emp.id);
+                    }
+                });
+                const available = allEmployees.filter(e => !assignedIds.includes(e.id) && e.is_active === 1);
+                select.innerHTML = '<option value="">-- Выберите сотрудника --</option>';
+                available.forEach(emp => {
+                    select.innerHTML += `<option value="${emp.id}">${escapeHtml(emp.full_name)}</option>`;
+                });
+            } else {
+                showToast('Список сотрудников не загружен', true);
+            }
+
+            const confirmBtn = form.querySelector('.confirm-add-assignee-btn');
+            const cancelBtn = form.querySelector('.cancel-add-assignee-btn');
+            const newConfirm = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
+            const newCancel = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+
+            newConfirm.addEventListener('click', async function() {
+                const empId = parseInt(select.value);
+                if (!empId) {
+                    showToast('Выберите сотрудника', true);
+                    return;
+                }
+                try {
+                    const resp = await fetch(`/api/sandbox/deals/${deal.id}/tasks/${taskId}/assignees`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ employee_id: empId }),
+                        credentials: 'include'
+                    });
+                    if (!resp.ok) {
+                        const err = await resp.json();
+                        throw new Error(err.detail || 'Ошибка добавления');
+                    }
+                    showToast('✅ Соисполнитель добавлен');
+                    viewDeal(deal.id);
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+
+            newCancel.addEventListener('click', function() {
+                form.style.display = 'none';
+                const btn = container.querySelector('.add-assignee-btn');
+                if (btn) btn.style.display = 'inline';
+            });
+        };
+        detailBody.addEventListener('click', addAssigneeHandler);
+
+        // ---- Обработчик: удаление соисполнителя ----
+        const removeAssigneeHandler = async function(e) {
+            const removeBtn = e.target.closest('.remove-assignee');
+            if (!removeBtn) return;
+            e.stopPropagation();
+
+            const taskId = parseInt(removeBtn.dataset.taskId);
+            const employeeId = parseInt(removeBtn.dataset.employeeId);
+            const dealId = deal.id;
+
+            if (!confirm('Удалить этого соисполнителя из задачи?')) return;
+
+            try {
+                const resp = await fetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/assignees/${employeeId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || 'Ошибка удаления');
+                }
+                showToast('✅ Соисполнитель удалён');
+                viewDeal(dealId);
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        };
+        detailBody.addEventListener('click', removeAssigneeHandler);
+
+        // Сохраняем ссылки на обработчики для удаления при следующем открытии
+        window._detailBodyHandlers = [
+            { event: 'click', handler: mainAssigneeHandler },
+            { event: 'click', handler: addAssigneeHandler },
+            { event: 'click', handler: removeAssigneeHandler }
+        ];
+
         // ----- Сохранение всех изменений при закрытии модалки -----
         function saveAllFields() {
             const dealId = deal.id;
 
             // Товары (количество)
-            document.querySelectorAll('.product-quantity-input:visible').forEach(input => {
-                const display = input.closest('td').querySelector('.product-quantity-display');
-                if (display && parseInt(input.value) !== parseInt(display.textContent)) {
-                    saveProductQuantity(input, dealId);
-                } else {
-                    // Если не изменилось, просто скрываем поле
-                    input.style.display = 'none';
-                    if (display) display.style.display = 'inline';
+            document.querySelectorAll('.product-quantity-input').forEach(input => {
+                if (input.style.display !== 'none') {
+                    const display = input.closest('td').querySelector('.product-quantity-display');
+                    if (display && parseInt(input.value) !== parseInt(display.textContent)) {
+                        saveProductQuantity(input, dealId);
+                    } else {
+                        input.style.display = 'none';
+                        if (display) display.style.display = 'inline';
+                    }
                 }
             });
 
-            // Сотрудник
-            document.querySelectorAll('.task-employee-select:visible').forEach(select => {
-                saveTaskEmployee(select, dealId);
-            });
-
             // Статус
-            document.querySelectorAll('.task-status-select:visible').forEach(select => {
-                saveTaskStatus(select, dealId);
+            document.querySelectorAll('.task-status-select').forEach(select => {
+                if (select.style.display !== 'none') {
+                    saveTaskStatus(select, dealId);
+                }
             });
 
             // Время начала
-            document.querySelectorAll('.task-started-input:visible').forEach(input => {
-                const display = input.closest('td').querySelector('.task-started-display');
-                const newVal = input.value;
-                const oldVal = display.textContent === '—' ? '' : new Date(display.textContent).toISOString().slice(0, 16);
-                if (newVal !== oldVal) {
-                    saveTaskTime(input, dealId, 'started_at');
-                } else {
-                    input.style.display = 'none';
-                    if (display) display.style.display = 'inline';
+            document.querySelectorAll('.task-started-input').forEach(input => {
+                if (input.style.display !== 'none') {
+                    const display = input.closest('td').querySelector('.task-started-display');
+                    const newVal = input.value;
+                    const oldVal = display.textContent === '—' ? '' : new Date(display.textContent).toISOString().slice(0, 16);
+                    if (newVal !== oldVal) {
+                        saveTaskTime(input, dealId, 'started_at');
+                    } else {
+                        input.style.display = 'none';
+                        if (display) display.style.display = 'inline';
+                    }
                 }
             });
 
             // Время завершения
-            document.querySelectorAll('.task-completed-input:visible').forEach(input => {
-                const display = input.closest('td').querySelector('.task-completed-display');
-                const newVal = input.value;
-                const oldVal = display.textContent === '—' ? '' : new Date(display.textContent).toISOString().slice(0, 16);
-                if (newVal !== oldVal) {
-                    saveTaskTime(input, dealId, 'completed_at');
-                } else {
-                    input.style.display = 'none';
-                    if (display) display.style.display = 'inline';
+            document.querySelectorAll('.task-completed-input').forEach(input => {
+                if (input.style.display !== 'none') {
+                    const display = input.closest('td').querySelector('.task-completed-display');
+                    const newVal = input.value;
+                    const oldVal = display.textContent === '—' ? '' : new Date(display.textContent).toISOString().slice(0, 16);
+                    if (newVal !== oldVal) {
+                        saveTaskTime(input, dealId, 'completed_at');
+                    } else {
+                        input.style.display = 'none';
+                        if (display) display.style.display = 'inline';
+                    }
                 }
             });
         }
 
-        // Удаляем старые обработчики, если они были добавлены ранее
         if (window._closeDetailHandler) {
             closeDetail.removeEventListener('click', window._closeDetailHandler);
         }
@@ -6643,14 +6889,12 @@ function initProcsetsTab() {
             window.removeEventListener('click', window._windowClickHandler);
         }
 
-        // Новый обработчик для кнопки закрытия (крестик)
         window._closeDetailHandler = function(e) {
             e.preventDefault();
             saveAllFields();
             detailModal.style.display = 'none';
         };
 
-        // Новый обработчик для клика вне модалки
         window._windowClickHandler = function(e) {
             if (e.target === detailModal) {
                 saveAllFields();
@@ -6660,7 +6904,6 @@ function initProcsetsTab() {
 
         closeDetail.addEventListener('click', window._closeDetailHandler);
         window.addEventListener('click', window._windowClickHandler);
-        // Сохранение при нажатии Escape
         document.addEventListener('keydown', function escHandler(e) {
             if (e.key === 'Escape' && detailModal.style.display === 'block') {
                 saveAllFields();
@@ -6668,8 +6911,7 @@ function initProcsetsTab() {
                 document.removeEventListener('keydown', escHandler);
             }
         });
-    }    // ---- Удаление сделки ----
-    
+    }
 // ---- Включение редактирования по клику ----
 function enableInlineEditing(dealId) {
     // Товары: количество
