@@ -1012,17 +1012,21 @@
                             });
                         }
                     } else if (platform === 'WB') {
+                        const stickerToArticul = row.sticker_to_articul || {};
                         for (const sticker of row.stickers) {
                             if (typeof sticker === 'object' && sticker.sticker !== undefined) {
+                                // Если уже объект (например, после обогащения номером строки)
+                                const articul = stickerToArticul[sticker.sticker] || null;
                                 allStickers.push({
                                     sticker: sticker.sticker,
-                                    articul: null,
+                                    articul: articul,
                                     row: sticker.row !== undefined ? sticker.row : null
                                 });
                             } else {
+                                const articul = stickerToArticul[sticker] || null;
                                 allStickers.push({
                                     sticker: sticker,
-                                    articul: null,
+                                    articul: articul,
                                     row: null
                                 });
                             }

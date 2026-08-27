@@ -321,14 +321,18 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         wb_id_clean = wb_id if wb_id else '0'
         wb_bar_clean = wb_bar if wb_bar else '0'
         wb_stickers = []
+        sticker_to_articul = {}   # новый словарь
         if not skip_stickers and wb_id_clean != '0' and mk in sticker_indices:
-            wb_stickers = sticker_indices[mk].get(wb_id_clean, [])
+            for st in sticker_indices[mk].get(wb_id_clean, []):
+                wb_stickers.append(st)
+                sticker_to_articul[st] = wb_id_clean   # сопоставляем стикер -> артикул
         wb_rows.append({
             "marking": f"{mk}_WB",
             "platform": "WB",
             "id": wb_id_clean,
             "bar": wb_bar_clean,
-            "stickers": wb_stickers
+            "stickers": wb_stickers,
+            "sticker_to_articul": sticker_to_articul   # добавили поле
         })
         
         oz_id = row.get(col_names[mk_idx + 4], '').strip() if mk_idx + 4 < len(col_names) else '0'
