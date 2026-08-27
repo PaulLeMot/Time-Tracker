@@ -442,6 +442,32 @@ async def update_deal(
     return result.scalar_one()
 
 async def delete_deal(db: AsyncSession, deal_id: int) -> None:
+    # 1. Находим все уведомления о задачах, связанные с этой сделкой
+    stmt_notifications = select(Notification).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id)
+    )
+    result = await db.execute(stmt_notifications)
+    notifications = result.scalars().all()
+
+    # 2. Удаляем связанные TaskExecution и сами уведомления
+    for notif in notifications:
+        # Удаляем TaskExecution
+        te_stmt = select(TaskExecution).where(TaskExecution.notification_id == notif.id)
+        te_result = await db.execute(te_stmt)
+        task_exec = te_result.scalar_one_or_none()
+        if task_exec:
+            await db.delete(task_exec)
+        # Удаляем Explanation (если есть)
+        exp_stmt = select(Explanation).where(Explanation.notification_id == notif.id)
+        exp_result = await db.execute(exp_stmt)
+        explanation = exp_result.scalar_one_or_none()
+        if explanation:
+            await db.delete(explanation)
+        # Удаляем само уведомление
+        await db.delete(notif)
+
+    # 3. Удаляем сделку (каскадно удалятся deal_products через cascade)
     stmt = delete(Deal).where(Deal.id == deal_id)
     await db.execute(stmt)
     await db.commit()

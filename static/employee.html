@@ -436,6 +436,27 @@
             margin: 0;
             padding-left: 20px;
         }
+
+        .assignee-tag {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 16px;
+            margin-right: 4px;
+            font-size: 0.9rem;
+        }
+        .main-assignee {
+            background: #dbeafe;
+            font-weight: bold;
+        }
+        .co-assignee {
+            background: #f1f5f9;
+        }
+        .remove-assignee {
+            cursor: pointer;
+            color: #ef4444;
+            margin-left: 6px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -610,9 +631,8 @@
         <div id="fixEndError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
-
-<!-- ===== JAVASCRIPT ===== -->
 <script>
+    let openTaskIds = new Set();
     // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
     function getLocalDate() {
         const now = new Date();
@@ -678,6 +698,7 @@
             const resp = await fetchWithAuth('/api/auth/profile');
             const data = await resp.json();
             window.isAdmin = data.is_admin === 1;
+            window.currentEmployeeId = data.id;
             if (data.is_admin || data.is_monitor) {
                 const monitorTabBtn = document.getElementById('monitorTab');
                 if (monitorTabBtn) monitorTabBtn.style.display = 'inline-block';
@@ -1948,14 +1969,377 @@
         };
     }
 
+    // ========== ЗАДАЧИ ==========
+    window.currentEmployeeId = null; // будет установлено в loadEmployeeNameAndId
+
+    async function loadTaskNotifications() {
+        const container = document.getElementById('tasksContainer');
+        container.innerHTML = 'Загрузка...';
+        try {
+            const resp = await fetch('/api/employee/tasks', { credentials: 'include' });
+            if (!resp.ok) throw new Error('Ошибка загрузки');
+            const tasks = await resp.json();
+
+            if (!tasks.length) {
+                container.innerHTML = '<p>Нет назначенных задач</p>';
+                return;
+            }
+
+            const dealCache = new Map();
+
+            const enrichedTasks = await Promise.all(tasks.map(async (task) => {
+                const dealId = task.extra_data?.deal_id;
+                const taskId = task.extra_data?.task_id;
+                if (!dealId || !taskId) {
+                    return { ...task, assignees: [] };
+                }
+
+                if (!dealCache.has(dealId)) {
+                    try {
+                        const dealResp = await fetch(`/api/sandbox/deals/${dealId}`, { credentials: 'include' });
+                        if (!dealResp.ok) {
+                            console.warn(`Сделка ${dealId} не найдена, используем пустые данные`);
+                            dealCache.set(dealId, { tasks: [] });
+                        } else {
+                            const dealData = await dealResp.json();
+                            dealCache.set(dealId, dealData);
+                        }
+                    } catch (err) {
+                        console.error('Ошибка загрузки сделки', dealId, err);
+                        dealCache.set(dealId, { tasks: [] });
+                    }
+                }
+
+                const deal = dealCache.get(dealId);
+                const taskInfo = deal.tasks?.find(t => t.task_id === taskId) || { assignees: [] };
+                return { ...task, assignees: taskInfo.assignees || [] };
+            }));
+
+            renderTaskNotifications(enrichedTasks, container);
+        } catch (err) {
+            container.innerHTML = `<p>Ошибка: ${err.message}</p>`;
+        }
+    }
+
+    function renderTaskNotifications(notifications, container) {
+        if (!notifications.length) {
+            container.innerHTML = '<p>Нет назначенных задач</p>';
+            return;
+        }
+        let html = '<div class="task-accordion">';
+        for (const n of notifications) {
+            const { taskName, dealTitle, products } = parseTaskNotification(n);
+            const createdDate = new Date(n.created_at).toLocaleString('ru-RU', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+
+            let productsHtml = '';
+            if (products.length) {
+                productsHtml = '<ul>' + products.map(p =>
+                    `<li>${escapeHtml(p.name)} (${p.quantity})</li>`
+                ).join('') + '</ul>';
+            } else {
+                productsHtml = '<p>Товары не указаны</p>';
+            }
+
+            const status = n.status || 'not_started';
+            let statusText = '', statusColor = '', actionButtons = '';
+            if (status === 'not_started') {
+                statusText = 'Не начата';
+                statusColor = '#64748b';
+                actionButtons = `<button class="btn btn-sm task-start" data-id="${n.id}">▶️ Начать</button>`;
+            } else if (status === 'in_progress') {
+                statusText = 'В процессе';
+                statusColor = '#f59e0b';
+                actionButtons = `<button class="btn btn-sm btn-warning task-complete" data-id="${n.id}">⏹️ Завершить</button>`;
+            } else if (status === 'completed') {
+                statusText = 'Выполнена';
+                statusColor = '#22c55e';
+                actionButtons = `<span style="color:#22c55e;">✅ Выполнена</span>`;
+            }
+
+            let timeInfo = '';
+            if (n.started_at) {
+                const startTime = new Date(n.started_at).toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+                timeInfo += `<div><strong>Начало:</strong> ${startTime}</div>`;
+            }
+            if (n.completed_at) {
+                const endTime = new Date(n.completed_at).toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+                timeInfo += `<div><strong>Завершение:</strong> ${endTime}</div>`;
+            }
+
+            // ---------- ИСПОЛНИТЕЛИ ----------
+            const assignees = n.assignees || [];
+            const dealId = n.extra_data?.deal_id;
+            const taskId = n.extra_data?.task_id;
+
+            // Проверяем, является ли текущий пользователь основным исполнителем
+            const isMainAssignee = assignees.length > 0 && assignees[0].employee_id === window.currentEmployeeId;
+
+            let assigneesHtml = '';
+            if (assignees.length) {
+                const main = assignees[0];
+                const others = assignees.slice(1);
+                // Основной исполнитель (без крестика)
+                assigneesHtml += `<span class="assignee-tag main-assignee">${escapeHtml(main.employee_name)}</span>`;
+                // Соисполнители – крестик только если мы основной исполнитель
+                others.forEach(a => {
+                    const removeBtn = isMainAssignee 
+                        ? `<span class="remove-assignee" data-deal-id="${dealId}" data-task-id="${taskId}" data-employee-id="${a.employee_id}">✖</span>` 
+                        : '';
+                    assigneesHtml += `
+                        <span class="assignee-tag co-assignee">
+                            ${escapeHtml(a.employee_name)}
+                            ${removeBtn}
+                        </span>`;
+                });
+            } else {
+                assigneesHtml = '—';
+            }
+
+            // Кнопка добавления соисполнителя – только для основного исполнителя и если задача не завершена
+            let addButton = '';
+            if (status !== 'completed' && isMainAssignee) {
+                addButton = `<button class="btn btn-sm btn-success add-assignee-btn" data-deal-id="${dealId}" data-task-id="${taskId}">➕</button>`;
+            }
+
+            html += `
+                <div class="task-accordion-item" data-task-id="${taskId}">
+                    <div class="task-accordion-header">
+                        <span>${escapeHtml(taskName)}</span>
+                        <span style="color:${statusColor}; font-size:0.85rem;">${statusText}</span>
+                    </div>
+                    <div class="task-accordion-details">
+                        <div><strong>Сделка:</strong> ${escapeHtml(dealTitle)}</div>
+                        <div><strong>Дата:</strong> ${createdDate}</div>
+                        <div><strong>Товары:</strong></div>
+                        ${productsHtml}
+                        ${timeInfo}
+                        <div style="margin-top:8px;">
+                            <strong>Исполнители:</strong>
+                            <span id="assignees-list-${taskId}">${assigneesHtml}</span>
+                            ${addButton}
+                        </div>
+                        <div style="margin-top:12px;">${actionButtons}</div>
+                    </div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+
+        // ---------- ОБРАБОТЧИКИ ----------
+        container.querySelectorAll('.task-accordion-header').forEach(header => {
+            header.addEventListener('click', function() {
+                const item = this.closest('.task-accordion-item');
+                item.classList.toggle('open');
+            });
+        });
+
+        container.querySelectorAll('.task-start').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const id = this.dataset.id;
+                startTask(id);
+            });
+        });
+        container.querySelectorAll('.task-complete').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const id = this.dataset.id;
+                completeTask(id);
+            });
+        });
+
+        container.querySelectorAll('.add-assignee-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const dealId = this.dataset.dealId;
+                const taskId = this.dataset.taskId;
+                openAddAssigneeModal(dealId, taskId);
+            });
+        });
+
+        container.querySelectorAll('.remove-assignee').forEach(el => {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const dealId = this.dataset.dealId;
+                const taskId = this.dataset.taskId;
+                const employeeId = this.dataset.employeeId;
+                removeAssignee(dealId, taskId, employeeId);
+            });
+        });
+    }
+
+    function parseTaskNotification(notif) {
+        const extra = notif.extra_data || {};
+        let taskName = extra.task_name || '';
+        let dealTitle = extra.deal_title || '—';
+        let products = extra.products || [];
+
+        if (!taskName && notif.message) {
+            const msg = notif.message;
+            const taskMatch = msg.match(/Задача:\s*(.*?)(?:\s*Товары:|$)/);
+            if (taskMatch) taskName = taskMatch[1].trim();
+            const productsMatch = msg.match(/Товары:\s*(.*)/);
+            if (productsMatch) {
+                const items = productsMatch[1].split(',').map(s => s.trim()).filter(s => s);
+                products = items.map(item => {
+                    const match = item.match(/^(.*?)\s*[—\-]\s*(\d+)\s*шт\.?/);
+                    if (match) {
+                        return { name: match[1].trim(), quantity: parseInt(match[2]) };
+                    } else {
+                        return { name: item, quantity: 1 };
+                    }
+                });
+            }
+        }
+        return { taskName, dealTitle, products };
+    }
+
+    async function startTask(notificationId) {
+        try {
+            const resp = await fetch(`/api/employee/tasks/${notificationId}/start`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (resp.ok) {
+                showToast('Задача начата');
+                loadTaskNotifications();
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка', true);
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+        }
+    }
+
+    async function completeTask(notificationId) {
+        try {
+            const resp = await fetch(`/api/employee/tasks/${notificationId}/complete`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (resp.ok) {
+                showToast('Задача завершена');
+                loadTaskNotifications();
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка', true);
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+        }
+    }
+
+    // ===== ДОБАВЛЕНИЕ / УДАЛЕНИЕ СОИСПОЛНИТЕЛЕЙ =====
+    function openAddAssigneeModal(dealId, taskId) {
+        fetch('/api/employees/list?active_only=true', { credentials: 'include' })
+            .then(res => res.json())
+            .then(employees => {
+                const listSpan = document.getElementById(`assignees-list-${taskId}`);
+                if (!listSpan) {
+                    showToast('Не найден список исполнителей', true);
+                    return;
+                }
+                const existingNames = listSpan.textContent.split(',').map(s => s.trim()).filter(Boolean);
+                const available = employees.filter(emp => {
+                    return !existingNames.some(name => name === emp.full_name) && emp.is_active === 1;
+                });
+                if (!available.length) {
+                    showToast('Нет доступных сотрудников для добавления', true);
+                    return;
+                }
+                const selectHtml = available.map(e =>
+                    `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`
+                ).join('');
+                const modalContent = `
+                    <div class="modal-content" style="max-width:400px;">
+                        <span class="modal-close" style="float:right;cursor:pointer;font-size:1.5rem;">&times;</span>
+                        <h3>Добавить соисполнителя</h3>
+                        <select id="assigneeSelect" style="width:100%;padding:8px;border-radius:20px;border:1px solid #cbd5e1;">
+                            ${selectHtml}
+                        </select>
+                        <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                            <button id="cancelAssignBtn" style="background:#94a3b8;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer;">Отмена</button>
+                            <button id="confirmAssignBtn" style="background:#22c55e;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer;">Добавить</button>
+                        </div>
+                    </div>
+                `;
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                modal.style.display = 'block';
+                modal.innerHTML = modalContent;
+                document.body.appendChild(modal);
+
+                const closeModal = () => modal.remove();
+                modal.querySelector('.modal-close').addEventListener('click', closeModal);
+                modal.querySelector('#cancelAssignBtn').addEventListener('click', closeModal);
+                window.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+                modal.querySelector('#confirmAssignBtn').addEventListener('click', async () => {
+                    const empId = parseInt(modal.querySelector('#assigneeSelect').value);
+                    if (!empId) {
+                        showToast('Выберите сотрудника', true);
+                        return;
+                    }
+                    try {
+                        const resp = await fetch(`/api/employee/tasks/${taskId}/assignees`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ deal_id: parseInt(dealId), employee_id: empId }),
+                            credentials: 'include'
+                        });
+                        if (resp.ok) {
+                            showToast('Соисполнитель добавлен');
+                            closeModal();
+                            refreshTaskListWithoutClosing();
+                        } else {
+                            const err = await resp.json();
+                            showToast(err.detail || 'Ошибка', true);
+                        }
+                    } catch (err) {
+                        showToast('Ошибка сети', true);
+                    }
+                });
+            })
+            .catch(err => {
+                showToast('Не удалось загрузить список сотрудников', true);
+                console.error(err);
+            });
+    }
+
+    async function removeAssignee(dealId, taskId, employeeId) {
+        if (!confirm('Удалить этого соисполнителя?')) return;
+        try {
+            const resp = await fetch(`/api/employee/tasks/${taskId}/assignees/${employeeId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deal_id: parseInt(dealId) }),
+                credentials: 'include'
+            });
+            if (resp.ok) {
+                showToast('Соисполнитель удалён');
+                refreshTaskListWithoutClosing();
+            } else {
+                const err = await resp.json();
+                showToast(err.detail || 'Ошибка', true);
+            }
+        } catch (err) {
+            showToast('Ошибка сети', true);
+        }
+    }
+
     // ========== ИНИЦИАЛИЗАЦИЯ ==========
     document.addEventListener('DOMContentLoaded', async () => {
         initTabs();
         await refreshState();
         await loadEmployeesForAllNotif();
-        // Подключаем SSE для уведомлений
         setTimeout(connectEmployeeSSE, 2000);
-        // Обработка ресайза для перерисовки таблиц
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
@@ -1972,194 +2356,37 @@
             }, 250);
         });
     });
-document.addEventListener('DOMContentLoaded', function() {
-    const toggleBtn = document.getElementById('drawerToggle');
-    const mainLayout = document.querySelector('.main-layout');
 
-    if (toggleBtn && mainLayout) {
-        toggleBtn.textContent = mainLayout.classList.contains('drawer-closed') ? '☰' : '✕';
-        toggleBtn.addEventListener('click', function() {
-            mainLayout.classList.toggle('drawer-closed');
-            // Меняем символ кнопки (опционально)
-            this.textContent = mainLayout.classList.contains('drawer-closed') ? '☰' : '✕';
-        });
-    }
-});
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggleBtn = document.getElementById('drawerToggle');
+        const mainLayout = document.querySelector('.main-layout');
 
-// Загрузка уведомлений о задачах
-async function loadTaskNotifications() {
-    const container = document.getElementById('tasksContainer');
-    container.innerHTML = 'Загрузка...';
-    try {
-        const resp = await fetch('/api/employee/tasks', { credentials: 'include' });
-        if (!resp.ok) throw new Error('Ошибка загрузки');
-        const data = await resp.json();
-        renderTaskNotifications(data, container);
-    } catch (err) {
-        container.innerHTML = `<p>Ошибка: ${err.message}</p>`;
-    }
-}
-
-function renderTaskNotifications(notifications, container) {
-    if (!notifications.length) {
-        container.innerHTML = '<p>Нет назначенных задач</p>';
-        return;
-    }
-    let html = '<div class="task-accordion">';
-    for (const n of notifications) {
-        const { taskName, dealTitle, products } = parseTaskNotification(n);
-        const createdDate = new Date(n.created_at).toLocaleString('ru-RU', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
-
-        let productsHtml = '';
-        if (products.length) {
-            productsHtml = '<ul>' + products.map(p =>
-                `<li>${escapeHtml(p.name)} (${p.quantity})</li>`
-            ).join('') + '</ul>';
-        } else {
-            productsHtml = '<p>Товары не указаны</p>';
-        }
-
-        // Статус выполнения
-        const status = n.status || 'not_started';
-        let statusText = '';
-        let statusColor = '';
-        let actionButtons = '';
-        if (status === 'not_started') {
-            statusText = 'Не начата';
-            statusColor = '#64748b';
-            actionButtons = `<button class="btn btn-sm task-start" data-id="${n.id}">▶️ Начать</button>`;
-        } else if (status === 'in_progress') {
-            statusText = 'В процессе';
-            statusColor = '#f59e0b';
-            actionButtons = `<button class="btn btn-sm btn-warning task-complete" data-id="${n.id}">⏹️ Завершить</button>`;
-        } else if (status === 'completed') {
-            statusText = 'Выполнена';
-            statusColor = '#22c55e';
-            actionButtons = `<span style="color:#22c55e;">✅ Выполнена</span>`;
-        }
-
-        // Время начала/завершения
-        let timeInfo = '';
-        if (n.started_at) {
-            const startTime = new Date(n.started_at).toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
-            timeInfo += `<div><strong>Начало:</strong> ${startTime}</div>`;
-        }
-        if (n.completed_at) {
-            const endTime = new Date(n.completed_at).toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
-            timeInfo += `<div><strong>Завершение:</strong> ${endTime}</div>`;
-        }
-
-        html += `
-            <div class="task-accordion-item">
-                <div class="task-accordion-header">
-                    <span>${escapeHtml(taskName)}</span>
-                    <span style="color:${statusColor}; font-size:0.85rem;">${statusText}</span>
-                </div>
-                <div class="task-accordion-details">
-                    <div><strong>Сделка:</strong> ${escapeHtml(dealTitle)}</div>
-                    <div><strong>Дата:</strong> ${createdDate}</div>
-                    <div><strong>Товары:</strong></div>
-                    ${productsHtml}
-                    ${timeInfo}
-                    <div style="margin-top:12px;">${actionButtons}</div>
-                </div>
-            </div>
-        `;
-    }
-    html += '</div>';
-    container.innerHTML = html;
-
-    // Обработчики для аккордеона
-    container.querySelectorAll('.task-accordion-header').forEach(header => {
-        header.addEventListener('click', function() {
-            const item = this.closest('.task-accordion-item');
-            item.classList.toggle('open');
-        });
-    });
-
-    // Обработчики кнопок
-    container.querySelectorAll('.task-start').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const id = this.dataset.id;
-            startTask(id);
-        });
-    });
-    container.querySelectorAll('.task-complete').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const id = this.dataset.id;
-            completeTask(id);
-        });
-    });
-}
-
-function parseTaskNotification(notif) {
-    const extra = notif.extra_data || {};
-    let taskName = extra.task_name || '';
-    let dealTitle = extra.deal_title || '—';
-    let products = extra.products || [];
-
-    // Если в extra нет данных – парсим из сообщения (fallback)
-    if (!taskName && notif.message) {
-        const msg = notif.message;
-        const taskMatch = msg.match(/Задача:\s*(.*?)(?:\s*Товары:|$)/);
-        if (taskMatch) taskName = taskMatch[1].trim();
-        const productsMatch = msg.match(/Товары:\s*(.*)/);
-        if (productsMatch) {
-            const items = productsMatch[1].split(',').map(s => s.trim()).filter(s => s);
-            products = items.map(item => {
-                const match = item.match(/^(.*?)\s*[—\-]\s*(\d+)\s*шт\.?/);
-                if (match) {
-                    return { name: match[1].trim(), quantity: parseInt(match[2]) };
-                } else {
-                    return { name: item, quantity: 1 };
-                }
+        if (toggleBtn && mainLayout) {
+            toggleBtn.textContent = mainLayout.classList.contains('drawer-closed') ? '☰' : '✕';
+            toggleBtn.addEventListener('click', function() {
+                mainLayout.classList.toggle('drawer-closed');
+                this.textContent = mainLayout.classList.contains('drawer-closed') ? '☰' : '✕';
             });
         }
-    }
-    return { taskName, dealTitle, products };
-}
+    });
 
-async function startTask(notificationId) {
-    try {
-        const resp = await fetch(`/api/employee/tasks/${notificationId}/start`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' }
+function refreshTaskListWithoutClosing() {
+    // Сохраняем ID открытых аккордеонов
+    openTaskIds.clear();
+    document.querySelectorAll('.task-accordion-item.open').forEach(item => {
+        const taskId = item.dataset.taskId;
+        if (taskId) openTaskIds.add(taskId);
+    });
+    // Перезагружаем список задач
+    loadTaskNotifications().then(() => {
+        // Восстанавливаем открытые аккордеоны
+        document.querySelectorAll('.task-accordion-item').forEach(item => {
+            const taskId = item.dataset.taskId;
+            if (taskId && openTaskIds.has(taskId)) {
+                item.classList.add('open');
+            }
         });
-        if (resp.ok) {
-            showToast('Задача начата');
-            loadTaskNotifications(); // обновить список
-        } else {
-            const err = await resp.json();
-            showToast(err.detail || 'Ошибка', true);
-        }
-    } catch (err) {
-        showToast('Ошибка сети', true);
-    }
-}
-
-async function completeTask(notificationId) {
-    try {
-        const resp = await fetch(`/api/employee/tasks/${notificationId}/complete`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (resp.ok) {
-            showToast('Задача завершена');
-            loadTaskNotifications();
-        } else {
-            const err = await resp.json();
-            showToast(err.detail || 'Ошибка', true);
-        }
-    } catch (err) {
-        showToast('Ошибка сети', true);
-    }
+    });
 }
 </script>
 </body>

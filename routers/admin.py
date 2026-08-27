@@ -1999,3 +1999,9 @@ async def trigger_auto_close(
     except Exception as e:
         # Можно залогировать, но для простоты вернём ошибку
         raise HTTPException(status_code=500, detail=str(e))
+
+@public_router.get("/api/employees/list")
+async def get_employees_list(active_only: bool = True, db: AsyncSession = Depends(get_db)):
+    """Получить список сотрудников (доступно для всех авторизованных)"""
+    employees = await crud.get_employees(db, active_only=active_only)
+    return employees
