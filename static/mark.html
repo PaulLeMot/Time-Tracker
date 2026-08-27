@@ -1008,26 +1008,28 @@
                             allStickers.push({
                                 sticker: item.sticker,
                                 articul: item.articul,
-                                row: null
+                                row: null,
+                                platform: 'OZ'
                             });
                         }
                     } else if (platform === 'WB') {
                         const stickerToArticul = row.sticker_to_articul || {};
                         for (const sticker of row.stickers) {
                             if (typeof sticker === 'object' && sticker.sticker !== undefined) {
-                                // Если уже объект (например, после обогащения номером строки)
                                 const articul = stickerToArticul[sticker.sticker] || null;
                                 allStickers.push({
                                     sticker: sticker.sticker,
                                     articul: articul,
-                                    row: sticker.row !== undefined ? sticker.row : null
+                                    row: sticker.row !== undefined ? sticker.row : null,
+                                    platform: 'WB'
                                 });
                             } else {
                                 const articul = stickerToArticul[sticker] || null;
                                 allStickers.push({
                                     sticker: sticker,
                                     articul: articul,
-                                    row: null
+                                    row: null,
+                                    platform: 'WB'
                                 });
                             }
                         }
@@ -1053,8 +1055,9 @@
         let scrollHtml = '';
 
         if (allStickers.length > 0) {
-            const showArticul = allStickers.some(item => item.articul !== null && item.articul !== undefined);
-            const showRow = allStickers.some(item => item.row !== null && item.row !== undefined);
+            const showArticul = allStickers.some(item => item.platform === 'OZ' && item.articul !== null && item.articul !== undefined);
+            const showRow = allStickers.some(item => item.row !== null && item.row !== undefined) || 
+                            allStickers.some(item => item.platform === 'WB' && item.articul !== null && item.articul !== undefined);
 
             let sectionHtml = `<div class="sticker-section">`;
             sectionHtml += `<div class="sticker-count">Найдено товаров: ${allStickers.length}</div>`;
@@ -1071,20 +1074,33 @@
 
                 sectionHtml += `<tr>`;
                 sectionHtml += `<td>${stickerHtml}</td>`;
+
+                // Столбец "Артикул" – только для OZ (с текстом + картинкой)
                 if (showArticul) {
-                    if (item.articul) {
+                    if (item.platform === 'OZ' && item.articul) {
                         sectionHtml += `<td>${articulWithImage(item.articul)}</td>`;
                     } else {
                         sectionHtml += `<td>—</td>`;
                     }
                 }
+
+                // Столбец "Порядковый номер" – для всех, но для WB добавляем картинку
                 if (showRow) {
+                    let cellContent = '';
                     if (item.row !== null && item.row !== undefined) {
-                        sectionHtml += `<td class="row-number">${escapeHtml(item.row)}</td>`;
-                    } else {
-                        sectionHtml += `<td>—</td>`;
+                        cellContent += `<span class="row-number">${escapeHtml(item.row)}</span>`;
                     }
+                    // Если это WB и есть артикул – добавляем картинку справа от номера (или вместо него, если номера нет)
+                    if (item.platform === 'WB' && item.articul) {
+                        // Используем ту же функцию articulWithImage, но убираем текст артикула
+                        const imgSrc = `/static/img/${encodeURIComponent(item.articul)}.jpg`;
+                        const imgHtml = `<img class="articul-image" src="${imgSrc}" alt="img" onerror="this.style.display='none'" style="margin-left: 8px;">`;
+                        cellContent += imgHtml;
+                    }
+                    if (cellContent === '') cellContent = '—';
+                    sectionHtml += `<td>${cellContent}</td>`;
                 }
+
                 sectionHtml += `</tr>`;
             }
 
