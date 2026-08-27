@@ -1420,13 +1420,14 @@ async def remove_task_assignee(
     admin: Employee = Depends(get_current_admin)
 ):
     # Найти уведомление для этой задачи, сделки и сотрудника
+    # Берём самое свежее (по убыванию id), чтобы избежать дублей
     stmt = select(Notification).where(
         Notification.type == NotificationType.TASK_ASSIGNMENT,
         Notification.status == NotificationStatus.SENT,
         Notification.employee_id == employee_id,
         Notification.extra_data.op('->>')('deal_id') == str(deal_id),
         Notification.extra_data.op('->>')('task_id') == str(task_id)
-    )
+    ).order_by(Notification.id.desc()).limit(1)
     result = await db.execute(stmt)
     notif = result.scalar_one_or_none()
     if not notif:
