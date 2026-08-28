@@ -553,3 +553,37 @@ async def remove_task_assignee(
     await db.commit()
 
     return {"message": "Соисполнитель удалён"}
+
+@router.post("/tasks/{notification_id}/break")
+async def task_break(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    employee: models.Employee = Depends(get_current_employee)
+):
+    te = await crud.get_task_execution_by_notification(db, notification_id)
+    if not te:
+        raise HTTPException(404, "Task execution not found")
+    if te.employee_id != employee.id:
+        raise HTTPException(403, "Not your task")
+    if te.status != TaskExecutionStatus.IN_PROGRESS:
+        raise HTTPException(400, "Task must be in progress to start break")
+    te.status = TaskExecutionStatus.ON_BREAK
+    await db.commit()
+    return {"message": "Task break started"}
+
+@router.post("/tasks/{notification_id}/resume")
+async def task_resume(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    employee: models.Employee = Depends(get_current_employee)
+):
+    te = await crud.get_task_execution_by_notification(db, notification_id)
+    if not te:
+        raise HTTPException(404, "Task execution not found")
+    if te.employee_id != employee.id:
+        raise HTTPException(403, "Not your task")
+    if te.status != TaskExecutionStatus.ON_BREAK:
+        raise HTTPException(400, "Task must be on break to resume")
+    te.status = TaskExecutionStatus.IN_PROGRESS
+    await db.commit()
+    return {"message": "Task resumed"}

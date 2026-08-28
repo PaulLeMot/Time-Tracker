@@ -2047,7 +2047,14 @@
             } else if (status === 'in_progress') {
                 statusText = 'В процессе';
                 statusColor = '#f59e0b';
-                actionButtons = `<button class="btn btn-sm btn-warning task-complete" data-id="${n.id}">⏹️ Завершить</button>`;
+                actionButtons = `
+                    <button class="btn btn-sm task-break" data-id="${n.id}">⏸️ Перерыв</button>
+                    <button class="btn btn-sm btn-warning task-complete" data-id="${n.id}">⏹️ Завершить</button>
+                `;
+            } else if (status === 'on_break') {
+                statusText = 'В перерыве';
+                statusColor = '#8b5cf6';
+                actionButtons = `<button class="btn btn-sm task-resume" data-id="${n.id}">▶️ Продолжить</button>`;
             } else if (status === 'completed') {
                 statusText = 'Выполнена';
                 statusColor = '#22c55e';
@@ -2140,6 +2147,21 @@
                 e.stopPropagation();
                 const id = this.dataset.id;
                 startTask(id);
+            });
+        });
+        container.querySelectorAll('.task-break').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const id = this.dataset.id;
+                taskBreak(id);
+            });
+        });
+
+        container.querySelectorAll('.task-resume').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const id = this.dataset.id;
+                taskResume(id);
             });
         });
         container.querySelectorAll('.task-complete').forEach(btn => {
@@ -2370,6 +2392,44 @@
 
 function refreshTaskListWithoutClosing() {
     loadTaskNotifications();
+}
+
+async function taskBreak(notificationId) {
+    try {
+        const resp = await fetch(`/api/employee/tasks/${notificationId}/break`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (resp.ok) {
+            showToast('⏸️ Задача на перерыве');
+            loadTaskNotifications();
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || 'Ошибка', true);
+        }
+    } catch (err) {
+        showToast('Ошибка сети', true);
+    }
+}
+
+async function taskResume(notificationId) {
+    try {
+        const resp = await fetch(`/api/employee/tasks/${notificationId}/resume`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (resp.ok) {
+            showToast('▶️ Задача продолжена');
+            loadTaskNotifications();
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || 'Ошибка', true);
+        }
+    } catch (err) {
+        showToast('Ошибка сети', true);
+    }
 }
 </script>
 </body>

@@ -29,6 +29,7 @@ class DayType(str, Enum):
 class TaskExecutionStatus(str, enum.Enum):
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
+    ON_BREAK = "on_break"
     COMPLETED = "completed"
 
 # ========================== СУЩЕСТВУЮЩИЕ МОДЕЛИ ==========================

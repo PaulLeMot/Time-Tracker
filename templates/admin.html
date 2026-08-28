@@ -6648,9 +6648,10 @@ function showDetail(deal) {
             const completedAt = first && first.completed_at ? first.completed_at : null;
 
             const statusDisplayMap = {
-                'not_started': '❌ Не начата',
-                'in_progress': '🔄 В процессе',
-                'completed': '✅ Завершена'
+                'not_started': '❌',
+                'in_progress': '🔄',
+                'on_break': '⏸️',
+                'completed': '✅'
             };
             const statusDisplay = statusDisplayMap[status] || status;
 
@@ -6676,6 +6677,7 @@ function showDetail(deal) {
                             <select class="task-status-select" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
                                 <option value="not_started" ${status === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
                                 <option value="in_progress" ${status === 'in_progress' ? 'selected' : ''}>🔄 В процессе</option>
+                                <option value="on_break" ${status === 'on_break' ? 'selected' : ''}>⏸️ В перерыве</option>
                                 <option value="completed" ${status === 'completed' ? 'selected' : ''}>✅ Завершена</option>
                             </select>
                         </td>
@@ -7371,9 +7373,10 @@ async function saveTaskStatus(select, dealId) {
         });
         const span = select.closest('td').querySelector('.task-status-display');
         const statusDisplayMap = {
-            'not_started': '❌ Не начата',
-            'in_progress': '🔄 В процессе',
-            'completed': '✅ Завершена'
+            'not_started': '❌',
+            'in_progress': '🔄',
+            'on_break': '⏸️',
+            'completed': '✅'
         };
         span.textContent = statusDisplayMap[status] || status;
         span.style.display = 'inline';
@@ -8983,9 +8986,10 @@ async function saveTaskTime(input, dealId, field) {
             }
 
             const statusText = {
-                'not_started': '❌ Не начата',
-                'in_progress': '🔄 В процессе',
-                'completed': '✅ Завершена'
+                'not_started': '❌',
+                'in_progress': '🔄',
+                'on_break': '⏸️',
+                'completed': '✅'
             }[n.execution_status] || n.execution_status || '—';
 
             const startedAt = n.started_at ? new Date(n.started_at).toLocaleString('ru-RU') : '—';

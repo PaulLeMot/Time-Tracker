@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from database import get_db
 import crud
 from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role, Notification, NotificationType, NotificationStatus, TaskExecution, TaskExecutionStatus, Explanation, DealProductType
-from routers.auth import get_current_admin
+from routers.auth import get_current_admin, get_current_employee
 import pandas as pd
 import io
 from schemas import DealProductItem
