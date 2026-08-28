@@ -406,29 +406,24 @@
             background: #f8fafc;
             padding: 14px 16px;
             font-weight: 600;
-            cursor: pointer;
+            cursor: default;
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-size: 1rem;
         }
         .task-accordion-header:after {
-            content: "▼";
+            content: "";
             font-size: 0.8rem;
             transition: transform 0.2s;
         }
-        .task-accordion-item.open .task-accordion-header:after {
-            transform: rotate(180deg);
-        }
         .task-accordion-details {
-            display: none;
+            display: block !important;
             padding: 16px;
             border-top: 1px solid #e2e8f0;
             background: white;
         }
-        .task-accordion-item.open .task-accordion-details {
-            display: block;
-        }
+
         .task-accordion-details div {
             margin-bottom: 8px;
         }
@@ -2104,14 +2099,23 @@
                 addButton = `<button class="btn btn-sm btn-success add-assignee-btn" data-deal-id="${dealId}" data-task-id="${taskId}">➕</button>`;
             }
 
+            // Формируем строку товаров для заголовка
+            let productsString = '';
+            if (products && products.length) {
+                productsString = products.map(p => `${escapeHtml(p.name)}(${p.quantity})`).join(', ');
+            } else {
+                productsString = 'нет товаров';
+            }
+
             html += `
                 <div class="task-accordion-item" data-task-id="${taskId}">
                     <div class="task-accordion-header">
-                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
-                            <span style="font-size: 0.75rem; color: #64748b; font-weight: normal; line-height: 1.2;">${escapeHtml(dealTitle)}</span>
-                            <span style="font-weight: 600; font-size: 1rem; line-height: 1.2;">${escapeHtml(taskName)}</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <span style="font-weight: 600; font-size: 1rem; line-height: 1.4;">
+                                ${escapeHtml(dealTitle)} ${escapeHtml(taskName)} : ${productsString}
+                            </span>
+                            <span style="color:${statusColor}; font-size:0.85rem; white-space: nowrap; margin-left: 12px;">${statusText}</span>
                         </div>
-                        <span style="color:${statusColor}; font-size:0.85rem; white-space: nowrap;">${statusText}</span>
                     </div>
                     <div class="task-accordion-details">
                         <div><strong>Дата:</strong> ${createdDate}</div>
@@ -2130,14 +2134,6 @@
         }
         html += '</div>';
         container.innerHTML = html;
-
-        // ---------- ОБРАБОТЧИКИ ----------
-        container.querySelectorAll('.task-accordion-header').forEach(header => {
-            header.addEventListener('click', function() {
-                const item = this.closest('.task-accordion-item');
-                item.classList.toggle('open');
-            });
-        });
 
         container.querySelectorAll('.task-start').forEach(btn => {
             btn.addEventListener('click', function(e) {
@@ -2373,22 +2369,7 @@
     });
 
 function refreshTaskListWithoutClosing() {
-    // Сохраняем ID открытых аккордеонов
-    openTaskIds.clear();
-    document.querySelectorAll('.task-accordion-item.open').forEach(item => {
-        const taskId = item.dataset.taskId;
-        if (taskId) openTaskIds.add(taskId);
-    });
-    // Перезагружаем список задач
-    loadTaskNotifications().then(() => {
-        // Восстанавливаем открытые аккордеоны
-        document.querySelectorAll('.task-accordion-item').forEach(item => {
-            const taskId = item.dataset.taskId;
-            if (taskId && openTaskIds.has(taskId)) {
-                item.classList.add('open');
-            }
-        });
-    });
+    loadTaskNotifications();
 }
 </script>
 </body>
