@@ -1502,3 +1502,60 @@ async def update_deal_products(
             db.add(dp)
     await db.commit()
     return {"message": "Обновлено", "deal_id": deal_id}
+
+@router.post("/deals/{deal_id}/products", status_code=201)
+async def add_products_to_deal_route(
+    deal_id: int,
+    products: List[UpdateProductQuantity],
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    deal = await crud.get_deal_by_id(db, deal_id)
+    if not deal:
+        raise HTTPException(404, "Deal not found")
+    
+    for item in products:
+        # Проверяем, есть ли уже такой товар в сделке
+        stmt = select(DealProductType).where(
+            DealProductType.deal_id == deal_id,
+            DealProductType.product_id == item.product_id
+        )
+        result = await db.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing:
+            # Если товар уже есть – обновляем количество (или можно проигнорировать)
+            existing.quantity = item.quantity
+        else:
+            # Добавляем новый товар
+            dp = DealProductType(
+                deal_id=deal_id,
+                product_id=item.product_id,
+                quantity=item.quantity
+            )
+            db.add(dp)
+    await db.commit()
+    return {"message": "Products added/updated"}
+
+@router.delete("/deals/{deal_id}/products/{product_id}", status_code=204)
+async def delete_product_from_deal(
+    deal_id: int,
+    product_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    deal = await crud.get_deal_by_id(db, deal_id)
+    if not deal:
+        raise HTTPException(404, "Deal not found")
+    
+    stmt = select(DealProductType).where(
+        DealProductType.deal_id == deal_id,
+        DealProductType.product_id == product_id
+    )
+    result = await db.execute(stmt)
+    dp = result.scalar_one_or_none()
+    if not dp:
+        raise HTTPException(404, "Product not found in this deal")
+    
+    await db.delete(dp)
+    await db.commit()
+    return None

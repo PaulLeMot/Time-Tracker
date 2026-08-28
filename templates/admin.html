@@ -6493,7 +6493,63 @@ function initProcsetsTab() {
     }
     window.viewDeal = viewDeal;
 function showDetail(deal) {
-    detailTitle.textContent = `Сделка #${deal.id}: ${deal.title}`;
+    // Заголовок становится кликабельным для inline-редактирования
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = `Сделка: ${deal.title}`;
+    titleSpan.style.cursor = 'pointer';
+    titleSpan.title = 'Кликните, чтобы изменить название';
+
+    // Функция переключения в режим редактирования
+    function enableTitleEditing() {
+        const currentTitle = titleSpan.textContent.replace(/^Сделка #\d+: /, '');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentTitle;
+        input.style.fontSize = '1.5rem';
+        input.style.fontWeight = 'bold';
+        input.style.border = '1px solid #3b82f6';
+        input.style.borderRadius = '8px';
+        input.style.padding = '4px 12px';
+        input.style.width = '80%';
+        input.style.background = 'white';
+
+        // Заменяем span на input
+        titleSpan.replaceWith(input);
+        input.focus();
+        input.select();
+
+        function saveTitle() {
+            const newTitle = input.value.trim();
+            if (newTitle && newTitle !== currentTitle) {
+                updateDealTitle(deal.id, newTitle);
+            }
+            // Возвращаем отображение
+            titleSpan.textContent = `Сделка #${deal.id}: ${newTitle || currentTitle}`;
+            input.replaceWith(titleSpan);
+        }
+
+        function cancelEdit() {
+            input.replaceWith(titleSpan);
+        }
+
+        input.addEventListener('blur', saveTitle);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                input.blur();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelEdit();
+            }
+        });
+    }
+
+    titleSpan.addEventListener('click', enableTitleEditing);
+
+    // Вставляем заголовок в нужное место (заменяем detailTitle)
+    detailTitle.innerHTML = '';
+    detailTitle.appendChild(titleSpan);
+
     let html = `
         <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:16px;">
             <div><strong>Тип:</strong> ${deal.deal_type || '—'}</div>
@@ -6501,7 +6557,7 @@ function showDetail(deal) {
         </div>
     `;
     
-    // ---- Товары (таблица с редактируемыми количествами) ----
+    // ---- Товары (таблица с редактируемыми количествами и кнопкой удаления) ----
     if (deal.products && deal.products.length > 0) {
         html += `<h4>📦 Товары в сделке</h4>
                 <table style="width:100%; border-collapse:collapse; margin-top:8px;" id="deal-products-table">
@@ -6510,6 +6566,7 @@ function showDetail(deal) {
                             <th style="padding:8px; text-align:left;">Наименование</th>
                             <th style="padding:8px; text-align:left;">Полное наименование</th>
                             <th style="padding:8px; text-align:center;">Количество</th>
+                            <th style="padding:8px; text-align:center;">Действие</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -6521,6 +6578,9 @@ function showDetail(deal) {
                             <span class="product-quantity-display" style="cursor:pointer;">${p.quantity}</span>
                             <input type="number" class="product-quantity-input" value="${p.quantity}" min="1" style="display:none; width:70px; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; text-align:center; font-size:0.95rem;" data-product-id="${p.id}">
                         </td>
+                        <td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center;">
+                            <button class="delete-product-from-deal" data-product-id="${p.id}" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:1.1rem;">✖</button>
+                        </td>
                     </tr>`;
         }
         html += `</tbody></table>`;
@@ -6528,7 +6588,22 @@ function showDetail(deal) {
         html += `<p style="color:#94a3b8; margin-top:12px;">Нет товаров в этой сделке</p>`;
     }
 
-    // ---- Задачи по сделке (с поддержкой множественных исполнителей) ----
+    // ---- Блок добавления товара (как в модалке создания) ----
+    html += `
+        <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+            <h4>➕ Добавить товар в сделку</h4>
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: #f8fafc; padding: 12px; border-radius: 12px;">
+                <select id="addProductSelect" style="flex: 2; min-width: 200px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 20px;">
+                    <option value="">-- Выберите товар --</option>
+                </select>
+                <input type="number" id="addProductQuantity" placeholder="Количество" style="width: 100px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 20px;" min="1" value="1">
+                <button id="addProductToDealBtn" class="btn" style="background: #22c55e;">➕ Добавить</button>
+            </div>
+            <div id="addProductError" style="color:red; margin-top:4px;"></div>
+        </div>
+    `;
+
+    // ---- Задачи по сделке (оставляем без изменений) ----
     if (deal.tasks && deal.tasks.length > 0) {
         html += `<h4 style="margin-top:20px;">📋 Задачи по сделке</h4>
                 <table style="width:100%; border-collapse:collapse; margin-top:8px;" id="deal-tasks-table">
@@ -6627,8 +6702,35 @@ function showDetail(deal) {
     detailBody.innerHTML = html;
     detailModal.style.display = 'block';
 
+    // ---- Заполняем select для добавления товара ----
+    populateAddProductSelect();
+
     // ---- Активируем редактирование по клику (количества, статус, время) ----
     enableInlineEditing(deal.id);
+
+    // ---- Обработчик кнопки добавления товара ----
+    const addBtn = document.getElementById('addProductToDealBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', function() {
+            addProductToDeal(deal.id);
+        });
+    }
+
+    // ---- Обработчики удаления товара ----
+    detailBody.querySelectorAll('.delete-product-from-deal').forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            const productId = parseInt(this.dataset.productId);
+            if (!confirm('Удалить этот товар из сделки?')) return;
+            try {
+                await deleteProductFromDeal(deal.id, productId);
+                showToast('Товар удалён из сделки');
+                viewDeal(deal.id);
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        });
+    });
 
     // ---- Обработчик кнопки запуска ----
     const startBtn = document.getElementById('startDealBtn');
@@ -6655,7 +6757,6 @@ function showDetail(deal) {
     }
 
     // ---- Смена основного исполнителя по клику на жирное имя (делегирование) ----
-    // Удаляем старый обработчик, чтобы избежать дублей
     if (window._mainAssigneeHandler) {
         detailBody.removeEventListener('click', window._mainAssigneeHandler);
     }
@@ -6956,6 +7057,118 @@ function showDetail(deal) {
             saveAllFields();
             detailModal.style.display = 'none';
             document.removeEventListener('keydown', escHandler);
+        }
+    });
+}
+
+// ---- Вспомогательные функции для работы с товарами и названием ----
+
+// Обновление названия сделки
+async function updateDealTitle(dealId, newTitle) {
+    try {
+        const resp = await fetch(`/api/sandbox/deals/${dealId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle }),
+            credentials: 'include'
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || 'Ошибка обновления названия');
+        }
+        showToast('Название сделки обновлено');
+        viewDeal(dealId);
+        loadDeals(); // обновить список сделок
+    } catch (err) {
+        showToast(err.message, true);
+    }
+}
+
+// Удаление товара из сделки
+async function deleteProductFromDeal(dealId, productId) {
+    const resp = await fetch(`/api/sandbox/deals/${dealId}/products/${productId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+    });
+    if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || 'Ошибка удаления товара');
+    }
+}
+
+// Добавление товара в сделку
+async function addProductToDeal(dealId) {
+    const select = document.getElementById('addProductSelect');
+    const quantityInput = document.getElementById('addProductQuantity');
+    const errorDiv = document.getElementById('addProductError');
+    if (!select || !quantityInput) return;
+
+    const productId = parseInt(select.value);
+    const quantity = parseInt(quantityInput.value);
+    if (!productId) {
+        errorDiv.textContent = 'Выберите товар';
+        return;
+    }
+    if (isNaN(quantity) || quantity < 1) {
+        errorDiv.textContent = 'Количество должно быть больше 0';
+        return;
+    }
+
+    errorDiv.textContent = '';
+    try {
+        const resp = await fetch(`/api/sandbox/deals/${dealId}/products`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ product_id: productId, quantity: quantity }]),
+            credentials: 'include'
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || 'Ошибка добавления товара');
+        }
+        showToast('Товар добавлен в сделку');
+        viewDeal(dealId);
+        // Сбросить выбор
+        select.value = '';
+        quantityInput.value = '1';
+    } catch (err) {
+        errorDiv.textContent = err.message;
+    }
+}
+
+// Заполнение select доступными товарами (не входящими в сделку)
+function populateAddProductSelect() {
+    const select = document.getElementById('addProductSelect');
+    if (!select) return;
+    // Получаем список всех товаров (можно использовать глобальную переменную products из procsets)
+    // Если products не загружены, загружаем их
+    if (typeof products === 'undefined' || products.length === 0) {
+        // Загружаем товары через apiFetch (если она доступна)
+        fetch('/api/sandbox/product-types', { credentials: 'include' })
+            .then(res => res.json())
+            .then(data => {
+                products = data;
+                fillSelect(select);
+            })
+            .catch(err => {
+                console.error('Не удалось загрузить товары:', err);
+                showToast('Ошибка загрузки списка товаров', true);
+            });
+    } else {
+        fillSelect(select);
+    }
+}
+
+function fillSelect(select) {
+    const currentProductIds = Array.from(document.querySelectorAll('#deal-products-table tbody tr'))
+        .map(tr => parseInt(tr.dataset.productId));
+    select.innerHTML = '<option value="">-- Выберите товар --</option>';
+    products.forEach(p => {
+        if (!currentProductIds.includes(p.id)) {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.full_name || p.name;
+            select.appendChild(opt);
         }
     });
 }
