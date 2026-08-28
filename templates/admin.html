@@ -6694,10 +6694,17 @@ function showDetail(deal) {
         html += `<p style="color:#94a3b8; margin-top:12px;">Нет задач по этой сделке</p>`;
     }
 
-    // ---- Кнопка "Запустить" ----
-    html += `<div style="margin-top: 20px; text-align: right;">
-                <button id="startDealBtn" class="btn" style="background: #22c55e; padding: 8px 24px;">▶️ Запустить</button>
-            </div>`;
+    // ---- Кнопка "Запустить" / "Сделка запущена" ----
+    const isStarted = deal.tasks && deal.tasks.length > 0;
+    if (isStarted) {
+        html += `<div style="margin-top: 20px; text-align: right;">
+                    <button class="btn" style="background: #94a3b8; padding: 8px 24px; cursor: default;" disabled>✅ Сделка запущена</button>
+                </div>`;
+    } else {
+        html += `<div style="margin-top: 20px; text-align: right;">
+                    <button id="startDealBtn" class="btn" style="background: #22c55e; padding: 8px 24px;">▶️ Запустить</button>
+                </div>`;
+    }
 
     detailBody.innerHTML = html;
     detailModal.style.display = 'block';
@@ -6732,7 +6739,6 @@ function showDetail(deal) {
         });
     });
 
-    // ---- Обработчик кнопки запуска ----
     const startBtn = document.getElementById('startDealBtn');
     if (startBtn) {
         startBtn.addEventListener('click', async function() {
@@ -6749,7 +6755,8 @@ function showDetail(deal) {
                 const data = await resp.json();
                 showToast(`✅ ${data.message}`);
                 loadDeals();
-                detailModal.style.display = 'none';
+                // Вместо закрытия модалки – перезагружаем её, чтобы кнопка обновилась
+                viewDeal(deal.id);
             } catch (err) {
                 showToast(`❌ Ошибка: ${err.message}`, true);
             }
