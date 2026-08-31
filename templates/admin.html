@@ -7507,23 +7507,31 @@ async function saveTaskTime(input, dealId, field, notificationId = null) {
 
     // ---- Открытие модалки создания ----
     async function openCreateModal() {
+        // Сбросить любые глобальные переменные, связанные с редактированием сделки
+        // (если у вас есть переменная currentDealId – обнулите её)
+        if (typeof currentDealId !== 'undefined') currentDealId = null;
+
+        // Загружаем типы сделок, если их ещё нет
         if (dealTypes.length === 0) {
             await loadDealTypes();
         }
 
+        // Показываем модальное окно
         modalCreate.style.display = 'block';
-        container.querySelector('#dealTitle').value = '';
+        const titleInput = container.querySelector('#dealTitle');
+        titleInput.value = '';
         createError.textContent = '';
         populateDealTypeSelect();
 
+        // Сбрасываем импортированные товары
         importedProducts = [];
         importPreviewBody.innerHTML = '';
         importPreviewContainer.style.display = 'none';
         clearImportBtn.style.display = 'none';
         importStatus.textContent = '';
-        let typeSelect, ipSelect, mpSelect;
 
         try {
+            // Загружаем списки ИП и МП
             const [ipsResp, mpsResp] = await Promise.all([
                 apiFetch('/api/sandbox/ips'),
                 apiFetch('/api/sandbox/mps')
@@ -7531,26 +7539,93 @@ async function saveTaskTime(input, dealId, field, notificationId = null) {
             const ips = await ipsResp.json();
             const mps = await mpsResp.json();
 
-            ipSelect = container.querySelector('#dealIp');
-            ipSelect.innerHTML = '<option value="">ИП</option>' + ips.map(ip => `<option value="${ip.id}">${escapeHtml(ip.name)}</option>`).join('');
+            const ipSelect = container.querySelector('#dealIp');
+            ipSelect.innerHTML = '<option value="">ИП</option>' + 
+                ips.map(ip => `<option value="${ip.id}">${escapeHtml(ip.name)}</option>`).join('');
 
-            mpSelect = container.querySelector('#dealMp');
-            mpSelect.innerHTML = '<option value="">МП</option>' + mps.map(mp => `<option value="${mp.id}">${escapeHtml(mp.name)}</option>`).join('');
+            const mpSelect = container.querySelector('#dealMp');
+            mpSelect.innerHTML = '<option value="">МП</option>' + 
+                mps.map(mp => `<option value="${mp.id}">${escapeHtml(mp.name)}</option>`).join('');
 
-            typeSelect = container.querySelector('#dealType');
+            const typeSelect = container.querySelector('#dealType');
 
-            // Удаляем старые обработчики
+            // Удаляем старые обработчики, чтобы не было конфликтов
             typeSelect.removeEventListener('change', onParametersChanged);
             ipSelect.removeEventListener('change', onParametersChanged);
             mpSelect.removeEventListener('change', onParametersChanged);
 
-            // Добавляем новые
-            typeSelect.addEventListener('change', onParametersChanged);
-            ipSelect.addEventListener('change', onParametersChanged);
-            mpSelect.addEventListener('change', onParametersChanged);
+            // ---- ЛОКАЛЬНАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ UI (БЕЗ API) ----
+            const updateCreateUI = () => {
+                const typeId = parseInt(typeSelect.value);
+                const typeObj = dealTypes.find(t => t.id === typeId);
+                const typeName = typeObj ? typeObj.name : '';
 
-            // Генерируем всё сразу
-            onParametersChanged();
+                // Генерация названия сделки
+                const now = new Date();
+                const year = String(now.getFullYear()).slice(2);
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const dateStr = year + month + day;
+
+                let title = '';
+                if (typeName === 'FBS' || typeName === 'FSK') {
+                    title = dateStr + '_' + typeName;
+                } else if (typeName === 'FBO') {
+                    const ipText = ipSelect.options[ipSelect.selectedIndex]?.text || '';
+                    const mpText = mpSelect.options[mpSelect.selectedIndex]?.text || '';
+                    if (ipText && mpText) {
+                        title = dateStr + '_' + ipText + '_' + mpText;
+                    }
+                }
+                titleInput.value = title;
+
+                // ---- Обновление пути импорта (локально) ----
+                const importPathInput = container.querySelector('#importPathInput');
+                if (importPathInput) {
+                    const basePath = "/work/!МП_(FSk)";
+                    let path = '';
+                    if (typeName === 'FBS') {
+                        path = basePath + '/!FBS/' + dateStr + '_FBS/Книга1.xlsx';
+                    } else if (typeName === 'FSK') {
+                        path = basePath + '/' + dateStr + '_FSk/b24.xlsx';
+                    } else if (typeName === 'FBO') {
+                        const ipText = ipSelect.options[ipSelect.selectedIndex]?.text || '';
+                        const mpText = mpSelect.options[mpSelect.selectedIndex]?.text || '';
+                        if (ipText && mpText) {
+                            path = basePath + '/' + dateStr + '_' + ipText + '_' + mpText + '/b24.xlsx';
+                        }
+                    }
+                    importPathInput.value = path;
+                }
+
+                // ---- Показать/скрыть поля ИП и МП ----
+                const ipGroup = ipSelect?.closest('.form-group');
+                const mpGroup = mpSelect?.closest('.form-group');
+                if (ipGroup && mpGroup) {
+                    if (typeName === 'FBS' || typeName === 'FSK') {
+                        ipGroup.style.display = 'none';
+                        mpGroup.style.display = 'none';
+                        ipSelect.removeAttribute('required');
+                        mpSelect.removeAttribute('required');
+                        ipSelect.value = '';
+                        mpSelect.value = '';
+                    } else {
+                        ipGroup.style.display = '';
+                        mpGroup.style.display = '';
+                        ipSelect.setAttribute('required', 'required');
+                        mpSelect.setAttribute('required', 'required');
+                    }
+                }
+            };
+
+            // Назначаем новые обработчики (только для UI)
+            typeSelect.addEventListener('change', updateCreateUI);
+            ipSelect.addEventListener('change', updateCreateUI);
+            mpSelect.addEventListener('change', updateCreateUI);
+
+            // Инициализируем UI при открытии
+            updateCreateUI();
+
         } catch (err) {
             showToast('Не удалось загрузить ИП/МП', true);
         }
