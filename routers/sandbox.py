@@ -264,8 +264,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
                 "quantity": dp.quantity
             })
     
-    from sqlalchemy import text
-    # Используем LEFT JOIN tasks и COALESCE, чтобы не терять уведомления
+    # ДОБАВЛЯЕМ extra_data в SELECT
     stmt = text("""
         SELECT 
             n.id as notification_id,
@@ -291,7 +290,6 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
 
     tasks_dict = {}
     for row in rows:
-        # Если task_id отсутствует, используем -row.notification_id как уникальный fallback
         task_id = row.task_id if row.task_id is not None else -row.notification_id
         task_name = row.task_name or f"Задача #{task_id}"
         
@@ -299,8 +297,14 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
             tasks_dict[task_id] = {
                 "task_id": task_id,
                 "task_name": task_name,
-                "assignees": []
+                "assignees": [],
+                # ДОБАВЛЯЕМ поле products, заполняем из extra_data первого уведомления
+                "products": []
             }
+        # Если это первое уведомление для задачи – сохраняем товары из extra_data
+        if not tasks_dict[task_id]["products"] and row.extra_data:
+            tasks_dict[task_id]["products"] = row.extra_data.get("products", [])
+        
         tasks_dict[task_id]["assignees"].append({
             "employee_name": row.full_name,
             "employee_id": row.employee_id,

@@ -636,17 +636,15 @@ async def mark_barcode(barcode: str):
         }
         results.append(item)
 
-    # ---- ДОБАВЛЯЕМ ПОИСК ДОПОЛНИТЕЛЬНЫХ ТОВАРОВ ПО ОДИНАКОВЫМ ПОСЛЕДНИМ 4 ЦИФРАМ СТИКЕРОВ (В ТОМ ЖЕ WB-ФАЙЛЕ) ----
-    additional_ids = set()
+    additional_items = []  # (id_val, mark)
     # Проходим по уже построенным результатам, собираем WB-стикеры и их марки
     for item in results:
         for row in item["table"]:
             if row.get("platform") == "WB" and row.get("stickers"):
-                marking_full = row["marking"]  # например "sia_WB"
-                mark = marking_full.split('_')[0]  # "sia"
+                marking_full = row["marking"]          # например "sia_WB"
+                mark = marking_full.split('_')[0]      # "sia"
                 if mark not in MARKING_KEYS:
                     continue
-                # Получаем обратный индекс для этой марки
                 reverse_idx = get_reverse_sticker_index(mark, today_str)
                 for st_obj in row["stickers"]:
                     sticker_str = st_obj["sticker"] if isinstance(st_obj, dict) else st_obj
@@ -654,20 +652,24 @@ async def mark_barcode(barcode: str):
                     if len(clean) >= 4:
                         last4 = clean[-4:]
                         if last4 in reverse_idx:
-                            # Находим все id, которые есть в этом индексе
                             for id_val, _ in reverse_idx[last4]:
-                                # Проверяем, не является ли этот id уже имеющимся продуктом
+                                # Проверяем, не добавлен ли уже этот код (по ключу code)
                                 if id_val not in {p["Код"] for p in products.values()}:
-                                    additional_ids.add(id_val)
+                                    additional_items.append((id_val, mark))
 
-    # Если нашли дополнительные id – добавляем их как новые продукты
-    if additional_ids:
-        # Находим позиции для каждого id в основном индексе
+    if additional_items:
         new_positions = []
-        for id_val in additional_ids:
+        for id_val, mark in additional_items:
             if id_val in index:
-                for pos in index[id_val]:
-                    new_positions.append((pos[0], pos[1], id_val))
+                # Ищем позицию, соответствующую маркировке f"{mark}_WB"
+                found_pos = None
+                for row_idx, col_idx in index[id_val]:
+                    marking_name, _ = get_marking_for_position(col_idx, col_names)
+                    if marking_name == f"{mark}_WB":
+                        found_pos = (row_idx, col_idx, id_val)
+                        break
+                if found_pos:
+                    new_positions.append(found_pos)
         if new_positions:
             # Добавляем новые продукты в словарь products (если их ещё нет)
             for row_idx, col_idx, art in new_positions:
@@ -727,6 +729,7 @@ async def mark_barcode(barcode: str):
                 row_for_table = None
                 # ищем строку по коду
                 if data_item["Код"] in index:
+                    # Берём первую позицию, чтобы получить строку
                     pos = index[data_item["Код"]][0]
                     row_for_table = data[pos[0]]
                 if row_for_table is None:
