@@ -1037,7 +1037,15 @@
                 }
             }
         }
-
+        // ---- Удаляем дублирующиеся стикеры (по полю sticker) ----
+        const uniqueStickerMap = new Map();
+        for (const item of allStickers) {
+            // Если стикер уже есть – пропускаем
+            if (!uniqueStickerMap.has(item.sticker)) {
+                uniqueStickerMap.set(item.sticker, item);
+            }
+        }
+        allStickers = Array.from(uniqueStickerMap.values());
         // Сортировка по последним 4 цифрам
         allStickers.sort((a, b) => {
             const aLast = getLastFourDigits(a.sticker);

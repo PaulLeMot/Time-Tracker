@@ -636,26 +636,6 @@ async def mark_barcode(barcode: str):
         }
         results.append(item)
 
-
-    # ---- Удаляем дублирующиеся товары по одинаковым стикерам ----
-    unique_results = []
-    seen_sticker_sets = set()
-    for res in results:
-        sticker_set = set()
-        for row in res.get("table", []):
-            if row.get("stickers"):
-                for st in row["stickers"]:
-                    if isinstance(st, dict):
-                        sticker_set.add(st.get("sticker", ""))
-                    else:
-                        sticker_set.add(str(st))
-        key = tuple(sorted(sticker_set)) if sticker_set else (res.get("Код", ""),)
-        if key not in seen_sticker_sets:
-            seen_sticker_sets.add(key)
-            unique_results.append(res)
-    results = unique_results
-
-
     # ---- ПОИСК ДОПОЛНИТЕЛЬНЫХ ТОВАРОВ ПО СОВПАДЕНИЮ ПОСЛЕДНИХ 4 ЦИФР СТИКЕРОВ ----
     extra_results = []
     added_codes = {p["Код"] for p in products.values()}  # коды уже добавленных основных товаров
