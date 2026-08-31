@@ -5,7 +5,7 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel
 from database import get_db
 import crud
-from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role, Notification, NotificationType, NotificationStatus, TaskExecution, TaskExecutionStatus, Explanation, DealProductType
+from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role, Notification, NotificationType, NotificationStatus, TaskExecution, TaskExecutionStatus, Explanation, DealProductType, TaskBreak
 from routers.auth import get_current_admin, get_current_employee
 import pandas as pd
 import io
@@ -119,6 +119,29 @@ class RoleUpdate(BaseModel):
 class RoleEmployeeAdd(BaseModel):
     employee_id: int
 
+class TaskCompletionDistributionRequest(BaseModel):
+    employee_id: int
+    quantity: int
+
+class TaskCompletionRequest(BaseModel):
+    product_type_id: int
+    defect_quantity: int = 0
+    defect_comment: Optional[str] = None
+    distributions: List[TaskCompletionDistributionRequest]
+
+class TaskCompletionDistributionResponse(BaseModel):
+    employee_id: int
+    employee_name: str
+    quantity: int
+
+class TaskCompletionResponse(BaseModel):
+    task_id: int
+    product_type_id: int
+    product_type_name: Optional[str]
+    defect_quantity: int
+    defect_comment: Optional[str]
+    distributions: List[TaskCompletionDistributionResponse]
+
 # ==================== ЭНДПОИНТЫ ДЛЯ ТИПОВ СДЕЛОК ====================
 @router.get("/deal-types", response_model=List[DealTypeResponse])
 async def get_deal_types(db: AsyncSession = Depends(get_db)):
@@ -230,6 +253,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
     deal = await crud.get_deal_by_id(db, deal_id)
     if not deal:
         raise HTTPException(404, "Deal not found")
+    
     products = []
     for dp in deal.deal_products:
         if dp.product_type:
@@ -239,49 +263,51 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
                 "full_name": dp.product_type.full_name,
                 "quantity": dp.quantity
             })
-
+    
     from sqlalchemy import text
+    # Используем LEFT JOIN tasks и COALESCE, чтобы не терять уведомления
     stmt = text("""
         SELECT 
-            n.id as notif_id,
+            n.id as notification_id,
             n.extra_data,
             te.status as exec_status,
             te.started_at,
             te.completed_at,
             e.id as employee_id,
             e.full_name,
-            t.id as task_id,
-            t.name as task_name
+            (n.extra_data->>'task_id')::integer as task_id,
+            COALESCE(t.name, n.extra_data->>'task_name') as task_name
         FROM notifications n
         LEFT JOIN task_executions te ON te.notification_id = n.id
         JOIN employees e ON e.id = n.employee_id
-        JOIN tasks t ON t.id = (n.extra_data->>'task_id')::integer
+        LEFT JOIN tasks t ON t.id = (n.extra_data->>'task_id')::integer
         WHERE n.type = 'task_assignment'
             AND n.status = 'sent'
             AND (n.extra_data->>'deal_id')::integer = :deal_id
-        ORDER BY t.id, n.id ASC
+        ORDER BY (n.extra_data->>'task_id')::integer NULLS FIRST, n.id ASC
     """)
     result = await db.execute(stmt, {"deal_id": deal_id})
     rows = result.fetchall()
 
     tasks_dict = {}
     for row in rows:
-        task_id = row.task_id
+        # Если task_id отсутствует, используем -row.notification_id как уникальный fallback
+        task_id = row.task_id if row.task_id is not None else -row.notification_id
+        task_name = row.task_name or f"Задача #{task_id}"
+        
         if task_id not in tasks_dict:
             tasks_dict[task_id] = {
                 "task_id": task_id,
-                "task_name": row.task_name,
+                "task_name": task_name,
                 "assignees": []
             }
-        status_value = row.exec_status if row.exec_status else "not_started"
-        started_at = row.started_at.isoformat() if row.started_at else None
-        completed_at = row.completed_at.isoformat() if row.completed_at else None
         tasks_dict[task_id]["assignees"].append({
             "employee_name": row.full_name,
             "employee_id": row.employee_id,
-            "status": status_value,
-            "started_at": started_at,
-            "completed_at": completed_at
+            "status": row.exec_status or "not_started",
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+            "notification_id": row.notification_id
         })
 
     tasks_list = list(tasks_dict.values())
@@ -1052,7 +1078,7 @@ async def start_deal(
                 "deal_title": deal.title,
                 "task_name": task.name,
                 "products": [
-                    {"name": p['full_name'], "quantity": p['quantity']}
+                    {"name": p['name'], "quantity": p['quantity']}
                     for p in products
                 ]
             }
@@ -1229,6 +1255,7 @@ async def update_task_assignee(
 
 class UpdateTaskStatus(BaseModel):
     status: str  # not_started, in_progress, completed
+    notification_id: Optional[int] = None
 
 @router.put("/deals/{deal_id}/tasks/{task_id}/status")
 async def update_task_status(
@@ -1238,37 +1265,40 @@ async def update_task_status(
     db: AsyncSession = Depends(get_db),
     admin: Employee = Depends(get_current_admin)
 ):
-    from sqlalchemy import text
-
-    # Находим самое свежее уведомление для этой задачи
-    stmt = text("""
-        SELECT id FROM notifications
-        WHERE type = 'task_assignment'
-            AND status = 'sent'
-            AND (extra_data->>'deal_id')::integer = :deal_id
-            AND (extra_data->>'task_id')::integer = :task_id
-        ORDER BY created_at DESC
-        LIMIT 1
-    """)
-    result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
-    row = result.first()
-    if not row:
-        raise HTTPException(404, "Уведомление не найдено")
-    notif_id = row[0]
-
-    # Ищем или создаём TaskExecution для этого уведомления
-    te_stmt = select(TaskExecution).where(TaskExecution.notification_id == notif_id)
-    te_result = await db.execute(te_stmt)
-    te = te_result.scalar_one_or_none()
-    if not te:
-        # Если нет – создаём
-        te = TaskExecution(
-            notification_id=notif_id,
-            employee_id=admin.id,  # лучше взять из уведомления
-            status=TaskExecutionStatus.NOT_STARTED
-        )
-        db.add(te)
-        await db.flush()
+    if data.notification_id:
+        # Обновляем конкретного исполнителя
+        te = await crud.get_task_execution_by_notification(db, data.notification_id)
+        if not te:
+            raise HTTPException(404, "Task execution not found")
+        # Проверяем, что это уведомление относится к этой сделке и задаче
+        notif = await db.get(Notification, data.notification_id)
+        if not notif or notif.extra_data.get('deal_id') != deal_id or notif.extra_data.get('task_id') != task_id:
+            raise HTTPException(400, "Notification does not belong to this deal/task")
+    else:
+        # Старая логика (для совместимости)
+        stmt = text("""
+            SELECT id FROM notifications
+            WHERE type = 'task_assignment'
+                AND status = 'sent'
+                AND (extra_data->>'deal_id')::integer = :deal_id
+                AND (extra_data->>'task_id')::integer = :task_id
+            ORDER BY created_at DESC
+            LIMIT 1
+        """)
+        result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
+        row = result.first()
+        if not row:
+            raise HTTPException(404, "Уведомление не найдено")
+        notif_id = row[0]
+        te = await crud.get_task_execution_by_notification(db, notif_id)
+        if not te:
+            te = TaskExecution(
+                notification_id=notif_id,
+                employee_id=admin.id,
+                status=TaskExecutionStatus.NOT_STARTED
+            )
+            db.add(te)
+            await db.flush()
 
     try:
         new_status = TaskExecutionStatus(data.status)
@@ -1287,6 +1317,7 @@ async def update_task_status(
 class UpdateTaskTime(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    notification_id: Optional[int] = None
 
 @router.put("/deals/{deal_id}/tasks/{task_id}/time")
 async def update_task_time(
@@ -1296,38 +1327,37 @@ async def update_task_time(
     db: AsyncSession = Depends(get_db),
     admin: Employee = Depends(get_current_admin)
 ):
-    from sqlalchemy import text
+    if data.notification_id:
+        te = await crud.get_task_execution_by_notification(db, data.notification_id)
+        if not te:
+            raise HTTPException(404, "Task execution not found")
+        # Проверка принадлежности (опционально)
+    else:
+        # старая логика поиска по deal_id/task_id
+        stmt = text("""
+            SELECT id FROM notifications
+            WHERE type = 'task_assignment'
+                AND status = 'sent'
+                AND (extra_data->>'deal_id')::integer = :deal_id
+                AND (extra_data->>'task_id')::integer = :task_id
+            ORDER BY created_at DESC
+            LIMIT 1
+        """)
+        result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
+        row = result.first()
+        if not row:
+            raise HTTPException(404, "Уведомление не найдено")
+        notif_id = row[0]
+        te = await crud.get_task_execution_by_notification(db, notif_id)
+        if not te:
+            te = TaskExecution(
+                notification_id=notif_id,
+                employee_id=admin.id,
+                status=TaskExecutionStatus.NOT_STARTED
+            )
+            db.add(te)
+            await db.flush()
 
-    # Находим самое свежее уведомление для этой задачи
-    stmt = text("""
-        SELECT id FROM notifications
-        WHERE type = 'task_assignment'
-            AND status = 'sent'
-            AND (extra_data->>'deal_id')::integer = :deal_id
-            AND (extra_data->>'task_id')::integer = :task_id
-        ORDER BY created_at DESC
-        LIMIT 1
-    """)
-    result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
-    row = result.first()
-    if not row:
-        raise HTTPException(404, "Уведомление не найдено")
-    notif_id = row[0]
-
-    # Ищем TaskExecution для этого уведомления
-    te_stmt = select(TaskExecution).where(TaskExecution.notification_id == notif_id)
-    te_result = await db.execute(te_stmt)
-    te = te_result.scalar_one_or_none()
-    if not te:
-        te = TaskExecution(
-            notification_id=notif_id,
-            employee_id=admin.id,
-            status=TaskExecutionStatus.NOT_STARTED
-        )
-        db.add(te)
-        await db.flush()
-
-    # Обновляем время
     if data.started_at is not None:
         te.started_at = data.started_at
     if data.completed_at is not None:
@@ -1559,3 +1589,115 @@ async def delete_product_from_deal(
     await db.delete(dp)
     await db.commit()
     return None
+# ==================== ЭНДПОИНТЫ ДЛЯ ЗАВЕРШЕНИЯ ЗАДАЧ ====================
+
+@router.get("/deals/{deal_id}/tasks/{task_id}/products/{product_type_id}/completion", response_model=Optional[TaskCompletionResponse])
+async def get_task_completion(
+    deal_id: int,
+    task_id: int,
+    product_type_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    """Получить данные завершения задачи для конкретного типа товара."""
+    data = await crud.get_task_completion_with_distributions(db, deal_id, task_id, product_type_id)
+    if not data:
+        return None
+    return {
+        "task_id": task_id,
+        "product_type_id": product_type_id,
+        "product_type_name": data["product_type_name"],
+        "defect_quantity": data["defect_quantity"],
+        "defect_comment": data["defect_comment"],
+        "distributions": data["distributions"]
+    }
+
+
+@router.post("/deals/{deal_id}/tasks/{task_id}/products/{product_type_id}/completion", response_model=TaskCompletionResponse, status_code=201)
+async def create_or_update_task_completion(
+    deal_id: int,
+    task_id: int,
+    product_type_id: int,
+    data: TaskCompletionRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    """
+    Создать или обновить данные завершения задачи для конкретного типа товара.
+    Проверяет, что сумма распределений равна количеству товаров этого типа в задаче.
+    """
+    # data.product_type_id должно совпадать с path parameter
+    if data.product_type_id != product_type_id:
+        raise HTTPException(400, detail="product_type_id in body does not match path parameter")
+
+    distributions = [{"employee_id": d.employee_id, "quantity": d.quantity} for d in data.distributions]
+    try:
+        completion = await crud.create_or_update_task_completion(
+            db,
+            deal_id=deal_id,
+            task_id=task_id,
+            product_type_id=product_type_id,
+            defect_quantity=data.defect_quantity,
+            defect_comment=data.defect_comment,
+            distributions=distributions
+        )
+    except ValueError as e:
+        raise HTTPException(400, detail=str(e))
+
+    # Возвращаем полные данные (перезагружаем)
+    updated = await crud.get_task_completion_with_distributions(db, deal_id, task_id, product_type_id)
+    return {
+        "task_id": task_id,
+        "product_type_id": product_type_id,
+        "product_type_name": updated["product_type_name"],
+        "defect_quantity": updated["defect_quantity"],
+        "defect_comment": updated["defect_comment"],
+        "distributions": updated["distributions"]
+    }
+
+
+@router.delete("/deals/{deal_id}/tasks/{task_id}/products/{product_type_id}/completion", status_code=204)
+async def delete_task_completion(
+    deal_id: int,
+    task_id: int,
+    product_type_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    """Удалить данные завершения задачи для конкретного типа товара."""
+    deleted = await crud.delete_task_completion(db, deal_id, task_id, product_type_id)
+    if not deleted:
+        raise HTTPException(404, detail="Completion data not found")
+    return None
+
+
+@router.get("/deals/{deal_id}/completions", response_model=List[TaskCompletionResponse])
+async def get_all_task_completions_for_deal(
+    deal_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    """Получить данные завершения для всех задач и всех типов товаров сделки."""
+    completions = await crud.get_all_task_completions_for_deal(db, deal_id)
+    # completions уже содержит все поля TaskCompletionResponse
+    return completions
+
+@router.get("/deals/{deal_id}/tasks/{task_id}/completions", response_model=List[TaskCompletionResponse])
+async def get_task_completions_for_task(
+    deal_id: int,
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_employee)
+):
+    """Получить данные о завершении для всех типов товаров конкретной задачи."""
+    # Проверяем права
+    is_admin = current_user.is_admin == 1
+    if not is_admin:
+        is_executor = await crud.is_employee_task_executor(db, current_user.id, task_id, deal_id)
+        if not is_executor:
+            raise HTTPException(403, "Доступ запрещен: вы не являетесь исполнителем этой задачи")
+    
+    completions = await crud.get_all_task_completions_for_deal(db, deal_id)
+    # Фильтруем по task_id
+    filtered = [c for c in completions if c["task_id"] == task_id]
+    return filtered

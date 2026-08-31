@@ -122,7 +122,7 @@
             background-color: rgba(0,0,0,0.5);
         }
         .modal-content {
-            background: white; margin: 20% auto; padding: 20px;
+            background: white; margin: 2% auto; padding: 20px;
             border-radius: 20px; width: 90%; max-width: 400px;
         }
         .modal-content input { width: 100%; margin: 8px 0; padding: 8px; }
@@ -452,6 +452,35 @@
             margin-left: 6px;
             font-weight: bold;
         }
+
+        /* стили для модалки завершения задачи */
+        #completeTaskModal .modal-content input[type="number"],
+        #completeTaskModal .modal-content input[type="text"] {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+        #completeTaskModal .modal-content input[type="number"] {
+            max-width: 80px;
+        }
+        #completeTaskModal .modal-content table th,
+        #completeTaskModal .modal-content table td {
+            padding: 6px 8px;
+            vertical-align: middle;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        #completeTaskModal .modal-content table td:first-child {
+            font-weight: 500;
+        }
+        #completeTaskModal .modal-content .defect-input {
+            background-color: #fef2f2; /* лёгкий красный оттенок для брака */
+        }
+        #completeTaskModal .modal-content .distribution-input {
+            background-color: #f0fdf4; /* лёгкий зелёный оттенок для производства */
+        }
     </style>
 </head>
 <body>
@@ -626,7 +655,68 @@
         <div id="fixEndError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
+<!-- Модальное окно завершения задачи -->
+<div id="completeTaskModal" class="modal">
+    <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <span class="close-complete-modal" style="float:right; font-size:1.8rem; cursor:pointer; color:#aaa;">&times;</span>
+        <h3 id="completeTaskTitle">✅ Завершение задачи</h3>
+        <div id="completeTaskInfo" style="margin-bottom: 16px; font-size: 0.95rem; color: #475569;"></div>
+
+        <!-- Таблица товаров с браком -->
+        <h4 style="margin: 16px 0 8px;">📦 Брак по товарам</h4>
+        <div id="defectTableContainer" style="overflow-x: auto; margin-bottom: 20px;">
+            <table id="defectTable" style="width:100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background:#f8fafc;">
+                        <th style="padding:8px; text-align:left;">Товар</th>
+                        <th style="padding:8px; text-align:left;">Количество</th>
+                        <th style="padding:8px; text-align:left;">Брак (шт.)</th>
+                        <th style="padding:8px; text-align:left;">Комментарий к браку</th>
+                    </tr>
+                </thead>
+                <tbody id="defectTableBody">
+                    <!-- заполняется JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Таблица распределения продукции -->
+        <h4 style="margin: 16px 0 8px;">👥 Распределение произведённой продукции</h4>
+        <div id="distributionTableContainer" style="overflow-x: auto; margin-bottom: 20px;">
+            <table id="distributionTable" style="width:100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background:#f8fafc;">
+                        <th style="padding:8px; text-align:left;">Исполнитель</th>
+                        <!-- заголовки товаров будут добавлены JS -->
+                    </tr>
+                </thead>
+                <tbody id="distributionTableBody">
+                    <!-- заполняется JS -->
+                </tbody>
+                <tfoot id="distributionTableFoot" style="font-weight:bold; background:#f1f5f9;">
+                    <!-- итоги по каждому товару -->
+                </tfoot>
+            </table>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; gap: 12px; justify-content: flex-end;">
+            <button id="cancelCompleteBtn" class="btn" style="background:#94a3b8;">Отмена</button>
+            <button id="finalCompleteBtn" class="btn" style="background:#22c55e;">✅ Завершить задачу</button>
+        </div>
+        <div id="completeError" style="color:red; margin-top:12px;"></div>
+    </div>
+</div>
 <script>
+    let currentCompleteData = {
+        notificationId: null,
+        dealId: null,
+        taskId: null,
+        productTypes: [],          // массив объектов {id, name, quantity, defect_quantity, defect_comment}
+        assignees: [],             // массив {employee_id, full_name}
+        distributions: {}          // ключ - product_type_id, значение - объект {employee_id: quantity}
+    };
+    let isSaving = false;
+
     let openTaskIds = new Set();
     // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
     function getLocalDate() {
@@ -2016,6 +2106,7 @@
         }
     }
 
+
     function renderTaskNotifications(notifications, container) {
         if (!notifications.length) {
             container.innerHTML = '<p>Нет назначенных задач</p>';
@@ -2023,11 +2114,17 @@
         }
         let html = '<div class="task-accordion">';
         for (const n of notifications) {
+            const notifId = n.notification_id || n.id;
             const { taskName, dealTitle, products } = parseTaskNotification(n);
+            const dealId = n.extra_data?.deal_id;
+            const taskId = n.extra_data?.task_id;
             const createdDate = new Date(n.created_at).toLocaleString('ru-RU', {
                 day: '2-digit', month: '2-digit', year: 'numeric',
                 hour: '2-digit', minute: '2-digit'
             });
+
+            // Сериализуем товары для передачи в data-атрибуты
+            const productsJson = JSON.stringify(products).replace(/"/g, '&quot;');
 
             let productsHtml = '';
             if (products.length) {
@@ -2040,21 +2137,41 @@
 
             const status = n.status || 'not_started';
             let statusText = '', statusColor = '', actionButtons = '';
+
+            // ---------- ИСПОЛНИТЕЛИ ----------
+            const assignees = n.assignees || [];
+            const isMainAssignee = assignees.length > 0 && assignees[0].employee_id === window.currentEmployeeId;
+
             if (status === 'not_started') {
                 statusText = 'Не начата';
                 statusColor = '#64748b';
-                actionButtons = `<button class="btn btn-sm task-start" data-id="${n.id}">▶️ Начать</button>`;
+                const completeBtnHtml = isMainAssignee
+                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
+                    : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
+                actionButtons = `
+                    <button class="btn btn-sm task-start" data-id="${notifId}">▶️ Начать</button>
+                    ${completeBtnHtml}
+                `;
             } else if (status === 'in_progress') {
                 statusText = 'В процессе';
                 statusColor = '#f59e0b';
+                const completeBtnHtml = isMainAssignee
+                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
+                    : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
                 actionButtons = `
-                    <button class="btn btn-sm task-break" data-id="${n.id}">⏸️ Перерыв</button>
-                    <button class="btn btn-sm btn-warning task-complete" data-id="${n.id}">⏹️ Завершить</button>
+                    <button class="btn btn-sm task-break" data-id="${notifId}">⏸️ Перерыв</button>
+                    ${completeBtnHtml}
                 `;
             } else if (status === 'on_break') {
                 statusText = 'В перерыве';
                 statusColor = '#8b5cf6';
-                actionButtons = `<button class="btn btn-sm task-resume" data-id="${n.id}">▶️ Продолжить</button>`;
+                const completeBtnHtml = isMainAssignee
+                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
+                    : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
+                actionButtons = `
+                    <button class="btn btn-sm task-resume" data-id="${notifId}">▶️ Продолжить</button>
+                    ${completeBtnHtml}
+                `;
             } else if (status === 'completed') {
                 statusText = 'Выполнена';
                 statusColor = '#22c55e';
@@ -2071,21 +2188,12 @@
                 timeInfo += `<div><strong>Завершение:</strong> ${endTime}</div>`;
             }
 
-            // ---------- ИСПОЛНИТЕЛИ ----------
-            const assignees = n.assignees || [];
-            const dealId = n.extra_data?.deal_id;
-            const taskId = n.extra_data?.task_id;
-
-            // Проверяем, является ли текущий пользователь основным исполнителем
-            const isMainAssignee = assignees.length > 0 && assignees[0].employee_id === window.currentEmployeeId;
-
+            // ---------- ОТОБРАЖЕНИЕ ИСПОЛНИТЕЛЕЙ ----------
             let assigneesHtml = '';
             if (assignees.length) {
                 const main = assignees[0];
                 const others = assignees.slice(1);
-                // Основной исполнитель (без крестика)
                 assigneesHtml += `<span class="assignee-tag main-assignee">${escapeHtml(main.employee_name)}</span>`;
-                // Соисполнители – крестик только если мы основной исполнитель
                 others.forEach(a => {
                     const removeBtn = isMainAssignee 
                         ? `<span class="remove-assignee" data-deal-id="${dealId}" data-task-id="${taskId}" data-employee-id="${a.employee_id}">✖</span>` 
@@ -2100,13 +2208,11 @@
                 assigneesHtml = '—';
             }
 
-            // Кнопка добавления соисполнителя – только для основного исполнителя и если задача не завершена
             let addButton = '';
             if (status !== 'completed' && isMainAssignee) {
                 addButton = `<button class="btn btn-sm btn-success add-assignee-btn" data-deal-id="${dealId}" data-task-id="${taskId}">➕</button>`;
             }
 
-            // Формируем строку товаров для заголовка
             let productsString = '';
             if (products && products.length) {
                 productsString = products.map(p => `${escapeHtml(p.name)}(${p.quantity})`).join(', ');
@@ -2142,56 +2248,61 @@
         html += '</div>';
         container.innerHTML = html;
 
+        // Обработчики для кнопок
         container.querySelectorAll('.task-start').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const id = this.dataset.id;
-                startTask(id);
+                if (id) startTask(id);
             });
         });
         container.querySelectorAll('.task-break').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const id = this.dataset.id;
-                taskBreak(id);
+                if (id) taskBreak(id);
             });
         });
-
         container.querySelectorAll('.task-resume').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const id = this.dataset.id;
-                taskResume(id);
+                if (id) taskResume(id);
             });
         });
         container.querySelectorAll('.task-complete').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const id = this.dataset.id;
-                completeTask(id);
+                if (id) completeTask(id);
             });
         });
-
+        // Новый обработчик для простого завершения (только для соисполнителей)
+        container.querySelectorAll('.task-complete-simple').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const id = this.dataset.id;
+                if (id) completeTaskSimple(id);
+            });
+        });
         container.querySelectorAll('.add-assignee-btn').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const dealId = this.dataset.dealId;
                 const taskId = this.dataset.taskId;
-                openAddAssigneeModal(dealId, taskId);
+                if (dealId && taskId) openAddAssigneeModal(dealId, taskId);
             });
         });
-
         container.querySelectorAll('.remove-assignee').forEach(el => {
             el.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const dealId = this.dataset.dealId;
                 const taskId = this.dataset.taskId;
                 const employeeId = this.dataset.employeeId;
-                removeAssignee(dealId, taskId, employeeId);
+                if (dealId && taskId && employeeId) removeAssignee(dealId, taskId, employeeId);
             });
         });
     }
-
     function parseTaskNotification(notif) {
         const extra = notif.extra_data || {};
         let taskName = extra.task_name || '';
@@ -2238,21 +2349,143 @@
     }
 
     async function completeTask(notificationId) {
+        if (!notificationId) {
+            showToast('Ошибка: идентификатор уведомления не найден', true);
+            return;
+        }
+
+        // Находим кнопку "Завершить" по data-id
+        const btn = document.querySelector(`.task-complete[data-id="${notificationId}"]`);
+        if (!btn) {
+            showToast('Кнопка задачи не найдена, обновите страницу', true);
+            return;
+        }
+
+        // Читаем данные из атрибутов
+        const dealId = parseInt(btn.dataset.dealId);
+        const taskId = parseInt(btn.dataset.taskId);
+        let products = [];
         try {
-            const resp = await fetch(`/api/employee/tasks/${notificationId}/complete`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (resp.ok) {
-                showToast('Задача завершена');
-                loadTaskNotifications();
-            } else {
-                const err = await resp.json();
-                showToast(err.detail || 'Ошибка', true);
+            products = JSON.parse(btn.dataset.products || '[]');
+        } catch (e) {
+            products = [];
+        }
+
+        if (!dealId || !taskId) {
+            showToast('Не удалось определить сделку или задачу', true);
+            return;
+        }
+
+        // Открываем модальное окно
+        const modal = document.getElementById('completeTaskModal');
+        modal.style.display = 'block';
+        document.getElementById('completeError').innerText = '';
+        document.getElementById('finalCompleteBtn').disabled = false;
+
+        try {
+            // Сохраняем в глобальный объект
+            currentCompleteData.notificationId = notificationId;
+            currentCompleteData.dealId = dealId;
+            currentCompleteData.taskId = taskId;
+
+            // Загружаем данные о сделке (исполнители и товары)
+            const dealResp = await fetch(`/api/sandbox/deals/${dealId}`, { credentials: 'include' });
+            if (!dealResp.ok) throw new Error('Ошибка загрузки сделки');
+            const deal = await dealResp.json();
+
+            // Находим информацию о задаче в сделке
+            const taskInfo = deal.tasks?.find(t => t.task_id === taskId);
+            if (!taskInfo) throw new Error('Задача не найдена в сделке');
+            const assignees = taskInfo.assignees || [];
+
+            // Получаем типы товаров из сделки для сопоставления
+            const productTypesFromDeal = deal.products || [];
+            const productTypeMap = {};
+            productTypesFromDeal.forEach(p => productTypeMap[p.name] = p.id);
+
+            // Формируем список productTypes с id, количеством и дефектами
+            const productTypes = products.map(p => {
+                const id = productTypeMap[p.name] || null;
+                return {
+                    id: id,
+                    name: p.name,
+                    quantity: p.quantity,
+                    defect_quantity: 0,
+                    defect_comment: ''
+                };
+            }).filter(p => p.id !== null);
+
+            if (!productTypes.length) {
+                throw new Error('Для задачи не найдены товары');
             }
+
+            // Загружаем существующие данные о завершении
+            const completionsResp = await fetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/completions`, { credentials: 'include' });
+            let completions = [];
+            if (completionsResp.ok) {
+                completions = await completionsResp.json();
+            }
+
+            // Обогащаем productTypes данными из completions
+            const compMap = {};
+            completions.forEach(c => compMap[c.product_type_id] = c);
+            productTypes.forEach(pt => {
+                const comp = compMap[pt.id];
+                if (comp) {
+                    // Если уже есть сохранённые распределения – используем их
+                    pt.defect_quantity = comp.defect_quantity || 0;
+                    pt.defect_comment = comp.defect_comment || '';
+                    currentCompleteData.distributions[pt.id] = {};
+                    if (comp.distributions && comp.distributions.length) {
+                        comp.distributions.forEach(d => {
+                            currentCompleteData.distributions[pt.id][d.employee_id] = d.quantity;
+                        });
+                    } else {
+                        // Если распределений нет – заполняем по умолчанию (всё первому исполнителю)
+                        if (assignees.length > 0) {
+                            currentCompleteData.distributions[pt.id][assignees[0].employee_id] = pt.quantity;
+                            for (let i = 1; i < assignees.length; i++) {
+                                currentCompleteData.distributions[pt.id][assignees[i].employee_id] = 0;
+                            }
+                        }
+                    }
+                } else {
+                    // Нет записи – создаём с распределением по умолчанию
+                    currentCompleteData.distributions[pt.id] = {};
+                    if (assignees.length > 0) {
+                        currentCompleteData.distributions[pt.id][assignees[0].employee_id] = pt.quantity;
+                        for (let i = 1; i < assignees.length; i++) {
+                            currentCompleteData.distributions[pt.id][assignees[i].employee_id] = 0;
+                        }
+                    } else {
+                        assignees.forEach(a => {
+                            currentCompleteData.distributions[pt.id][a.employee_id] = 0;
+                        });
+                    }
+                }
+            });
+
+            currentCompleteData.productTypes = productTypes;
+            currentCompleteData.assignees = assignees;
+
+            // Рендерим таблицы
+            renderDefectTable();
+            renderDistributionTable();
+
+            // Устанавливаем заголовок и информацию
+            document.getElementById('completeTaskTitle').innerText = `✅ Завершение задачи: ${taskInfo.task_name || 'Задача'}`;
+            document.getElementById('completeTaskInfo').innerHTML = `
+                <strong>Сделка:</strong> ${deal.title || '—'} &nbsp;|&nbsp;
+                <strong>Задача:</strong> ${taskInfo.task_name || '—'}
+            `;
+
+            // Обработчики для автосохранения
+            attachDefectHandlers();
+            attachDistributionHandlers();
+
         } catch (err) {
-            showToast('Ошибка сети', true);
+            document.getElementById('completeError').innerText = 'Ошибка: ' + err.message;
+            console.error(err);
         }
     }
 
@@ -2426,6 +2659,275 @@ async function taskResume(notificationId) {
         } else {
             const err = await resp.json();
             showToast(err.detail || 'Ошибка', true);
+        }
+    } catch (err) {
+        showToast('Ошибка сети', true);
+    }
+}
+
+function renderDefectTable() {
+    const tbody = document.getElementById('defectTableBody');
+    tbody.innerHTML = '';
+    currentCompleteData.productTypes.forEach(pt => {
+        const tr = document.createElement('tr');
+        tr.dataset.productTypeId = pt.id;
+        tr.innerHTML = `
+            <td>${escapeHtml(pt.name)}</td>
+            <td>${pt.quantity}</td>
+            <td>
+                <input type="number" class="defect-input" min="0" max="${pt.quantity}" 
+                       value="${pt.defect_quantity}" data-product-id="${pt.id}" 
+                       style="width:70px;">
+            </td>
+            <td>
+                <input type="text" class="defect-comment-input" value="${escapeHtml(pt.defect_comment)}" 
+                       data-product-id="${pt.id}" style="width:100%;">
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function renderDistributionTable() {
+    const thead = document.querySelector('#distributionTable thead');
+    const tbody = document.getElementById('distributionTableBody');
+    const tfoot = document.getElementById('distributionTableFoot');
+
+    // Очищаем
+    tbody.innerHTML = '';
+    tfoot.innerHTML = '';
+
+    // Заголовки: Исполнитель + каждый тип товара
+    let headerRow = document.createElement('tr');
+    headerRow.innerHTML = '<th style="padding:8px; text-align:left;">Исполнитель</th>';
+    currentCompleteData.productTypes.forEach(pt => {
+        const th = document.createElement('th');
+        th.textContent = pt.name;
+        th.style.padding = '8px';
+        th.style.textAlign = 'left';
+        headerRow.appendChild(th);
+    });
+    thead.innerHTML = '';
+    thead.appendChild(headerRow);
+
+    // Строки для каждого исполнителя
+    currentCompleteData.assignees.forEach(assignee => {
+        const tr = document.createElement('tr');
+        tr.dataset.employeeId = assignee.employee_id;
+        tr.innerHTML = `<td><strong>${escapeHtml(assignee.employee_name)}</strong></td>`;
+        currentCompleteData.productTypes.forEach(pt => {
+            const td = document.createElement('td');
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = 0;
+            input.className = 'distribution-input';
+            input.dataset.productId = pt.id;
+            input.dataset.employeeId = assignee.employee_id;
+            const val = currentCompleteData.distributions[pt.id]?.[assignee.employee_id] || 0;
+            input.value = val;
+            td.appendChild(input);
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+
+    // Строка итогов по каждому товару
+    let footRow = document.createElement('tr');
+    footRow.innerHTML = `<td><strong>Итого</strong></td>`;
+    currentCompleteData.productTypes.forEach(pt => {
+        let total = 0;
+        currentCompleteData.assignees.forEach(a => {
+            total += (currentCompleteData.distributions[pt.id]?.[a.employee_id] || 0);
+        });
+        const td = document.createElement('td');
+        td.textContent = total;
+        td.style.fontWeight = 'bold';
+        td.style.color = '#2563eb';
+        footRow.appendChild(td);
+    });
+    tfoot.appendChild(footRow);
+}
+function attachDefectHandlers() {
+    // Изменение брака
+    document.querySelectorAll('.defect-input').forEach(inp => {
+        inp.removeEventListener('input', onDefectChange);
+        inp.addEventListener('input', onDefectChange);
+    });
+    // Изменение комментария
+    document.querySelectorAll('.defect-comment-input').forEach(inp => {
+        inp.removeEventListener('input', onDefectCommentChange);
+        inp.addEventListener('input', onDefectCommentChange);
+    });
+}
+
+async function onDefectChange(e) {
+    const input = e.target;
+    const productTypeId = parseInt(input.dataset.productId);
+    const val = parseInt(input.value) || 0;
+    // Обновляем локальные данные
+    const pt = currentCompleteData.productTypes.find(p => p.id === productTypeId);
+    if (pt) pt.defect_quantity = val;
+    await saveCompletionForProduct(productTypeId);
+    // Обновим итоги (перерисовать таблицу распределения? можно обновить только итоговую строку)
+    updateDistributionTotals();
+}
+
+async function onDefectCommentChange(e) {
+    const input = e.target;
+    const productTypeId = parseInt(input.dataset.productId);
+    const val = input.value;
+    const pt = currentCompleteData.productTypes.find(p => p.id === productTypeId);
+    if (pt) pt.defect_comment = val;
+    await saveCompletionForProduct(productTypeId);
+}
+
+function attachDistributionHandlers() {
+    document.querySelectorAll('.distribution-input').forEach(inp => {
+        inp.removeEventListener('input', onDistributionChange);
+        inp.addEventListener('input', onDistributionChange);
+    });
+}
+
+async function onDistributionChange(e) {
+    const input = e.target;
+    const productTypeId = parseInt(input.dataset.productId);
+    const employeeId = parseInt(input.dataset.employeeId);
+    const val = parseInt(input.value) || 0;
+    // Обновляем локальные данные
+    if (!currentCompleteData.distributions[productTypeId]) {
+        currentCompleteData.distributions[productTypeId] = {};
+    }
+    currentCompleteData.distributions[productTypeId][employeeId] = val;
+    await saveCompletionForProduct(productTypeId);
+    // Обновим итоговую строку
+    updateDistributionTotals();
+}
+
+function updateDistributionTotals() {
+    const tfoot = document.getElementById('distributionTableFoot');
+    const cells = tfoot.querySelectorAll('td');
+    // cells[0] - "Итого", остальные - товары
+    currentCompleteData.productTypes.forEach((pt, idx) => {
+        const td = cells[idx+1];
+        if (td) {
+            let total = 0;
+            currentCompleteData.assignees.forEach(a => {
+                total += (currentCompleteData.distributions[pt.id]?.[a.employee_id] || 0);
+            });
+            td.textContent = total;
+        }
+    });
+}
+async function saveCompletionForProduct(productTypeId) {
+    if (isSaving) return;
+    isSaving = true;
+    try {
+        const pt = currentCompleteData.productTypes.find(p => p.id === productTypeId);
+        if (!pt) return;
+        // Собираем распределения для этого типа товара
+        const dists = currentCompleteData.assignees.map(a => ({
+            employee_id: a.employee_id,
+            quantity: currentCompleteData.distributions[productTypeId]?.[a.employee_id] || 0
+        }));
+        // Проверяем, что сумма распределений не превышает количество товара
+        const totalDist = dists.reduce((sum, d) => sum + d.quantity, 0);
+        if (totalDist > pt.quantity) {
+            document.getElementById('completeError').innerText = `Сумма распределений по товару "${pt.name}" превышает количество (${pt.quantity})`;
+            isSaving = false;
+            return;
+        }
+        const payload = {
+            product_type_id: productTypeId,
+            defect_quantity: pt.defect_quantity,
+            defect_comment: pt.defect_comment,
+            distributions: dists
+        };
+        const resp = await fetch(`/api/sandbox/deals/${currentCompleteData.dealId}/tasks/${currentCompleteData.taskId}/products/${productTypeId}/completion`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            credentials: 'include'
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || 'Ошибка сохранения');
+        }
+        // Убираем ошибку, если была
+        document.getElementById('completeError').innerText = '';
+        // Обновим итоги (сумма может измениться из-за бэка, но мы уже обновили локально)
+    } catch (err) {
+        document.getElementById('completeError').innerText = err.message;
+        console.error(err);
+    } finally {
+        isSaving = false;
+    }
+}
+document.getElementById('finalCompleteBtn').addEventListener('click', async function() {
+    const btn = this;
+    btn.disabled = true;
+    document.getElementById('completeError').innerText = '';
+    try {
+        // Проверим, что все распределения заполнены корректно (сумма равна количеству для каждого товара)
+        let allValid = true;
+        for (const pt of currentCompleteData.productTypes) {
+            const total = currentCompleteData.assignees.reduce((sum, a) => sum + (currentCompleteData.distributions[pt.id]?.[a.employee_id] || 0), 0);
+            if (total !== pt.quantity) {
+                document.getElementById('completeError').innerText = `Для товара "${pt.name}" сумма распределений (${total}) не равна количеству (${pt.quantity})`;
+                allValid = false;
+                break;
+            }
+        }
+        if (!allValid) {
+            btn.disabled = false;
+            return;
+        }
+
+        // Отправляем запрос на завершение задачи
+        const resp = await fetch(`/api/employee/tasks/${currentCompleteData.notificationId}/complete`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || 'Ошибка завершения задачи');
+        }
+        showToast('✅ Задача успешно завершена');
+        document.getElementById('completeTaskModal').style.display = 'none';
+        loadTaskNotifications(); // обновляем список задач
+    } catch (err) {
+        document.getElementById('completeError').innerText = err.message;
+        btn.disabled = false;
+    }
+});
+document.getElementById('cancelCompleteBtn').addEventListener('click', function() {
+    document.getElementById('completeTaskModal').style.display = 'none';
+});
+document.querySelector('#completeTaskModal .close-complete-modal').addEventListener('click', function() {
+    document.getElementById('completeTaskModal').style.display = 'none';
+});
+window.addEventListener('click', function(e) {
+    const modal = document.getElementById('completeTaskModal');
+    if (e.target === modal) modal.style.display = 'none';
+});
+
+async function completeTaskSimple(notificationId) {
+    if (!notificationId) {
+        showToast('Ошибка: идентификатор уведомления не найден', true);
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/employee/tasks/${notificationId}/complete`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        if (resp.ok) {
+            showToast('✅ Задача выполнена');
+            loadTaskNotifications();
+        } else {
+            const err = await resp.json();
+            showToast(err.detail || 'Ошибка завершения', true);
         }
     } catch (err) {
         showToast('Ошибка сети', true);

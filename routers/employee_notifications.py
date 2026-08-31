@@ -7,7 +7,7 @@ from datetime import datetime
 from database import get_db
 from routers.auth import get_current_employee
 import models
-from models import Notification, Explanation, NotificationStatus, NotificationType
+from models import Notification, Explanation, NotificationStatus, NotificationType, TaskBreak
 from sse import notify_admin_clients
 from models import TaskExecution, TaskExecutionStatus
 from crud import get_task_execution_by_notification, update_task_execution_status
@@ -248,19 +248,35 @@ async def complete_task(
     # 2. Получаем запись выполнения
     task_exec = await get_task_execution_by_notification(db, notification_id)
     if not task_exec:
-        raise HTTPException(404, "Запись о выполнении не найдена")
+        # Если записи нет – создаём
+        task_exec = TaskExecution(
+            notification_id=notification_id,
+            employee_id=employee.id,
+            status=TaskExecutionStatus.NOT_STARTED
+        )
+        db.add(task_exec)
+        await db.flush()
 
-    # 3. Проверяем статус
+    # 3. Если задача ещё не начата – устанавливаем started_at = время создания уведомления
     if task_exec.status == TaskExecutionStatus.NOT_STARTED:
-        raise HTTPException(400, "Задача ещё не начата")
-    if task_exec.status == TaskExecutionStatus.COMPLETED:
-        raise HTTPException(400, "Задача уже завершена")
+        task_exec.started_at = notif.created_at
 
-    # 4. Обновляем статус и время завершения
+    # 4. Если задача на перерыве – закрываем активный перерыв
+    if task_exec.status == TaskExecutionStatus.ON_BREAK:
+        stmt_break = select(TaskBreak).where(
+            TaskBreak.task_execution_id == task_exec.id,
+            TaskBreak.ended_at.is_(None)
+        ).order_by(TaskBreak.started_at.desc()).limit(1)
+        break_result = await db.execute(stmt_break)
+        current_break = break_result.scalar_one_or_none()
+        if current_break:
+            current_break.ended_at = datetime.now()
+
+    # 5. Устанавливаем статус COMPLETED и фиксируем время завершения
     task_exec.status = TaskExecutionStatus.COMPLETED
     task_exec.completed_at = datetime.now()
-    await db.commit()
 
+    await db.commit()
     return {"message": "Задача завершена", "completed_at": task_exec.completed_at.isoformat()}
 
 
@@ -567,6 +583,14 @@ async def task_break(
         raise HTTPException(403, "Not your task")
     if te.status != TaskExecutionStatus.IN_PROGRESS:
         raise HTTPException(400, "Task must be in progress to start break")
+    
+    # Создаём запись перерыва
+    new_break = TaskBreak(
+        task_execution_id=te.id,
+        started_at=datetime.now()
+    )
+    db.add(new_break)
+    
     te.status = TaskExecutionStatus.ON_BREAK
     await db.commit()
     return {"message": "Task break started"}
@@ -584,6 +608,42 @@ async def task_resume(
         raise HTTPException(403, "Not your task")
     if te.status != TaskExecutionStatus.ON_BREAK:
         raise HTTPException(400, "Task must be on break to resume")
+    
+    # Находим последний активный перерыв (ended_at IS NULL)
+    stmt = select(TaskBreak).where(
+        TaskBreak.task_execution_id == te.id,
+        TaskBreak.ended_at.is_(None)
+    ).order_by(TaskBreak.started_at.desc()).limit(1)
+    result = await db.execute(stmt)
+    current_break = result.scalar_one_or_none()
+    if current_break:
+        current_break.ended_at = datetime.now()
+    
     te.status = TaskExecutionStatus.IN_PROGRESS
     await db.commit()
     return {"message": "Task resumed"}
+
+@router.get("/tasks/{notification_id}/breaks")
+async def get_task_breaks(
+    notification_id: int,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db)
+):
+    te = await crud.get_task_execution_by_notification(db, notification_id)
+    if not te:
+        raise HTTPException(404, "Task execution not found")
+    if te.employee_id != employee.id:
+        raise HTTPException(403, "Not your task")
+    
+    stmt = select(TaskBreak).where(TaskBreak.task_execution_id == te.id).order_by(TaskBreak.started_at)
+    result = await db.execute(stmt)
+    breaks = result.scalars().all()
+    
+    return [
+        {
+            "started_at": b.started_at.isoformat(),
+            "ended_at": b.ended_at.isoformat() if b.ended_at else None,
+            "duration_minutes": round((b.ended_at - b.started_at).total_seconds() / 60, 2) if b.ended_at else None
+        }
+        for b in breaks
+    ]

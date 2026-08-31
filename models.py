@@ -50,6 +50,7 @@ class Employee(Base):
     notifications = relationship("Notification", foreign_keys="Notification.employee_id", back_populates="employee")
     admin_notifications = relationship("Notification", foreign_keys="Notification.admin_id", back_populates="admin")
     task_executions = relationship("TaskExecution", back_populates="employee")
+    task_production_distributions = relationship("TaskProductionDistribution", back_populates="employee")
 
 
 class TimeEntry(Base):
@@ -161,6 +162,7 @@ class Deal(Base):
     ip = relationship("IP", back_populates="deals")
     mp = relationship("MP", back_populates="deals")
     deal_products = relationship("DealProductType", back_populates="deal", cascade="all, delete-orphan")
+    task_completion_data = relationship("TaskCompletionData", back_populates="deal", cascade="all, delete-orphan")
 
 class DealProductType(Base):
     __tablename__ = "deal_products"
@@ -188,6 +190,7 @@ class ProductType(Base):
     tech_card_id = Column(Integer, ForeignKey("tech_cards.id"), nullable=True)
     tech_card = relationship("TechCard", back_populates="products")
     deal_products = relationship("DealProductType", back_populates="product_type")
+    task_completion_data = relationship("TaskCompletionData", back_populates="product_type")
 
 class TechCard(Base):
     __tablename__ = "tech_cards"
@@ -212,6 +215,7 @@ class Task(Base):
     tech_card_tasks = relationship("TechCardTask", back_populates="task")
     role_tasks = relationship("RoleTask", back_populates="task", cascade="all, delete-orphan")
     deal_type_tasks = relationship("DealTypeTask", back_populates="task", cascade="all, delete-orphan")
+    task_completion_data = relationship("TaskCompletionData", back_populates="task", cascade="all, delete-orphan")
 
 class TechCardTask(Base):
     __tablename__="tech_card_tasks"
@@ -282,5 +286,45 @@ class TaskExecution(Base):
     # Связи
     notification = relationship("Notification", back_populates="task_execution")
     employee = relationship("Employee", back_populates="task_executions")
+    breaks = relationship("TaskBreak", back_populates="task_execution", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint('notification_id', name='uq_notification_task'),)
+
+class TaskBreak(Base):
+    __tablename__ = "task_breaks"
+    id = Column(Integer, primary_key=True)
+    task_execution_id = Column(Integer, ForeignKey("task_executions.id"), nullable=False)
+    started_at = Column(DateTime, nullable=False)
+    ended_at = Column(DateTime, nullable=True)  # NULL, если перерыв ещё активен
+
+    # Связь с TaskExecution (добавить в TaskExecution)
+    task_execution = relationship("TaskExecution", back_populates="breaks")
+
+class TaskCompletionData(Base):
+    __tablename__ = "task_completion_data"
+    id = Column(Integer, primary_key=True)
+    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
+    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=False)   # НОВОЕ поле
+    defect_quantity = Column(Integer, default=0, nullable=False)
+    defect_comment = Column(String(300), nullable=True)
+
+    # Связи
+    deal = relationship("Deal", back_populates="task_completion_data")
+    task = relationship("Task", back_populates="task_completion_data")
+    product_type = relationship("ProductType", back_populates="task_completion_data")  # НОВАЯ связь
+    distributions = relationship("TaskProductionDistribution", back_populates="task_completion", cascade="all, delete-orphan")
+
+    # Уникальность: одна запись на (договор, задача, тип товара)
+    __table_args__ = (UniqueConstraint('deal_id', 'task_id', 'product_type_id', name='uq_deal_task_product'),)
+
+
+class TaskProductionDistribution(Base):
+    __tablename__ = "task_production_distribution"
+    id = Column(Integer, primary_key=True)
+    task_completion_id = Column(Integer, ForeignKey("task_completion_data.id"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    quantity = Column(Integer, nullable=False, default=0)
+
+    task_completion = relationship("TaskCompletionData", back_populates="distributions")
+    employee = relationship("Employee", back_populates="task_production_distributions")

@@ -6499,9 +6499,8 @@ function showDetail(deal) {
     titleSpan.style.cursor = 'pointer';
     titleSpan.title = 'Кликните, чтобы изменить название';
 
-    // Функция переключения в режим редактирования
     function enableTitleEditing() {
-        const currentTitle = titleSpan.textContent.replace(/^Сделка #\d+: /, '');
+        const currentTitle = titleSpan.textContent.replace(/^Сделка: /, '');
         const input = document.createElement('input');
         input.type = 'text';
         input.value = currentTitle;
@@ -6513,7 +6512,6 @@ function showDetail(deal) {
         input.style.width = '80%';
         input.style.background = 'white';
 
-        // Заменяем span на input
         titleSpan.replaceWith(input);
         input.focus();
         input.select();
@@ -6523,8 +6521,7 @@ function showDetail(deal) {
             if (newTitle && newTitle !== currentTitle) {
                 updateDealTitle(deal.id, newTitle);
             }
-            // Возвращаем отображение
-            titleSpan.textContent = `Сделка #${deal.id}: ${newTitle || currentTitle}`;
+            titleSpan.textContent = `Сделка: ${newTitle || currentTitle}`;
             input.replaceWith(titleSpan);
         }
 
@@ -6546,7 +6543,6 @@ function showDetail(deal) {
 
     titleSpan.addEventListener('click', enableTitleEditing);
 
-    // Вставляем заголовок в нужное место (заменяем detailTitle)
     detailTitle.innerHTML = '';
     detailTitle.appendChild(titleSpan);
 
@@ -6556,8 +6552,8 @@ function showDetail(deal) {
             <div><strong>ID:</strong> ${deal.id}</div>
         </div>
     `;
-    
-    // ---- Товары (таблица с редактируемыми количествами и кнопкой удаления) ----
+
+    // ---- Товары (без изменений) ----
     if (deal.products && deal.products.length > 0) {
         html += `<h4>📦 Товары в сделке</h4>
                 <table style="width:100%; border-collapse:collapse; margin-top:8px;" id="deal-products-table">
@@ -6588,7 +6584,7 @@ function showDetail(deal) {
         html += `<p style="color:#94a3b8; margin-top:12px;">Нет товаров в этой сделке</p>`;
     }
 
-    // ---- Блок добавления товара (как в модалке создания) ----
+    // ---- Блок добавления товара (без изменений) ----
     html += `
         <div style="margin-top: 20px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
             <h4>➕ Добавить товар в сделку</h4>
@@ -6603,76 +6599,69 @@ function showDetail(deal) {
         </div>
     `;
 
-    // ---- Задачи по сделке (оставляем без изменений) ----
+    // ---- Задачи по сделке (НОВАЯ ТАБЛИЦА С РАЗДЕЛЬНЫМИ ИСПОЛНИТЕЛЯМИ) ----
     if (deal.tasks && deal.tasks.length > 0) {
         html += `<h4 style="margin-top:20px;">📋 Задачи по сделке</h4>
                 <table style="width:100%; border-collapse:collapse; margin-top:8px;" id="deal-tasks-table">
                     <thead>
                         <tr style="background:#f1f5f9;">
-                            <th style="padding:8px; text-align:left;">Задача</th>
-                            <th style="padding:8px; text-align:left;">Сотрудники</th>
-                            <th style="padding:8px; text-align:left;">Статус</th>
-                            <th style="padding:8px; text-align:left;">Начало</th>
-                            <th style="padding:8px; text-align:left;">Завершение</th>
+                            <th style="padding:8px; text-align:left; width:20%;">Задача</th>
+                            <th style="padding:8px; text-align:left; width:20%;">Исполнитель</th>
+                            <th style="padding:8px; text-align:center; width:15%;">Статус</th>
+                            <th style="padding:8px; text-align:center; width:15%;">Начало</th>
+                            <th style="padding:8px; text-align:center; width:15%;">Завершение</th>
+                            <th style="padding:8px; text-align:center; width:15%;">Действия</th>
                         </tr>
                     </thead>
                     <tbody>`;
+
         for (const task of deal.tasks) {
             const taskId = task.task_id;
             const taskName = escapeHtml(task.task_name);
             const assignees = task.assignees || [];
-            let employeeNamesHtml = '';
+            const rowspan = assignees.length > 0 ? assignees.length : 1;
+
             if (assignees.length === 0) {
-                employeeNamesHtml = '—';
-            } else {
-                const main = assignees[0];
-                const mainName = escapeHtml(main.employee_name);
-                employeeNamesHtml = `<span class="main-assignee" data-task-id="${taskId}" style="cursor:pointer; font-weight:bold;">${mainName}</span>`;
-                const others = assignees.slice(1);
-                if (others.length) {
-                    const othersHtml = others.map(a => {
-                        const name = escapeHtml(a.employee_name);
-                        const empId = a.employee_id;
-                        return `<span class="co-assignee" data-task-id="${taskId}" data-employee-id="${empId}" style="display:inline-flex; align-items:center; gap:4px; margin-left:4px; background:#f1f5f9; border-radius:16px; padding:0 8px 0 12px;">
-                                    ${name}
-                                    <span class="remove-assignee" data-task-id="${taskId}" data-employee-id="${empId}" style="cursor:pointer; color:#94a3b8; font-weight:bold; padding:0 2px;">✖</span>
-                                </span>`;
-                    }).join(' ');
-                    employeeNamesHtml += `, ${othersHtml}`;
-                }
+                // Если нет исполнителей (не должно быть, но на всякий случай)
+                html += `<tr>
+                    <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${taskName}</td>
+                    <td style="padding:8px; border-bottom:1px solid #e2e8f0; color:#94a3b8;">Нет исполнителей</td>
+                    <td colspan="4"></td>
+                </tr>`;
+                continue;
             }
 
-            const first = assignees.length > 0 ? assignees[0] : null;
-            const status = first ? first.status : 'not_started';
-            const startedAt = first && first.started_at ? first.started_at : null;
-            const completedAt = first && first.completed_at ? first.completed_at : null;
+            for (let i = 0; i < assignees.length; i++) {
+                const a = assignees[i];
+                const isMain = i === 0;
+                const status = a.status || 'not_started';
+                const startedAt = a.started_at || null;
+                const completedAt = a.completed_at || null;
+                const notifId = a.notification_id; // предполагается, что бэкенд отдаёт notification_id
 
-            const statusDisplayMap = {
-                'not_started': '❌',
-                'in_progress': '🔄',
-                'on_break': '⏸️',
-                'completed': '✅'
-            };
-            const statusDisplay = statusDisplayMap[status] || status;
+                const statusDisplayMap = {
+                    'not_started': '❌ Не начата',
+                    'in_progress': '🔄 В процессе',
+                    'on_break': '⏸️ В перерыве',
+                    'completed': '✅ Завершена'
+                };
+                const statusDisplay = statusDisplayMap[status] || status;
 
-            html += `<tr data-task-id="${taskId}">
-                        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${taskName}</td>
-                        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
-                            <div class="task-assignees-container">
-                                <span class="task-employees-list">${employeeNamesHtml}</span>
-                                <button class="add-assignee-btn" data-task-id="${taskId}" style="margin-left:8px; background:none; border:none; cursor:pointer; color:#3b82f6; font-size:1.2rem;" title="Добавить соисполнителя">➕</button>
-                                <div class="add-assignee-form" style="display:none; margin-top:4px;">
-                                    <select class="new-assignee-select" style="width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
-                                        <!-- опции заполняются динамически -->
-                                    </select>
-                                    <div style="margin-top:4px; display:flex; gap:6px;">
-                                        <button class="confirm-add-assignee-btn" style="background:#22c55e; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">Добавить</button>
-                                        <button class="cancel-add-assignee-btn" style="background:#94a3b8; border:none; color:white; padding:4px 12px; border-radius:16px; cursor:pointer;">Отмена</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </td>
-                        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
+                const employeeName = escapeHtml(a.employee_name);
+                const nameDisplay = isMain ? `<strong class="main-assignee" data-task-id="${taskId}" style="cursor:pointer;">${employeeName}</strong>` : `<span>${employeeName}</span>`;
+
+                html += `<tr data-task-id="${taskId}" data-notification-id="${notifId}" data-employee-id="${a.employee_id}" class="${isMain ? 'main-assignee-row' : 'co-assignee-row'}">`;
+
+                // Название задачи — только для первого исполнителя
+                if (i === 0) {
+                    html += `<td style="padding:8px; border-bottom:1px solid #e2e8f0; vertical-align:middle;" rowspan="${rowspan}"><strong>${taskName}</strong></td>`;
+                }
+
+                // Исполнитель
+                html += `<td style="padding:8px; border-bottom:1px solid #e2e8f0; vertical-align:middle;">${nameDisplay}</td>`;
+
+                // Статус
+                html += `<td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center; vertical-align:middle;">
                             <span class="task-status-display" style="cursor:pointer;">${statusDisplay}</span>
                             <select class="task-status-select" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
                                 <option value="not_started" ${status === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
@@ -6680,23 +6669,38 @@ function showDetail(deal) {
                                 <option value="on_break" ${status === 'on_break' ? 'selected' : ''}>⏸️ В перерыве</option>
                                 <option value="completed" ${status === 'completed' ? 'selected' : ''}>✅ Завершена</option>
                             </select>
-                        </td>
-                        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
+                        </td>`;
+
+                // Начало
+                html += `<td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center; vertical-align:middle;">
                             <span class="task-started-display" data-iso="${startedAt || ''}" style="cursor:pointer;">${startedAt ? new Date(startedAt).toLocaleString() : '—'}</span>
                             <input type="datetime-local" class="task-started-input" value="${startedAt ? new Date(startedAt).toISOString().slice(0,16) : ''}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
-                        </td>
-                        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">
+                        </td>`;
+
+                // Завершение
+                html += `<td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center; vertical-align:middle;">
                             <span class="task-completed-display" data-iso="${completedAt || ''}" style="cursor:pointer;">${completedAt ? new Date(completedAt).toLocaleString() : '—'}</span>
                             <input type="datetime-local" class="task-completed-input" value="${completedAt ? new Date(completedAt).toISOString().slice(0,16) : ''}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
-                        </td>
-                    </tr>`;
+                        </td>`;
+
+                // Действия: для соисполнителей — крестик, для основного — только если есть соисполнители, можно добавить кнопку замены
+                let actionsHtml = '';
+                if (isMain) {
+                    actionsHtml = `<span style="color:#94a3b8;">основной</span>`;
+                } else {
+                    actionsHtml = `<button class="remove-assignee-btn" data-task-id="${taskId}" data-notification-id="${notifId}" data-employee-id="${a.employee_id}" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:1.1rem;" title="Удалить соисполнителя">✖</button>`;
+                }
+                html += `<td style="padding:8px; border-bottom:1px solid #e2e8f0; text-align:center; vertical-align:middle;">${actionsHtml}</td>`;
+
+                html += `</tr>`;
+            }
         }
         html += `</tbody></table>`;
     } else {
         html += `<p style="color:#94a3b8; margin-top:12px;">Нет задач по этой сделке</p>`;
     }
 
-    // ---- Кнопка "Запустить" / "Сделка запущена" ----
+    // ---- Кнопка "Запустить" / "Сделка запущена" (без изменений) ----
     const isStarted = deal.tasks && deal.tasks.length > 0;
     if (isStarted) {
         html += `<div style="margin-top: 20px; text-align: right;">
@@ -6741,6 +6745,7 @@ function showDetail(deal) {
         });
     });
 
+    // ---- Обработчик кнопки запуска ----
     const startBtn = document.getElementById('startDealBtn');
     if (startBtn) {
         startBtn.addEventListener('click', async function() {
@@ -6757,7 +6762,6 @@ function showDetail(deal) {
                 const data = await resp.json();
                 showToast(`✅ ${data.message}`);
                 loadDeals();
-                // Вместо закрытия модалки – перезагружаем её, чтобы кнопка обновилась
                 viewDeal(deal.id);
             } catch (err) {
                 showToast(`❌ Ошибка: ${err.message}`, true);
@@ -6765,7 +6769,7 @@ function showDetail(deal) {
         });
     }
 
-    // ---- Смена основного исполнителя по клику на жирное имя (делегирование) ----
+    // ---- Смена основного исполнителя по клику на его имя (ОСТАВЛЯЕМ) ----
     if (window._mainAssigneeHandler) {
         detailBody.removeEventListener('click', window._mainAssigneeHandler);
     }
@@ -6776,15 +6780,27 @@ function showDetail(deal) {
         e.stopPropagation();
 
         const taskId = parseInt(target.dataset.taskId);
-        const container = target.closest('.task-assignees-container');
-        const listSpan = container.querySelector('.task-employees-list');
-        if (!listSpan) return;
+        const container = target.closest('tr').parentNode; // вся таблица
+        // Находим строку с задачей (первую) чтобы получить список всех исполнителей
+        const firstRow = container.querySelector(`tr[data-task-id="${taskId}"]`);
+        if (!firstRow) return;
 
-        const allNames = listSpan.textContent.split(',').map(s => s.trim()).filter(Boolean);
+        // Собираем имена всех исполнителей из строк с данным taskId
+        const allRows = container.querySelectorAll(`tr[data-task-id="${taskId}"]`);
+        const assignedNames = [];
+        allRows.forEach(row => {
+            const nameCell = row.querySelector('td:nth-child(2)');
+            if (nameCell) {
+                const name = nameCell.textContent.trim();
+                if (name) assignedNames.push(name);
+            }
+        });
+
+        // Определяем ID уже назначенных сотрудников
         const assignedIds = [];
         if (allEmployees && allEmployees.length) {
             allEmployees.forEach(emp => {
-                if (allNames.includes(emp.full_name)) {
+                if (assignedNames.includes(emp.full_name)) {
                     assignedIds.push(emp.id);
                 }
             });
@@ -6816,8 +6832,13 @@ function showDetail(deal) {
 
         const originalName = target.textContent;
         form.dataset.originalName = originalName;
-        target.replaceWith(form);
-        select.focus();
+        // Заменяем span на форму
+        const td = target.closest('td');
+        if (td) {
+            td.innerHTML = '';
+            td.appendChild(form);
+            select.focus();
+        }
 
         saveBtn.addEventListener('click', async function() {
             const empId = parseInt(select.value);
@@ -6844,119 +6865,157 @@ function showDetail(deal) {
         });
 
         cancelBtn.addEventListener('click', function() {
+            // Восстанавливаем исходное отображение
             const name = form.dataset.originalName || '—';
             const newSpan = document.createElement('span');
             newSpan.className = 'main-assignee';
             newSpan.dataset.taskId = taskId;
             newSpan.style.cssText = 'cursor:pointer; font-weight:bold;';
             newSpan.textContent = name;
-            form.replaceWith(newSpan);
+            td.innerHTML = '';
+            td.appendChild(newSpan);
         });
     };
     detailBody.addEventListener('click', window._mainAssigneeHandler);
 
     // ---- Обработчики для добавления соисполнителей (делегирование) ----
-    if (window._addAssigneeHandler) {
-        detailBody.removeEventListener('click', window._addAssigneeHandler);
-    }
-    window._addAssigneeHandler = function(e) {
-        const btn = e.target.closest('.add-assignee-btn');
-        if (!btn) return;
-        e.stopPropagation();
-
-        const taskId = parseInt(btn.dataset.taskId);
-        const container = btn.closest('.task-assignees-container');
-        if (!container) {
-            showToast('Ошибка: не найден контейнер задачи', true);
-            return;
-        }
-        const form = container.querySelector('.add-assignee-form');
-        if (!form) {
-            showToast('Ошибка: не найдена форма добавления', true);
-            return;
-        }
-
-        btn.style.display = 'none';
-        form.style.display = 'block';
-
-        const select = form.querySelector('.new-assignee-select');
-        const listSpan = container.querySelector('.task-employees-list');
-        let assignedNames = [];
-        if (listSpan) {
-            const raw = listSpan.textContent;
-            if (raw.trim() !== '—') {
-                assignedNames = raw.split(',').map(s => s.trim()).filter(Boolean);
+    // В новом дизайне у нас нет кнопки добавления внутри таблицы, но мы можем оставить её в отдельном месте.
+    // Добавим кнопку "+" в заголовке блока задач или под таблицей.
+    // Я добавлю её как отдельный элемент после таблицы:
+    const tasksTable = document.getElementById('deal-tasks-table');
+    if (tasksTable) {
+        // Ищем первую строку, чтобы определить задачу, для которой добавляем (или можно сделать для каждой задачи отдельно).
+        // Для простоты оставим старый механизм: кнопка добавляет соисполнителя к первой задаче, но лучше переделать.
+        // Однако, чтобы не усложнять, оставлю как есть, но можно добавить кнопку для каждой задачи.
+        // В текущей структуре мы не можем легко определить, для какой задачи добавляем.
+        // Поэтому оставлю старую логику: при нажатии на плюсик, мы определяем задачу по контексту.
+        // Я верну кнопки "+" в строке с названием задачи (первая колонка).
+        // В цикле выше я не добавил их, сейчас добавлю вручную после рендеринга.
+        // Более правильный способ — вставить кнопку в первую колонку каждой задачи.
+        // Переделаем: в цикле, где первая строка задачи, добавим кнопку "+" рядом с названием задачи.
+        // Для этого нужно изменить генерацию HTML в цикле, но проще сделать это сейчас через DOM.
+        const firstRows = tasksTable.querySelectorAll('tr[data-task-id]');
+        const addedTasks = new Set();
+        firstRows.forEach(row => {
+            const taskId = row.dataset.taskId;
+            if (addedTasks.has(taskId)) return;
+            addedTasks.add(taskId);
+            const firstCell = row.querySelector('td:first-child');
+            if (firstCell && firstCell.hasAttribute('rowspan')) {
+                // Добавляем кнопку в первую ячейку (с названием задачи)
+                const btn = document.createElement('button');
+                btn.className = 'add-assignee-btn';
+                btn.dataset.taskId = taskId;
+                btn.style.cssText = 'margin-left:8px; background:none; border:none; cursor:pointer; color:#3b82f6; font-size:1.2rem;';
+                btn.textContent = '➕';
+                btn.title = 'Добавить соисполнителя';
+                firstCell.appendChild(btn);
             }
-        }
-        const assignedIds = [];
-        if (allEmployees && allEmployees.length) {
-            allEmployees.forEach(emp => {
-                if (assignedNames.includes(emp.full_name)) {
-                    assignedIds.push(emp.id);
+        });
+
+        // Обработчики для кнопок добавления
+        tasksTable.addEventListener('click', function(e) {
+            const btn = e.target.closest('.add-assignee-btn');
+            if (!btn) return;
+            e.stopPropagation();
+            const taskId = parseInt(btn.dataset.taskId);
+            const row = btn.closest('tr');
+            const container = row.closest('tbody');
+            if (!container) return;
+
+            // Находим все строки для этой задачи, чтобы получить текущих исполнителей
+            const rows = container.querySelectorAll(`tr[data-task-id="${taskId}"]`);
+            const assignedNames = [];
+            rows.forEach(r => {
+                const nameCell = r.querySelector('td:nth-child(2)');
+                if (nameCell) {
+                    const name = nameCell.textContent.trim();
+                    if (name) assignedNames.push(name);
                 }
             });
+            const assignedIds = [];
+            if (allEmployees && allEmployees.length) {
+                allEmployees.forEach(emp => {
+                    if (assignedNames.includes(emp.full_name)) {
+                        assignedIds.push(emp.id);
+                    }
+                });
+            }
             const available = allEmployees.filter(e => !assignedIds.includes(e.id) && e.is_active === 1);
-            select.innerHTML = '<option value="">-- Выберите сотрудника --</option>';
-            available.forEach(emp => {
-                select.innerHTML += `<option value="${emp.id}">${escapeHtml(emp.full_name)}</option>`;
-            });
-        } else {
-            showToast('Список сотрудников не загружен', true);
-        }
-
-        const confirmBtn = form.querySelector('.confirm-add-assignee-btn');
-        const cancelBtn = form.querySelector('.cancel-add-assignee-btn');
-        const newConfirm = confirmBtn.cloneNode(true);
-        confirmBtn.parentNode.replaceChild(newConfirm, confirmBtn);
-        const newCancel = cancelBtn.cloneNode(true);
-        cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
-
-        newConfirm.addEventListener('click', async function() {
-            const empId = parseInt(select.value);
-            if (!empId) {
-                showToast('Выберите сотрудника', true);
+            if (available.length === 0) {
+                showToast('Нет доступных сотрудников для добавления', true);
                 return;
             }
-            try {
-                const resp = await fetch(`/api/sandbox/deals/${deal.id}/tasks/${taskId}/assignees`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ employee_id: empId }),
-                    credentials: 'include'
-                });
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    throw new Error(err.detail || 'Ошибка добавления');
-                }
-                showToast('✅ Соисполнитель добавлен');
-                viewDeal(deal.id);
-            } catch (err) {
-                showToast(err.message, true);
-            }
-        });
+            // Создаём модальное окно выбора или простой select
+            // Для простоты используем prompt (но лучше модалку)
+            const selectHtml = available.map(e => `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`).join('');
+            const modalContent = `
+                <div class="modal-content" style="max-width:400px;">
+                    <span class="modal-close" style="float:right;cursor:pointer;font-size:1.5rem;">&times;</span>
+                    <h3>Добавить соисполнителя для задачи</h3>
+                    <select id="assigneeSelect" style="width:100%;padding:8px;border-radius:20px;border:1px solid #cbd5e1;">
+                        ${selectHtml}
+                    </select>
+                    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                        <button id="cancelAssignBtn" style="background:#94a3b8;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer;">Отмена</button>
+                        <button id="confirmAssignBtn" style="background:#22c55e;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer;">Добавить</button>
+                    </div>
+                </div>
+            `;
+            const modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.style.display = 'block';
+            modal.innerHTML = modalContent;
+            document.body.appendChild(modal);
 
-        newCancel.addEventListener('click', function() {
-            form.style.display = 'none';
-            const btn = container.querySelector('.add-assignee-btn');
-            if (btn) btn.style.display = 'inline';
+            const closeModal = () => modal.remove();
+            modal.querySelector('.modal-close').addEventListener('click', closeModal);
+            modal.querySelector('#cancelAssignBtn').addEventListener('click', closeModal);
+            window.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+            modal.querySelector('#confirmAssignBtn').addEventListener('click', async () => {
+                const empId = parseInt(modal.querySelector('#assigneeSelect').value);
+                if (!empId) {
+                    showToast('Выберите сотрудника', true);
+                    return;
+                }
+                try {
+                    const resp = await fetch(`/api/sandbox/deals/${deal.id}/tasks/${taskId}/assignees`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ employee_id: empId }),
+                        credentials: 'include'
+                    });
+                    if (resp.ok) {
+                        showToast('Соисполнитель добавлен');
+                        closeModal();
+                        viewDeal(deal.id);
+                    } else {
+                        const err = await resp.json();
+                        showToast(err.detail || 'Ошибка', true);
+                    }
+                } catch (err) {
+                    showToast('Ошибка сети', true);
+                }
+            });
         });
-    };
-    detailBody.addEventListener('click', window._addAssigneeHandler);
+    }
 
     // ---- Удаление соисполнителя (клик по крестику) ----
     if (window._removeAssigneeHandler) {
         detailBody.removeEventListener('click', window._removeAssigneeHandler);
     }
     window._removeAssigneeHandler = async function(e) {
-        const removeBtn = e.target.closest('.remove-assignee');
+        const removeBtn = e.target.closest('.remove-assignee-btn');
         if (!removeBtn) return;
         e.stopPropagation();
 
         const taskId = parseInt(removeBtn.dataset.taskId);
         const employeeId = parseInt(removeBtn.dataset.employeeId);
+        const notificationId = parseInt(removeBtn.dataset.notificationId);
         const dealId = deal.id;
 
-        if (!confirm('Удалить этого соисполнителя из задачи?')) return;
+        if (!confirm('Удалить этого соисполнителя?')) return;
 
         try {
             const resp = await fetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/assignees/${employeeId}`, {
@@ -6975,11 +7034,10 @@ function showDetail(deal) {
     };
     detailBody.addEventListener('click', window._removeAssigneeHandler);
 
-    // ----- Сохранение всех изменений при закрытии модалки -----
+    // ---- Сохранение всех изменений при закрытии модалки (без изменений) ----
     function saveAllFields() {
         const dealId = deal.id;
 
-        // Товары
         document.querySelectorAll('.product-quantity-input').forEach(input => {
             if (input.style.display !== 'none') {
                 const display = input.closest('td').querySelector('.product-quantity-display');
@@ -6992,14 +7050,14 @@ function showDetail(deal) {
             }
         });
 
-        // Статус
         document.querySelectorAll('.task-status-select').forEach(select => {
             if (select.style.display !== 'none') {
-                saveTaskStatus(select, dealId);
+                const row = select.closest('tr');
+                const notificationId = row ? row.dataset.notificationId : null;
+                saveTaskStatus(select, dealId, notificationId);
             }
         });
 
-        // Время начала
         document.querySelectorAll('.task-started-input').forEach(input => {
             if (input.style.display !== 'none') {
                 const display = input.closest('td').querySelector('.task-started-display');
@@ -7010,7 +7068,9 @@ function showDetail(deal) {
                     oldVal = new Date(oldIso).toISOString().slice(0,16);
                 }
                 if (newVal !== oldVal) {
-                    saveTaskTime(input, dealId, 'started_at');
+                    const row = input.closest('tr');
+                    const notificationId = row ? row.dataset.notificationId : null;
+                    saveTaskTime(input, dealId, 'started_at', notificationId);
                 } else {
                     input.style.display = 'none';
                     if (display) display.style.display = 'inline';
@@ -7018,7 +7078,6 @@ function showDetail(deal) {
             }
         });
 
-        // Время завершения
         document.querySelectorAll('.task-completed-input').forEach(input => {
             if (input.style.display !== 'none') {
                 const display = input.closest('td').querySelector('.task-completed-display');
@@ -7029,7 +7088,9 @@ function showDetail(deal) {
                     oldVal = new Date(oldIso).toISOString().slice(0,16);
                 }
                 if (newVal !== oldVal) {
-                    saveTaskTime(input, dealId, 'completed_at');
+                    const row = input.closest('tr');
+                    const notificationId = row ? row.dataset.notificationId : null;
+                    saveTaskTime(input, dealId, 'completed_at', notificationId);
                 } else {
                     input.style.display = 'none';
                     if (display) display.style.display = 'inline';
@@ -7038,7 +7099,6 @@ function showDetail(deal) {
         });
     }
 
-    // Удаляем старые обработчики
     if (window._closeDetailHandler) {
         closeDetail.removeEventListener('click', window._closeDetailHandler);
     }
@@ -7246,6 +7306,10 @@ function enableInlineEditing(dealId) {
     // Задачи: статус
     document.querySelectorAll('.task-status-display').forEach(span => {
         span.style.cursor = 'pointer';
+        const row = span.closest('tr');
+        const notificationId = row.dataset.notificationId;
+        const taskId = row.dataset.taskId;
+
         span.addEventListener('click', function(e) {
             e.stopPropagation();
             const td = this.closest('td');
@@ -7255,10 +7319,11 @@ function enableInlineEditing(dealId) {
             select.style.display = 'inline';
             select.focus();
         });
+
         const select = span.closest('td').querySelector('.task-status-select');
         if (select) {
             select.addEventListener('change', function() {
-                saveTaskStatus(this, dealId);
+                saveTaskStatus(this, dealId, notificationId);
             });
             select.addEventListener('blur', function() {
                 const span = this.closest('td').querySelector('.task-status-display');
@@ -7272,9 +7337,12 @@ function enableInlineEditing(dealId) {
         }
     });
 
-    // Задачи: время начала
+    // Время начала
     document.querySelectorAll('.task-started-display').forEach(span => {
         span.style.cursor = 'pointer';
+        const row = span.closest('tr');
+        const notificationId = row.dataset.notificationId;
+
         span.addEventListener('click', function(e) {
             e.stopPropagation();
             const td = this.closest('td');
@@ -7288,24 +7356,21 @@ function enableInlineEditing(dealId) {
         const input = span.closest('td').querySelector('.task-started-input');
         if (input) {
             input.addEventListener('blur', function() {
-                saveTaskTime(this, dealId, 'started_at');
+                saveTaskTime(this, dealId, 'started_at', notificationId);
             });
             input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    this.blur();
-                }
-                if (e.key === 'Escape') {
-                    this.value = this.defaultValue;
-                    this.blur();
-                }
+                if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
+                if (e.key === 'Escape') { this.value = this.defaultValue; this.blur(); }
             });
         }
     });
 
-    // Задачи: время завершения
+    // Время завершения
     document.querySelectorAll('.task-completed-display').forEach(span => {
         span.style.cursor = 'pointer';
+        const row = span.closest('tr');
+        const notificationId = row.dataset.notificationId;
+
         span.addEventListener('click', function(e) {
             e.stopPropagation();
             const td = this.closest('td');
@@ -7319,17 +7384,11 @@ function enableInlineEditing(dealId) {
         const input = span.closest('td').querySelector('.task-completed-input');
         if (input) {
             input.addEventListener('blur', function() {
-                saveTaskTime(this, dealId, 'completed_at');
+                saveTaskTime(this, dealId, 'completed_at', notificationId);
             });
             input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    this.blur();
-                }
-                if (e.key === 'Escape') {
-                    this.value = this.defaultValue;
-                    this.blur();
-                }
+                if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
+                if (e.key === 'Escape') { this.value = this.defaultValue; this.blur(); }
             });
         }
     });
@@ -7361,22 +7420,26 @@ async function saveTaskEmployee(select, dealId) {
     }
 }
 
-async function saveTaskStatus(select, dealId) {
+async function saveTaskStatus(select, dealId, notificationId = null) {
     const row = select.closest('tr');
     const taskId = parseInt(row.dataset.taskId);
     const status = select.value;
     if (isNaN(taskId) || !status) return;
     try {
+        const payload = { status: status };
+        if (notificationId) {
+            payload.notification_id = parseInt(notificationId);
+        }
         await apiFetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/status`, {
             method: 'PUT',
-            body: JSON.stringify({ status: status })
+            body: JSON.stringify(payload)
         });
         const span = select.closest('td').querySelector('.task-status-display');
         const statusDisplayMap = {
-            'not_started': '❌',
-            'in_progress': '🔄',
-            'on_break': '⏸️',
-            'completed': '✅'
+            'not_started': '❌ Не начата',
+            'in_progress': '🔄 В процессе',
+            'on_break': '⏸️ В перерыве',
+            'completed': '✅ Завершена'
         };
         span.textContent = statusDisplayMap[status] || status;
         span.style.display = 'inline';
@@ -7384,6 +7447,7 @@ async function saveTaskStatus(select, dealId) {
         showToast('Статус обновлён');
     } catch (err) {
         showToast('Ошибка: ' + err.message, true);
+        // Восстанавливаем
         const span = select.closest('td').querySelector('.task-status-display');
         const originalStatus = span.textContent;
         for (let opt of select.options) {
@@ -7397,13 +7461,16 @@ async function saveTaskStatus(select, dealId) {
     }
 }
 
-async function saveTaskTime(input, dealId, field) {
+async function saveTaskTime(input, dealId, field, notificationId = null) {
     const row = input.closest('tr');
     const taskId = parseInt(row.dataset.taskId);
     const value = input.value;
     if (isNaN(taskId)) return;
     const payload = {};
     payload[field] = value || null;
+    if (notificationId) {
+        payload.notification_id = parseInt(notificationId);
+    }
     try {
         await apiFetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/time`, {
             method: 'PUT',

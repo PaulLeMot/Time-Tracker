@@ -1528,3 +1528,261 @@ async def update_task_execution_status(
     await db.commit()
     await db.refresh(task_exec)
     return task_exec
+# ========================================================
+#   ЗАВЕРШЕНИЕ ЗАДАЧ (БРАК И РАСПРЕДЕЛЕНИЕ)
+# ========================================================
+
+from sqlalchemy import select, delete, func, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from models import TaskCompletionData, TaskProductionDistribution, DealProductType, ProductType, TechCardTask, Task
+from typing import List, Optional, Dict, Any
+import logging
+
+
+async def get_task_completion_data(
+    db: AsyncSession,
+    deal_id: int,
+    task_id: int,
+    product_type_id: int
+) -> Optional[TaskCompletionData]:
+    """Получить запись о завершении задачи для конкретного типа товара."""
+    stmt = select(TaskCompletionData).where(
+        TaskCompletionData.deal_id == deal_id,
+        TaskCompletionData.task_id == task_id,
+        TaskCompletionData.product_type_id == product_type_id
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_task_completion_with_distributions(
+    db: AsyncSession,
+    deal_id: int,
+    task_id: int,
+    product_type_id: int
+) -> Optional[Dict[str, Any]]:
+    """
+    Получить полные данные о завершении задачи для конкретного типа товара с распределениями.
+    Возвращает словарь с полями: product_type_id, product_type_name, defect_quantity, defect_comment,
+    distributions (список {employee_id, employee_name, quantity})
+    """
+    data = await get_task_completion_data(db, deal_id, task_id, product_type_id)
+    if not data:
+        return None
+    
+    # Подгружаем распределения вместе с данными сотрудников
+    stmt = select(TaskProductionDistribution).where(
+        TaskProductionDistribution.task_completion_id == data.id
+    ).options(selectinload(TaskProductionDistribution.employee))
+    result = await db.execute(stmt)
+    distributions = result.scalars().all()
+    
+    # Получаем название типа товара
+    product_type = await db.get(ProductType, product_type_id)
+    product_type_name = product_type.name if product_type else None
+    
+    return {
+        "product_type_id": product_type_id,
+        "product_type_name": product_type_name,
+        "defect_quantity": data.defect_quantity,
+        "defect_comment": data.defect_comment,
+        "distributions": [
+            {
+                "employee_id": d.employee_id,
+                "employee_name": d.employee.full_name,
+                "quantity": d.quantity
+            }
+            for d in distributions
+        ]
+    }
+
+
+async def get_task_total_quantity(
+    db: AsyncSession,
+    deal_id: int,
+    task_id: int,
+    product_type_id: int
+) -> int:
+    """
+    Вычислить общее количество товаров конкретного типа, назначенных на задачу в рамках сделки.
+    Учитывается только если задача присутствует в техкарте этого типа товара.
+    """
+    stmt = select(
+        func.sum(DealProductType.quantity)
+    ).join(
+        ProductType, ProductType.id == DealProductType.product_id
+    ).join(
+        TechCardTask, TechCardTask.tech_card_id == ProductType.tech_card_id
+    ).where(
+        DealProductType.deal_id == deal_id,
+        TechCardTask.task_id == task_id,
+        ProductType.id == product_type_id
+    )
+    result = await db.execute(stmt)
+    total = result.scalar() or 0
+    return int(total)
+
+
+async def create_or_update_task_completion(
+    db: AsyncSession,
+    deal_id: int,
+    task_id: int,
+    product_type_id: int,
+    defect_quantity: int = 0,
+    defect_comment: Optional[str] = None,
+    distributions: Optional[List[Dict[str, int]]] = None  # [{"employee_id": int, "quantity": int}, ...]
+) -> TaskCompletionData:
+    """
+    Создаёт или обновляет запись о завершении задачи для конкретного типа товара и её распределения.
+    distributions – список словарей с полями employee_id и quantity.
+    Сумма quantity по всем распределениям должна совпадать с общим количеством товаров данного типа в задаче.
+    Если distributions не переданы – все существующие распределения удаляются.
+    """
+    # Проверяем, что сумма распределений равна общему количеству товаров для этого типа
+    total_quantity = await get_task_total_quantity(db, deal_id, task_id, product_type_id)
+    if distributions:
+        sum_dist = sum(d.get("quantity", 0) for d in distributions)
+        if sum_dist != total_quantity:
+            raise ValueError(
+                f"Сумма распределений ({sum_dist}) не равна общему количеству товаров типа {product_type_id} ({total_quantity})"
+            )
+    
+    # Ищем существующую запись
+    existing = await get_task_completion_data(db, deal_id, task_id, product_type_id)
+    
+    if existing:
+        # Обновляем существующую
+        existing.defect_quantity = defect_quantity
+        existing.defect_comment = defect_comment
+        # Удаляем старые распределения
+        await db.execute(
+            delete(TaskProductionDistribution).where(
+                TaskProductionDistribution.task_completion_id == existing.id
+            )
+        )
+        await db.flush()
+    else:
+        # Создаём новую
+        existing = TaskCompletionData(
+            deal_id=deal_id,
+            task_id=task_id,
+            product_type_id=product_type_id,
+            defect_quantity=defect_quantity,
+            defect_comment=defect_comment
+        )
+        db.add(existing)
+        await db.flush()  # чтобы получить id
+    
+    # Добавляем новые распределения
+    if distributions:
+        for d in distributions:
+            dist = TaskProductionDistribution(
+                task_completion_id=existing.id,
+                employee_id=d["employee_id"],
+                quantity=d["quantity"]
+            )
+            db.add(dist)
+    
+    await db.commit()
+    await db.refresh(existing)
+    return existing
+
+
+async def delete_task_completion(
+    db: AsyncSession,
+    deal_id: int,
+    task_id: int,
+    product_type_id: int
+) -> bool:
+    """Удалить все данные о завершении задачи для конкретного типа товара (включая распределения)."""
+    data = await get_task_completion_data(db, deal_id, task_id, product_type_id)
+    if not data:
+        return False
+    await db.delete(data)
+    await db.commit()
+    return True
+
+
+async def get_all_task_completions_for_deal(
+    db: AsyncSession,
+    deal_id: int
+) -> List[Dict[str, Any]]:
+    """
+    Получить данные о завершении для всех задач и типов товаров сделки.
+    Возвращает список: [
+        {
+            "task_id": int,
+            "product_type_id": int,
+            "product_type_name": str,
+            "defect_quantity": int,
+            "defect_comment": str,
+            "distributions": [...]
+        },
+        ...
+    ]
+    """
+    stmt = select(TaskCompletionData).where(
+        TaskCompletionData.deal_id == deal_id
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    
+    output = []
+    for row in rows:
+        # Подгружаем распределения
+        dist_stmt = select(TaskProductionDistribution).where(
+            TaskProductionDistribution.task_completion_id == row.id
+        ).options(selectinload(TaskProductionDistribution.employee))
+        dist_result = await db.execute(dist_stmt)
+        distributions = dist_result.scalars().all()
+        
+        # Получаем название типа товара
+        product_type = await db.get(ProductType, row.product_type_id)
+        product_type_name = product_type.name if product_type else None
+        
+        output.append({
+            "task_id": row.task_id,
+            "product_type_id": row.product_type_id,
+            "product_type_name": product_type_name,
+            "defect_quantity": row.defect_quantity,
+            "defect_comment": row.defect_comment,
+            "distributions": [
+                {
+                    "employee_id": d.employee_id,
+                    "employee_name": d.employee.full_name,
+                    "quantity": d.quantity
+                }
+                for d in distributions
+            ]
+        })
+    return output
+
+
+async def check_completion_data_exists_for_deal(
+    db: AsyncSession,
+    deal_id: int
+) -> bool:
+    """Проверить, есть ли хоть одна запись о завершении для сделки."""
+    stmt = select(func.count()).select_from(TaskCompletionData).where(
+        TaskCompletionData.deal_id == deal_id
+    )
+    result = await db.execute(stmt)
+    count = result.scalar()
+    return count > 0
+
+async def is_employee_task_executor(
+    db: AsyncSession,
+    employee_id: int,
+    task_id: int,
+    deal_id: int
+) -> bool:
+    """Проверяет, является ли сотрудник исполнителем задачи (основным или соисполнителем)."""
+    stmt = select(Notification).where(
+        Notification.employee_id == employee_id,
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none() is not None
