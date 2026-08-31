@@ -292,9 +292,10 @@ def get_marking_for_position(col_idx, col_names):
     else:
         return None, None
 
-def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False, oz_search_art=None, oz_sticker_art_pairs=None):
+def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False, oz_search_art=None, oz_sticker_art_pairs=None, allowed_markings=None):
     """
     oz_sticker_art_pairs: список кортежей (стикер, артикул) для фильтрации OZ-строк
+    allowed_markings: список разрешённых маркировок, например ['reg_WB', 'reg_OZ']
     """
     table = []
     
@@ -311,6 +312,11 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
     oz_rows = []
     
     for mk in MARKING_KEYS:
+        # ---- Фильтр по разрешённым маркировкам ----
+        if allowed_markings is not None:
+            if f"{mk}_WB" not in allowed_markings and f"{mk}_OZ" not in allowed_markings:
+                continue
+
         try:
             mk_idx = col_names.index(mk)
         except ValueError:
@@ -321,18 +327,18 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         wb_id_clean = wb_id if wb_id else '0'
         wb_bar_clean = wb_bar if wb_bar else '0'
         wb_stickers = []
-        sticker_to_articul = {}   # словарь: стикер -> FSK-код
+        sticker_to_articul = {}
         if not skip_stickers and wb_id_clean != '0' and mk in sticker_indices:
             for st in sticker_indices[mk].get(wb_id_clean, []):
                 wb_stickers.append(st)
-                sticker_to_articul[st] = code   # code – это FSK-код из основной таблицы
+                sticker_to_articul[st] = code
         wb_rows.append({
             "marking": f"{mk}_WB",
             "platform": "WB",
             "id": wb_id_clean,
             "bar": wb_bar_clean,
             "stickers": wb_stickers,
-            "sticker_to_articul": sticker_to_articul   # добавили поле
+            "sticker_to_articul": sticker_to_articul
         })
         
         oz_id = row.get(col_names[mk_idx + 4], '').strip() if mk_idx + 4 < len(col_names) else '0'
@@ -588,6 +594,7 @@ async def mark_barcode(barcode: str):
                 break
         if row_for_table is not None:
             oz_pairs = data_item["sticker_art_pairs"] if found_via_qr and data_item["sticker_art_pairs"] else None
+            allowed = list(data_item["Маркировки"])
             table = get_row_data(
                 row_for_table,
                 col_names,
@@ -596,7 +603,8 @@ async def mark_barcode(barcode: str):
                 oz_sticker_indices,
                 skip_stickers=data_item["skip_stickers"],
                 oz_search_art=None,
-                oz_sticker_art_pairs=oz_pairs
+                oz_sticker_art_pairs=oz_pairs,
+                allowed_markings=allowed
             )
         else:
             table = []
