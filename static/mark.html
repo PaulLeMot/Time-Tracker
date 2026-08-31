@@ -1000,7 +1000,13 @@
         for (const prod of products) {
             const t = prod.table || [];
             const foundMarkingsProd = prod.found_markings || [];
+            const searchMark = prod.search_mark || null;   // марка, по которой искали
+
             for (const row of t) {
+                // Если задан searchMark, пропускаем строки других марок
+                if (searchMark && row.marking !== searchMark) {
+                    continue;
+                }
                 if (row.stickers && row.stickers.length > 0 && foundMarkingsProd.includes(row.marking)) {
                     const platform = row.platform || '';
                     if (platform === 'OZ') {

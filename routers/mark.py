@@ -292,7 +292,7 @@ def get_marking_for_position(col_idx, col_names):
     else:
         return None, None
 
-def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False, oz_search_art=None, oz_sticker_art_pairs=None, allowed_markings=None):
+def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip_stickers=False, oz_search_art=None, oz_sticker_art_pairs=None):
     """
     oz_sticker_art_pairs: список кортежей (стикер, артикул) для фильтрации OZ-строк
     allowed_markings: список разрешённых маркировок, например ['reg_WB', 'reg_OZ']
@@ -312,10 +312,6 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
     oz_rows = []
     
     for mk in MARKING_KEYS:
-        # ---- Фильтр по разрешённым маркировкам ----
-        if allowed_markings is not None:
-            if f"{mk}_WB" not in allowed_markings and f"{mk}_OZ" not in allowed_markings:
-                continue
 
         try:
             mk_idx = col_names.index(mk)
@@ -594,7 +590,6 @@ async def mark_barcode(barcode: str):
                 break
         if row_for_table is not None:
             oz_pairs = data_item["sticker_art_pairs"] if found_via_qr and data_item["sticker_art_pairs"] else None
-            allowed = list(data_item["Маркировки"])
             table = get_row_data(
                 row_for_table,
                 col_names,
@@ -603,8 +598,7 @@ async def mark_barcode(barcode: str):
                 oz_sticker_indices,
                 skip_stickers=data_item["skip_stickers"],
                 oz_search_art=None,
-                oz_sticker_art_pairs=oz_pairs,
-                allowed_markings=allowed
+                oz_sticker_art_pairs=oz_pairs
             )
         else:
             table = []
@@ -632,7 +626,21 @@ async def mark_barcode(barcode: str):
             display_marking = ", ".join(sorted(f"{mk}_OZ" for mk in data_item["qr_markings"]))
         else:
             display_marking = ", ".join(sorted(data_item["Маркировки"])) if data_item["Маркировки"] else None
-
+        # ---- Определяем марку, по которой был найден товар ----
+        search_mark = None
+        if found_via_qr:
+            if qr_items:
+                # qr_items[0]['marking'] – это "reg", "sia" и т.д.
+                mark = qr_items[0].get("marking")
+                if mark:
+                    search_mark = f"{mark}_WB"
+        elif found_via_fsk:
+            search_mark = None
+        else:
+            markings = data_item.get("Маркировки", set())
+            non_fsk = [m for m in markings if m != "FSK"]
+            if non_fsk:
+                search_mark = non_fsk[0]
         item = {
             "Код": data_item["Код"],
             "Вид": data_item["Вид"],
@@ -640,7 +648,8 @@ async def mark_barcode(barcode: str):
             "Название": data_item["Название"],
             "Маркировка": display_marking,
             "found_markings": found_markings,
-            "table": table
+            "table": table,
+            "search_mark": search_mark
         }
         results.append(item)
 
@@ -715,7 +724,8 @@ async def mark_barcode(barcode: str):
                                     "Название": name,
                                     "Маркировка": f"{mark}_WB",
                                     "found_markings": [f"{mark}_WB"],
-                                    "table": table
+                                    "table": table,
+                                    "search_mark": f"{mark}_WB"
                                 }
                                 extra_results.append(extra_item)
                                 added_codes.add(code)  # чтобы не добавлять повторно
