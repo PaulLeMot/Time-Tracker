@@ -466,7 +466,10 @@ async def mark_barcode(barcode: str):
 
     found_via_qr = False
     found_via_fsk = False
-
+    if len(normalized) == 5 and normalized.isdigit() and normalized in index:
+        found_via_fsk = True
+    else:
+        found_via_fsk = False
     # Определяем, был ли введён FSK-штрихкод (начинается с 2400000 и длина 13)
     if barcode.startswith("2400000") and len(barcode) == 13:
         found_via_fsk = True
