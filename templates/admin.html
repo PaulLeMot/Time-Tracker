@@ -6671,22 +6671,12 @@ function showDetail(deal) {
                         </div>`;
 
                 // ----------------------
-                // 2.5. Товары для этой задачи (ДОБАВЛЯЕМ СЮДА)
+                // 2.5. Матрица производства и брака
                 // ----------------------
                 html += `<div style="margin-bottom:12px;">
-                            <strong>Товары:</strong>`;
-
-                if (task.products && task.products.length > 0) {
-                    html += `<ul style="margin:4px 0 0 16px; padding-left:8px; list-style:disc;">`;
-                    for (const p of task.products) {
-                        html += `<li>${escapeHtml(p.name)} (${p.quantity} шт.)</li>`;
-                    }
-                    html += `</ul>`;
-                } else {
-                    html += `<span style="color:#94a3b8;">Товары не указаны</span>`;
-                }
-
-                html += `</div>`;
+                    <strong>Производство и брак:</strong>
+                    ${renderProductionMatrix(task)}
+                </div>`;
             // ----------------------
             // 3. Поля редактирования (статус, время)
             // ----------------------
@@ -9308,6 +9298,53 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
     initRolesTabButtons();
     initDealTypeSettings();
     setInterval(loadDeals, 30000);
+}
+function renderProductionMatrix(task) {
+    const matrix = task.production_matrix;
+    
+    // Если данных еще нет вообще (задача только создана, товаров нет)
+    if (!matrix || !matrix.rows || matrix.rows.length === 0) {
+        return `<p class="text-muted small mt-2 mb-0">Товары не назначены или данные еще не заполнены</p>`;
+    }
+
+    let html = '<div class="table-responsive mt-2"><table class="table table-sm table-bordered align-middle text-center">';
+    
+    // 1. Рисуем шапку таблицы (Товар | Брак | Исполнитель 1 | Исполнитель 2 ...)
+    html += '<thead class="table-light">';
+    html += '<tr>';
+    html += '<th class="text-start" style="min-width: 150px;">Товар</th>';
+    html += '<th style="min-width: 70px;">Брак</th>';
+    
+    matrix.employees.forEach(emp => {
+        // Имя сотрудника может быть длинным, поэтому добавляем min-width
+        html += `<th style="min-width: 100px;" title="${emp.name}">${emp.name}</th>`;
+    });
+    html += '</tr></thead>';
+    
+    // 2. Рисуем тело таблицы
+    html += '<tbody>';
+    matrix.rows.forEach(row => {
+        html += '<tr>';
+        // Колонка 1: Название товара
+        html += `<td class="text-start">${row.product_name}</td>`;
+        
+        // Колонка 2: Брак (красным, если > 0)
+        const defectClass = row.defect_qty > 0 ? 'text-danger fw-bold' : 'text-muted';
+        html += `<td class="${defectClass}">${row.defect_qty || 0}</td>`;
+        
+        // Колонки 3+: Количество, произведенное каждым сотрудником
+        matrix.employees.forEach(emp => {
+            // JS ключи в JSON всегда строки, поэтому ищем по String(emp.id)
+            const qty = row.produced_by[String(emp.id)] || 0;
+            const cellClass = qty > 0 ? 'fw-bold text-success' : 'text-muted';
+            html += `<td class="${cellClass}">${qty}</td>`;
+        });
+        
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    
+    return html;
 }
 </script>
 </body>

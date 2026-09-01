@@ -1563,36 +1563,43 @@ async def get_task_completion_with_distributions(
 ) -> Optional[Dict[str, Any]]:
     """
     Получить полные данные о завершении задачи для конкретного типа товара с распределениями.
-    Возвращает словарь с полями: product_type_id, product_type_name, defect_quantity, defect_comment,
-    distributions (список {employee_id, employee_name, quantity})
+    (Оптимизировано: 3 отдельных запроса заменены на 1 основной с жадной загрузкой)
     """
-    data = await get_task_completion_data(db, deal_id, task_id, product_type_id)
+    stmt = (
+        select(TaskCompletionData)
+        .where(
+            TaskCompletionData.deal_id == deal_id,
+            TaskCompletionData.task_id == task_id,
+            TaskCompletionData.product_type_id == product_type_id
+        )
+        .options(
+            # Жадно подгружаем тип товара (убирает db.get(ProductType))
+            selectinload(TaskCompletionData.product_type),
+            # Жадно подгружаем распределения И их сотрудников (убирает отдельный select)
+            selectinload(TaskCompletionData.distributions).selectinload(TaskProductionDistribution.employee)
+        )
+    )
+    
+    result = await db.execute(stmt)
+    # unique() обязателен при загрузке коллекций через selectinload/joinedload
+    data = result.unique().scalar_one_or_none()
+    
     if not data:
         return None
-    
-    # Подгружаем распределения вместе с данными сотрудников
-    stmt = select(TaskProductionDistribution).where(
-        TaskProductionDistribution.task_completion_id == data.id
-    ).options(selectinload(TaskProductionDistribution.employee))
-    result = await db.execute(stmt)
-    distributions = result.scalars().all()
-    
-    # Получаем название типа товара
-    product_type = await db.get(ProductType, product_type_id)
-    product_type_name = product_type.name if product_type else None
-    
+        
     return {
         "product_type_id": product_type_id,
-        "product_type_name": product_type_name,
+        "product_type_name": data.product_type.name if data.product_type else None,
         "defect_quantity": data.defect_quantity,
         "defect_comment": data.defect_comment,
         "distributions": [
             {
                 "employee_id": d.employee_id,
-                "employee_name": d.employee.full_name,
+                # Добавил проверку на наличие сотрудника на случай каскадного удаления
+                "employee_name": d.employee.full_name if d.employee else None, 
                 "quantity": d.quantity
             }
-            for d in distributions
+            for d in data.distributions
         ]
     }
 
@@ -1709,50 +1716,41 @@ async def get_all_task_completions_for_deal(
 ) -> List[Dict[str, Any]]:
     """
     Получить данные о завершении для всех задач и типов товаров сделки.
-    Возвращает список: [
-        {
-            "task_id": int,
-            "product_type_id": int,
-            "product_type_name": str,
-            "defect_quantity": int,
-            "defect_comment": str,
-            "distributions": [...]
-        },
-        ...
-    ]
+    (Исправлена проблема N+1 за счет жадной загрузки / eager loading)
     """
-    stmt = select(TaskCompletionData).where(
-        TaskCompletionData.deal_id == deal_id
+    # 1. Формируем запрос с жадной загрузкой связанных таблиц
+    stmt = (
+        select(TaskCompletionData)
+        .where(TaskCompletionData.deal_id == deal_id)
+        .options(
+            # Подгружаем тип товара
+            selectinload(TaskCompletionData.product_type),
+            # Подгружаем распределения И внутри них сразу подгружаем сотрудников
+            selectinload(TaskCompletionData.distributions).selectinload(TaskProductionDistribution.employee)
+        )
     )
+    
     result = await db.execute(stmt)
-    rows = result.scalars().all()
+    # unique() нужен, чтобы SQLAlchemy корректно дедуплицировал строки при загрузке коллекций
+    rows = result.unique().scalars().all()
     
     output = []
     for row in rows:
-        # Подгружаем распределения
-        dist_stmt = select(TaskProductionDistribution).where(
-            TaskProductionDistribution.task_completion_id == row.id
-        ).options(selectinload(TaskProductionDistribution.employee))
-        dist_result = await db.execute(dist_stmt)
-        distributions = dist_result.scalars().all()
-        
-        # Получаем название типа товара
-        product_type = await db.get(ProductType, row.product_type_id)
-        product_type_name = product_type.name if product_type else None
-        
+        # 2. Теперь все данные уже в памяти (в объектах SQLAlchemy). 
+        # Никаких запросов к БД внутри цикла больше нет!
         output.append({
             "task_id": row.task_id,
             "product_type_id": row.product_type_id,
-            "product_type_name": product_type_name,
+            "product_type_name": row.product_type.name if row.product_type else None,
             "defect_quantity": row.defect_quantity,
             "defect_comment": row.defect_comment,
             "distributions": [
                 {
                     "employee_id": d.employee_id,
-                    "employee_name": d.employee.full_name,
+                    "employee_name": d.employee.full_name if d.employee else None,
                     "quantity": d.quantity
                 }
-                for d in distributions
+                for d in row.distributions
             ]
         })
     return output

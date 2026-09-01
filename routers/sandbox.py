@@ -253,7 +253,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
     deal = await crud.get_deal_by_id(db, deal_id)
     if not deal:
         raise HTTPException(404, "Deal not found")
-    
+
     products = []
     for dp in deal.deal_products:
         if dp.product_type:
@@ -263,8 +263,8 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
                 "full_name": dp.product_type.full_name,
                 "quantity": dp.quantity
             })
-    
-    # ДОБАВЛЯЕМ extra_data в SELECT
+
+    # Сырой SQL для уведомлений (без изменений)
     stmt = text("""
         SELECT 
             n.id as notification_id,
@@ -292,19 +292,15 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
     for row in rows:
         task_id = row.task_id if row.task_id is not None else -row.notification_id
         task_name = row.task_name or f"Задача #{task_id}"
-        
         if task_id not in tasks_dict:
             tasks_dict[task_id] = {
                 "task_id": task_id,
                 "task_name": task_name,
                 "assignees": [],
-                # ДОБАВЛЯЕМ поле products, заполняем из extra_data первого уведомления
                 "products": []
             }
-        # Если это первое уведомление для задачи – сохраняем товары из extra_data
         if not tasks_dict[task_id]["products"] and row.extra_data:
             tasks_dict[task_id]["products"] = row.extra_data.get("products", [])
-        
         tasks_dict[task_id]["assignees"].append({
             "employee_name": row.full_name,
             "employee_id": row.employee_id,
@@ -314,6 +310,52 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
             "notification_id": row.notification_id
         })
 
+    completions = await crud.get_all_task_completions_for_deal(db, deal_id)
+
+    completions_by_task = {}
+    for c in completions:
+        completions_by_task.setdefault(c["task_id"], []).append(c)
+
+    for task_id, task_data in tasks_dict.items():
+        task_completions = completions_by_task.get(task_id, [])
+
+        # Собираем всех сотрудников (назначенные + те, кто уже произвёл)
+        employees_map = {}
+        for assignee in task_data.get("assignees", []):
+            employees_map[assignee["employee_id"]] = assignee["employee_name"]
+        for comp in task_completions:
+            for dist in comp["distributions"]:
+                employees_map[dist["employee_id"]] = dist["employee_name"]
+
+        employees_columns = [{"id": eid, "name": ename} for eid, ename in employees_map.items()]
+
+        # Формируем строки (товары)
+        products_table = []
+        assigned_products = {p["id"]: p for p in task_data.get("products", []) if "id" in p}
+
+        for comp in task_completions:
+            pid = comp["product_type_id"]
+            if pid in assigned_products:
+                assigned_products.pop(pid)
+            products_table.append({
+                "product_id": pid,
+                "product_name": comp["product_type_name"],
+                "defect_qty": comp["defect_quantity"],
+                "produced_by": {str(d["employee_id"]): d["quantity"] for d in comp["distributions"]}
+            })
+
+        for pid, p_data in assigned_products.items():
+            products_table.append({
+                "product_id": pid,
+                "product_name": p_data.get("name", f"Товар #{pid}"),
+                "defect_qty": 0,
+                "produced_by": {}
+            })
+
+        task_data["production_matrix"] = {
+            "employees": employees_columns,
+            "rows": products_table
+        }
     tasks_list = list(tasks_dict.values())
 
     return {
