@@ -690,13 +690,25 @@ async def mark_barcode(barcode: str, marking: str | None = Query(default=None)):
             "Название": data_item["Название"],
             "Маркировка": display_marking,
             "found_markings": found_markings,
-            "table": table
+            "table": table,
+            "similar_sticker_match": False
         }
         results.append(item)
 
     # ---- ДОБАВЛЯЕМ ПОИСК ДОПОЛНИТЕЛЬНЫХ ТОВАРОВ ПО ОДИНАКОВЫМ ПОСЛЕДНИМ 4 ЦИФРАМ СТИКЕРОВ (В ТОМ ЖЕ WB-ФАЙЛЕ) ----
-    additional_ids = set()
-    # Проходим по уже построенным результатам, собираем WB-стикеры и их марки
+    # Смысл функции: если у отсканированного товара есть стикер, чьи последние
+    # 4 цифры совпадают со стикером ДРУГОГО товара (в файле той же марки) —
+    # нужно показать этот другой товар как предупреждение "похожий стикер,
+    # присмотрись внимательнее".
+    #
+    # ВАЖНО (это и есть исправление бага): для такого "похожего" товара
+    # НЕЛЬЗЯ повторно раскрывать поиск по значению id_val через глобальный
+    # index — иначе заодно подтягиваются посторонние товары ДРУГИХ марок
+    # или строк, у которых то же самое значение случайно совпало в других
+    # колонках. Поэтому позиция "похожего" товара ищется СТРОГО в колонке
+    # WB-id именно той марки (mark), из чьего файла взят стикер, а не по
+    # всему листу — это даёт ровно один нужный товар, без побочных.
+    additional_ids = set()  # набор (mark, id_val)
     for item in results:
         for row in item["table"]:
             if row.get("platform") == "WB" and row.get("stickers"):
@@ -714,20 +726,31 @@ async def mark_barcode(barcode: str, marking: str | None = Query(default=None)):
                     if len(clean) >= 4:
                         last4 = clean[-4:]
                         if last4 in reverse_idx:
-                            # Находим все id, которые есть в этом индексе
-                            for id_val, _ in reverse_idx[last4]:
+                            # Находим все id, у которых совпадают последние 4 цифры
+                            for id_val, matched_sticker in reverse_idx[last4]:
+                                # Пропускаем совпадение стикера самого с собой
+                                if matched_sticker.replace(' ', '') == clean:
+                                    continue
                                 # Проверяем, не является ли этот id уже имеющимся продуктом
                                 if id_val not in {p["Код"] for p in products.values()}:
-                                    additional_ids.add(id_val)
+                                    additional_ids.add((mark, id_val))
 
-    # Если нашли дополнительные id – добавляем их как новые продукты
+    # Если нашли дополнительные "похожие по стикеру" товары – добавляем их
+    # как новые продукты, но строго в рамках их собственной марки и БЕЗ
+    # раскрытия по артикулу на другие товары/марки.
     if additional_ids:
-        # Находим позиции для каждого id в основном индексе
-        new_positions = []
-        for id_val in additional_ids:
-            if id_val in index:
-                for pos in index[id_val]:
-                    new_positions.append((pos[0], pos[1], id_val))
+        new_positions = []       # (row_idx, col_idx, id_val)
+        product_row_idx = {}     # key товара -> row_idx, чтобы потом взять именно эту строку
+        for mark, id_val in additional_ids:
+            if id_val not in index:
+                continue
+            for row_idx, col_idx in index[id_val]:
+                pos_marking, pos_is_id = get_marking_for_position(col_idx, col_names)
+                # Берём только колонку WB-id ИМЕННО этой марки — без этого
+                # условия сюда попадали посторонние товары (баг из отчёта).
+                if pos_marking == f"{mark}_WB" and pos_is_id:
+                    new_positions.append((row_idx, col_idx, id_val))
+
         if new_positions:
             # Добавляем новые продукты в словарь products (если их ещё нет)
             for row_idx, col_idx, art in new_positions:
@@ -737,6 +760,7 @@ async def mark_barcode(barcode: str, marking: str | None = Query(default=None)):
                 fandom = row.get("Фандом", "") or row.get("Фандом 4ek", "")
                 name = row.get("Название", "")
                 key = (code, view, fandom, name)
+                product_row_idx[key] = row_idx
                 if key in products:
                     continue
                 new_prod = {
@@ -749,6 +773,7 @@ async def mark_barcode(barcode: str, marking: str | None = Query(default=None)):
                     "skip_stickers": False,
                     "qr_markings": set(),
                     "sticker_art_pairs": [],
+                    "similar_sticker_match": True,
                 }
                 marking, is_id = get_marking_for_position(col_idx, col_names)
                 if marking:
@@ -785,8 +810,13 @@ async def mark_barcode(barcode: str, marking: str | None = Query(default=None)):
                 if any(res["Код"] == data_item["Код"] and res["Вид"] == data_item["Вид"] for res in results):
                     continue
                 row_for_table = None
-                # ищем строку по коду
-                if data_item["Код"] in index:
+                # Если это "похожий по стикеру" товар — берём ТУ САМУЮ строку,
+                # которую нашли по колонке WB-id нужной марки (product_row_idx),
+                # а не первую попавшуюся по артикулу в общем index (это и
+                # приводило к появлению лишних товаров других марок).
+                if key in product_row_idx:
+                    row_for_table = data[product_row_idx[key]]
+                elif data_item["Код"] in index:
                     pos = index[data_item["Код"]][0]
                     row_for_table = data[pos[0]]
                 if row_for_table is None:
@@ -832,7 +862,8 @@ async def mark_barcode(barcode: str, marking: str | None = Query(default=None)):
                     "Название": data_item["Название"],
                     "Маркировка": display_marking,
                     "found_markings": found_markings,
-                    "table": table
+                    "table": table,
+                    "similar_sticker_match": data_item.get("similar_sticker_match", False)
                 }
                 results.append(new_item)
 
