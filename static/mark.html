@@ -1000,13 +1000,7 @@
         for (const prod of products) {
             const t = prod.table || [];
             const foundMarkingsProd = prod.found_markings || [];
-            const searchMark = prod.search_mark || null;   // марка, по которой искали
-
             for (const row of t) {
-                // Если задан searchMark, пропускаем строки других марок
-                if (searchMark && row.marking !== searchMark) {
-                    continue;
-                }
                 if (row.stickers && row.stickers.length > 0 && foundMarkingsProd.includes(row.marking)) {
                     const platform = row.platform || '';
                     if (platform === 'OZ') {
@@ -1043,15 +1037,7 @@
                 }
             }
         }
-        // ---- Удаляем дублирующиеся стикеры (по полю sticker) ----
-        const uniqueStickerMap = new Map();
-        for (const item of allStickers) {
-            // Если стикер уже есть – пропускаем
-            if (!uniqueStickerMap.has(item.sticker)) {
-                uniqueStickerMap.set(item.sticker, item);
-            }
-        }
-        allStickers = Array.from(uniqueStickerMap.values());
+
         // Сортировка по последним 4 цифрам
         allStickers.sort((a, b) => {
             const aLast = getLastFourDigits(a.sticker);
