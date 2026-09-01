@@ -307,8 +307,6 @@ def get_row_data(row, col_names, code, sticker_indices, oz_sticker_indices, skip
         "bar": fsk_bar,
         "stickers": []
     })
-    if skip_stickers:
-        return table
     wb_rows = []
     oz_rows = []
     
