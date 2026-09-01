@@ -635,7 +635,7 @@ async def mark_barcode(barcode: str):
             if qr_items:
                 mark = qr_items[0].get("marking")
                 if mark:
-                    search_mark = mark
+                    search_mark = f"{mark}_OZ"
         elif found_via_fsk:
             search_mark = None
         else:
