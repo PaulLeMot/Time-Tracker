@@ -9309,11 +9309,12 @@ function renderProductionMatrix(task) {
 
     let html = '<div class="table-responsive mt-2"><table class="table table-sm table-bordered align-middle text-center">';
     
-    // 1. Рисуем шапку таблицы (Товар | Брак | Исполнитель 1 | Исполнитель 2 ...)
+    // 1. Рисуем шапку таблицы (Товар | Брак | Комментарий | Исполнитель 1 | Исполнитель 2 ...)
     html += '<thead class="table-light">';
     html += '<tr>';
     html += '<th class="text-start" style="min-width: 150px;">Товар</th>';
     html += '<th style="min-width: 70px;">Брак</th>';
+    html += '<th style="min-width: 200px;">Комментарий к браку</th>';
     
     matrix.employees.forEach(emp => {
         // Имя сотрудника может быть длинным, поэтому добавляем min-width
@@ -9332,7 +9333,13 @@ function renderProductionMatrix(task) {
         const defectClass = row.defect_qty > 0 ? 'text-danger fw-bold' : 'text-muted';
         html += `<td class="${defectClass}">${row.defect_qty || 0}</td>`;
         
-        // Колонки 3+: Количество, произведенное каждым сотрудником
+        // Колонка 3: Комментарий к браку (НОВАЯ)
+        const comment = row.defect_comment;
+        const commentDisplay = comment ? escapeHtml(comment) : '<span class="text-muted">—</span>';
+        // Добавляем title, чтобы при наведении был виден полный текст, если он длинный
+        html += `<td class="text-start small" title="${comment ? escapeHtml(comment) : ''}">${commentDisplay}</td>`;
+        
+        // Колонки 4+: Количество, произведенное каждым сотрудником
         matrix.employees.forEach(emp => {
             // JS ключи в JSON всегда строки, поэтому ищем по String(emp.id)
             const qty = row.produced_by[String(emp.id)] || 0;

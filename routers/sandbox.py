@@ -341,14 +341,16 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
                 "product_id": pid,
                 "product_name": comp["product_type_name"],
                 "defect_qty": comp["defect_quantity"],
+                "defect_comment": comp.get("defect_comment"),
                 "produced_by": {str(d["employee_id"]): d["quantity"] for d in comp["distributions"]}
             })
-
+            
         for pid, p_data in assigned_products.items():
             products_table.append({
                 "product_id": pid,
                 "product_name": p_data.get("name", f"Товар #{pid}"),
                 "defect_qty": 0,
+                "defect_comment": None,
                 "produced_by": {}
             })
 
