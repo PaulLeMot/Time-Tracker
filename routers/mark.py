@@ -652,7 +652,10 @@ async def mark_barcode(barcode: str):
             "search_mark": search_mark
         }
         results.append(item)
-
+        # Определяем марку основного поиска (берём из первого результата)
+    primary_search_mark = None
+    if results:
+        primary_search_mark = results[0].get("search_mark")
     # ---- ПОИСК ДОПОЛНИТЕЛЬНЫХ ТОВАРОВ ПО СОВПАДЕНИЮ ПОСЛЕДНИХ 4 ЦИФР СТИКЕРОВ ----
     extra_results = []
     added_codes = {p["Код"] for p in products.values()}  # коды уже добавленных основных товаров
@@ -672,6 +675,8 @@ async def mark_barcode(barcode: str):
                         last4 = clean[-4:]
                         if last4 in reverse_idx:
                             for id_val, sticker in reverse_idx[last4]:
+                                if primary_search_mark and mark != primary_search_mark:
+                                    continue
                                 # Пропускаем, если такой код уже есть в основных или дополнительных
                                 if id_val in added_codes:
                                     continue
