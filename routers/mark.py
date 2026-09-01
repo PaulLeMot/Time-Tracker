@@ -1,7 +1,7 @@
 import os
 import re
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta
 
@@ -441,14 +441,27 @@ async def refresh_cache():
     return {"message": "Кэш очищен. Данные будут перезагружены при следующем запросе."}
 
 @router.get("/api/mark/{barcode:path}")
-async def mark_barcode(barcode: str):
+async def mark_barcode(barcode: str, marking: str | None = Query(default=None)):
     barcode = barcode.strip()
     if not barcode:
         raise HTTPException(status_code=400, detail="Штрих-код не указан")
-    
+
     normalized = normalize_barcode(barcode)
     if not normalized or len(normalized) < 5:
         raise HTTPException(status_code=400, detail="Некорректный штрих-код")
+
+    # marking приходит с фронта в формате "sia_WB" / "kpd_OZ" и т.п.
+    # Отфильтровываем совпадения по конкретной марке, чтобы одинаковые
+    # внутренние ID/штрихкоды разных марок (sia/ktv/reg/kpd) не смешивались
+    # в результатах поиска. На построение нижней таблицы (все маркетплейсы
+    # и марки для НАЙДЕННОГО товара) это не влияет — она как строилась
+    # через get_row_data() по всем MARKING_KEYS, так и строится.
+    marking = marking.strip() if marking else None
+    marking_base = None
+    if marking:
+        marking_base = marking.split('_')[0]
+        if marking_base not in MARKING_KEYS:
+            marking_base = None
     
     data, index, col_names, _ = get_cached_data()
     today_str = get_today_str()
@@ -474,7 +487,50 @@ async def mark_barcode(barcode: str):
         for pos in index[normalized]:
             all_positions.append((pos[0], pos[1], normalized))
         all_positions = list(set(all_positions))
+
+        # Фильтруем по выбранной марке, если она задана: значение могло
+        # совпасть в столбцах разных марок для РАЗНЫХ товаров — оставляем
+        # только позиции, реально относящиеся к нужной марке.
+        if marking_base:
+            filtered_positions = []
+            for row_idx, col_idx, val in all_positions:
+                pos_marking, _ = get_marking_for_position(col_idx, col_names)
+                if pos_marking and pos_marking.split('_')[0] == marking_base:
+                    filtered_positions.append((row_idx, col_idx, val))
+                elif pos_marking == "FSK":
+                    # FSK-код универсален, не привязан к марке — не отсекаем
+                    filtered_positions.append((row_idx, col_idx, val))
+            all_positions = filtered_positions
+        elif all_positions:
+            # Фильтр по марке не выбран ("Все"), но значение совпало сразу
+            # в НЕСКОЛЬКИХ разных товарах — это и есть коллизия внутренних ID
+            # между марками. Пытаемся понять, какой марке штрих-код принадлежит
+            # на самом деле, сверяясь с реальными файлами загрузки этой марки
+            # (sticker_indices/oz_sticker_indices), а не с мастер-таблицей ids,
+            # где номера у разных марок могут случайно совпасть.
+            distinct_codes = {data[r].get("Код", "") for r, _, _ in all_positions}
+            if len(distinct_codes) > 1:
+                confirmed_marks = {
+                    mk for mk in MARKING_KEYS
+                    if normalized in sticker_indices.get(mk, {})
+                    or normalized in oz_sticker_indices.get(mk, {})
+                }
+                if len(confirmed_marks) == 1:
+                    only_mark = next(iter(confirmed_marks))
+                    narrowed = []
+                    for row_idx, col_idx, val in all_positions:
+                        pos_marking, _ = get_marking_for_position(col_idx, col_names)
+                        if pos_marking == "FSK" or (pos_marking and pos_marking.split('_')[0] == only_mark):
+                            narrowed.append((row_idx, col_idx, val))
+                    if narrowed:
+                        all_positions = narrowed
+
         if not all_positions:
+            if marking_base:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Товар с этим штрих-кодом не найден для марки {marking}"
+                )
             raise HTTPException(status_code=404, detail="Товар не найден")
         found_via_qr = False
         qr_art_markings = {}
@@ -483,6 +539,8 @@ async def mark_barcode(barcode: str):
         # Поиск по QR-коду для OZ
         qr_to_sticker_art_all = {}
         for mk in MARKING_KEYS:
+            if marking_base and mk != marking_base:
+                continue
             qr_data = get_oz_qr_to_sticker_art_index(mk, today_str)
             for qr, items in qr_data.items():
                 if qr not in qr_to_sticker_art_all:
@@ -645,6 +703,8 @@ async def mark_barcode(barcode: str):
                 marking_full = row["marking"]  # например "sia_WB"
                 mark = marking_full.split('_')[0]  # "sia"
                 if mark not in MARKING_KEYS:
+                    continue
+                if marking_base and mark != marking_base:
                     continue
                 # Получаем обратный индекс для этой марки
                 reverse_idx = get_reverse_sticker_index(mark, today_str)

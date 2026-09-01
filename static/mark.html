@@ -1195,7 +1195,8 @@
 
         showLoading();
         try {
-            const resp = await fetch(`/api/mark/${encodeURIComponent(code)}`, { credentials: 'include' });
+            const markingQuery = selectedMarking ? `?marking=${encodeURIComponent(selectedMarking)}` : '';
+            const resp = await fetch(`/api/mark/${encodeURIComponent(code)}${markingQuery}`, { credentials: 'include' });
             if (!resp.ok) {
                 let errorMsg = `Ошибка ${resp.status}`;
                 try {
