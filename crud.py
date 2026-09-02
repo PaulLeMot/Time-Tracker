@@ -1784,3 +1784,10 @@ async def is_employee_task_executor(
     )
     result = await db.execute(stmt)
     return result.scalar_one_or_none() is not None
+
+async def complete_deal(db: AsyncSession, deal_id: int) -> Deal:
+    """Отметить сделку как завершенную."""
+    stmt = update(Deal).where(Deal.id == deal_id).values(status="completed").returning(Deal)
+    result = await db.execute(stmt)
+    await db.commit()
+    return result.scalar_one()

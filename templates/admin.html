@@ -6724,17 +6724,34 @@ function showDetail(deal) {
         html += `<p style="color:#94a3b8; margin-top:12px;">Нет задач по этой сделке</p>`;
     }
 
-    // ---- Кнопка запуска ----
+    // ---- Кнопка запуска / завершения ----
     const isStarted = tasks.length > 0;
-    if (isStarted) {
-        html += `<div style="margin-top: 20px; text-align: right;">
-                    <button class="btn" style="background: #94a3b8; padding: 8px 24px; cursor: default;" disabled>✅ Сделка запущена</button>
-                </div>`;
-    } else {
-        html += `<div style="margin-top: 20px; text-align: right;">
-                    <button id="startDealBtn" class="btn" style="background: #22c55e; padding: 8px 24px;">▶️ Запустить</button>
-                </div>`;
+    const isCompleted = deal.status === 'completed';
+
+    // Проверяем, все ли задачи завершены (все исполнители всех задач имеют статус completed)
+    let allTasksCompleted = false;
+    if (isStarted && !isCompleted) {
+        allTasksCompleted = tasks.every(task => {
+            // Задача считается завершенной, если у нее есть исполнители и ВСЕ они завершили задачу
+            return task.assignees.length > 0 && task.assignees.every(a => a.status === 'completed');
+        });
     }
+
+    html += `<div style="margin-top: 20px; text-align: right;">`;
+    if (isCompleted) {
+        // Сделка уже завершена
+        html += `<button class="btn" style="background: #10b981; padding: 8px 24px; cursor: default;" disabled>✅ Сделка завершена</button>`;
+    } else if (allTasksCompleted) {
+        // Все задачи выполнены, можно завершать сделку
+        html += `<button id="completeDealBtn" class="btn" style="background: #f59e0b; padding: 8px 24px;">🏁 Завершить сделку</button>`;
+    } else if (isStarted) {
+        // Сделка запущена, но не все задачи выполнены
+        html += `<button class="btn" style="background: #94a3b8; padding: 8px 24px; cursor: default;" disabled>✅ Сделка запущена</button>`;
+    } else {
+        // Сделка еще не запущена
+        html += `<button id="startDealBtn" class="btn" style="background: #22c55e; padding: 8px 24px;">▶️ Запустить</button>`;
+    }
+    html += `</div>`;
 
     // ---- Вставляем в DOM ----
     detailBody.innerHTML = html;
@@ -6788,6 +6805,31 @@ function showDetail(deal) {
                 showToast(`✅ ${data.message}`);
                 loadDeals();
                 viewDeal(deal.id);
+            } catch (err) {
+                showToast(`❌ Ошибка: ${err.message}`, true);
+            }
+        });
+    }
+
+    // ---- Обработчик кнопки завершения сделки ----
+    const completeBtn = document.getElementById('completeDealBtn');
+    if (completeBtn) {
+        completeBtn.addEventListener('click', async function() {
+            if (!confirm('Вы уверены, что хотите завершить сделку? Все задачи будут считаться закрытыми.')) return;
+            try {
+                const resp = await fetch(`/api/sandbox/deals/${deal.id}/complete`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || 'Ошибка завершения');
+                }
+                const data = await resp.json();
+                showToast(`✅ ${data.message}`);
+                loadDeals(); // обновляем список сделок в таблице
+                viewDeal(deal.id); // обновляем модалку, чтобы кнопка сменилась на "Сделка завершена"
             } catch (err) {
                 showToast(`❌ Ошибка: ${err.message}`, true);
             }

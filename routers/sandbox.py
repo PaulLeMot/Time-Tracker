@@ -238,6 +238,7 @@ async def list_deals(skip: int = 0, limit: int = 100, db: AsyncSession = Depends
         {
             "id": d.id,
             "title": d.title,
+            "status": d.status,
             "deal_type_id": d.deal_type_id,
             "ip_id": d.ip_id,
             "ip_name": d.ip.name if d.ip else None,
@@ -363,6 +364,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
     return {
         "id": deal.id,
         "title": deal.title,
+        "status": deal.status,
         "deal_type_id": deal.deal_type_id,
         "deal_type": deal.deal_type.name if deal.deal_type else None,
         "products": products,
@@ -1749,3 +1751,18 @@ async def get_task_completions_for_task(
     # Фильтруем по task_id
     filtered = [c for c in completions if c["task_id"] == task_id]
     return filtered
+
+@router.post("/deals/{deal_id}/complete", response_model=dict)
+async def complete_deal_route(
+    deal_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    deal = await crud.get_deal_by_id(db, deal_id)
+    if not deal:
+        raise HTTPException(404, "Deal not found")
+    if deal.status == "completed":
+        raise HTTPException(400, "Сделка уже завершена")
+    
+    await crud.complete_deal(db, deal_id)
+    return {"message": "Сделка успешно завершена"}

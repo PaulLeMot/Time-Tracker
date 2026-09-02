@@ -157,6 +157,7 @@ class Deal(Base):
     deal_type_id = Column(Integer, ForeignKey("deal_types.id"))
     ip_id = Column(Integer, ForeignKey("ip_list.id"), nullable=True)
     mp_id = Column(Integer, ForeignKey("mp_list.id"), nullable=True)
+    status = Column(String, default="in_progress")
 
     deal_type = relationship("DealType", back_populates="deals")
     ip = relationship("IP", back_populates="deals")
