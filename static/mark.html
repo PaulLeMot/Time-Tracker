@@ -1000,6 +1000,7 @@
         for (const prod of products) {
             const t = prod.table || [];
             const foundMarkingsProd = prod.found_markings || [];
+            const isMain = !prod.similar_sticker_match; // true для реально искомого артикула
             for (const row of t) {
                 if (row.stickers && row.stickers.length > 0 && foundMarkingsProd.includes(row.marking)) {
                     const platform = row.platform || '';
@@ -1009,7 +1010,8 @@
                                 sticker: item.sticker,
                                 articul: item.articul,
                                 row: null,
-                                platform: 'OZ'
+                                platform: 'OZ',
+                                isMain: isMain
                             });
                         }
                     } else if (platform === 'WB') {
@@ -1021,7 +1023,8 @@
                                     sticker: sticker.sticker,
                                     articul: articul,
                                     row: sticker.row !== undefined ? sticker.row : null,
-                                    platform: 'WB'
+                                    platform: 'WB',
+                                    isMain: isMain
                                 });
                             } else {
                                 const articul = stickerToArticul[sticker] || null;
@@ -1029,7 +1032,8 @@
                                     sticker: sticker,
                                     articul: articul,
                                     row: null,
-                                    platform: 'WB'
+                                    platform: 'WB',
+                                    isMain: isMain
                                 });
                             }
                         }
@@ -1055,12 +1059,13 @@
         let scrollHtml = '';
 
         if (allStickers.length > 0) {
+            const mainCount = allStickers.filter(item => item.isMain).length;
             const showArticul = allStickers.some(item => item.platform === 'OZ' && item.articul !== null && item.articul !== undefined);
             const showRow = allStickers.some(item => item.row !== null && item.row !== undefined) || 
                             allStickers.some(item => item.platform === 'WB' && item.articul !== null && item.articul !== undefined);
 
             let sectionHtml = `<div class="sticker-section">`;
-            sectionHtml += `<div class="sticker-count">Найдено товаров: ${allStickers.length}</div>`;
+            sectionHtml += `<div class="sticker-count">Найдено товаров: ${mainCount}</div>`;
             sectionHtml += `<table><thead><tr>`;
             sectionHtml += `<th>Стикер</th>`;
             if (showArticul) sectionHtml += `<th>Артикул</th>`;
@@ -1195,8 +1200,7 @@
 
         showLoading();
         try {
-            const markingQuery = selectedMarking ? `?marking=${encodeURIComponent(selectedMarking)}` : '';
-            const resp = await fetch(`/api/mark/${encodeURIComponent(code)}${markingQuery}`, { credentials: 'include' });
+            const resp = await fetch(`/api/mark/${encodeURIComponent(code)}`, { credentials: 'include' });
             if (!resp.ok) {
                 let errorMsg = `Ошибка ${resp.status}`;
                 try {
