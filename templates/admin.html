@@ -6615,8 +6615,13 @@ function showDetail(deal) {
 
         for (const task of tasks) {
             const taskId = task.task_id;
-            const taskName = task.task_name || `Задача #${taskId}`;
-            const assignees = task.assignees || [];
+            const taskName = task.task_name|| `Задача #${taskId}`;
+            const assignees = task.assignees|| [];
+            const productsArr = task.products || [];
+            const productsString = productsArr.length > 0
+                ? productsArr.map(p => `${p.name}(${p.quantity})`).join(', ')
+                : '—';
+            const displayTaskName = `${deal.title} ${taskName} : ${productsString}`;
             const firstAssignee = assignees[0] || null;
             const others = assignees.slice(1);
 
@@ -6632,7 +6637,7 @@ function showDetail(deal) {
             html += `<div class="task-accordion-item" data-task-id="${taskId}">
                 <div class="task-accordion-header" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:#f8fafc; border-radius:12px 12px 0 0; border-bottom:1px solid #e2e8f0;">
                     <div style="display:flex; align-items:center; gap:12px; flex:1;">
-                        <span style="font-weight:600; font-size:1.05rem;">${escapeHtml(taskName)}</span>
+                        <span style="font-weight:600; font-size:1.05rem;">${escapeHtml(displayTaskName)}</span>
                         <span style="color:${statusInfo.color}; font-size:0.85rem; white-space:nowrap;">${statusInfo.label}</span>
                     </div>
                 </div>
@@ -6675,7 +6680,7 @@ function showDetail(deal) {
                 // ----------------------
                 html += `<div style="margin-bottom:12px;">
                     <strong>Производство и брак:</strong>
-                    ${renderProductionMatrix(task)}
+                    ${renderProductionMatrix(task, deal.id)}
                 </div>`;
             // ----------------------
             // 3. Поля редактирования (статус, время)
@@ -7134,6 +7139,85 @@ function showDetail(deal) {
             }
         });
     }
+
+    // ============================================================
+    // ОБРАБОТЧИК РЕДАКТИРОВАНИЯ МАТРИЦЫ (АВТОСОХРАНЕНИЕ)
+    // ============================================================
+    if (window._matrixChangeHandler) {
+        detailBody.removeEventListener('change', window._matrixChangeHandler);
+    }
+
+    window._matrixChangeHandler = async function(e) {
+        const target = e.target;
+        // Реагируем только на наши инпуты
+        if (!target.matches('.matrix-defect-qty, .matrix-defect-comment, .matrix-dist-qty')) return;
+
+        const row = target.closest('tr');
+        if (!row) return;
+
+        const productId = parseInt(row.dataset.productId);
+        const expectedQty = parseInt(row.dataset.expectedQty);
+        const taskId = parseInt(row.dataset.taskId);
+        const dealId = parseInt(row.dataset.dealId);
+
+        // 1. Собираем текущие значения строки
+        const defectQty = parseInt(row.querySelector('.matrix-defect-qty').value) || 0;
+        const defectComment = row.querySelector('.matrix-defect-comment').value;
+        
+        const distributions = [];
+        let sumDist = 0;
+        row.querySelectorAll('.matrix-dist-qty').forEach(inp => {
+            const qty = parseInt(inp.value) || 0;
+            sumDist += qty;
+            distributions.push({
+                employee_id: parseInt(inp.dataset.employeeId),
+                quantity: qty
+            });
+        });
+
+        // 2. Жесткая валидация: сумма распределений должна равняться количеству товара
+        if (sumDist !== expectedQty) {
+            showToast(`❌ Ошибка: сумма распределений (${sumDist}) не равна количеству товара (${expectedQty})`, true);
+            row.style.backgroundColor = '#fef2f2'; // Подсвечиваем строку красным
+            return;
+        } else {
+            row.style.backgroundColor = ''; // Убираем подсветку, если всё верно
+        }
+
+        // 3. Формируем payload
+        const payload = {
+            product_type_id: productId,
+            defect_quantity: defectQty,
+            defect_comment: defectComment,
+            distributions: distributions
+        };
+
+        // 4. Отправляем на бэкенд
+        try {
+            // Блокируем инпуты на время запроса, чтобы избежать гонок
+            row.querySelectorAll('input').forEach(inp => inp.disabled = true);
+            
+            const resp = await fetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/products/${productId}/completion`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                credentials: 'include'
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.detail || 'Ошибка сохранения');
+            }
+            
+            showToast(`✅ Данные по товару сохранены`, false);
+        } catch (err) {
+            showToast(`❌ ${err.message}`, true);
+        } finally {
+            row.querySelectorAll('input').forEach(inp => inp.disabled = false);
+        }
+    };
+
+    detailBody.addEventListener('change', window._matrixChangeHandler);
 
     // ---- Закрытие модалки с сохранением ----
     if (window._closeDetailHandler) {
@@ -9341,58 +9425,49 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
     initDealTypeSettings();
     setInterval(loadDeals, 30000);
 }
-function renderProductionMatrix(task) {
+function renderProductionMatrix(task, dealId) {
     const matrix = task.production_matrix;
-    
-    // Если данных еще нет вообще (задача только создана, товаров нет)
     if (!matrix || !matrix.rows || matrix.rows.length === 0) {
         return `<p class="text-muted small mt-2 mb-0">Товары не назначены или данные еще не заполнены</p>`;
     }
 
     let html = '<div class="table-responsive mt-2"><table class="table table-sm table-bordered align-middle text-center">';
     
-    // 1. Рисуем шапку таблицы (Товар | Брак | Комментарий | Исполнитель 1 | Исполнитель 2 ...)
-    html += '<thead class="table-light">';
-    html += '<tr>';
+    // 1. Шапка
+    html += '<thead class="table-light"><tr>';
     html += '<th class="text-start" style="min-width: 150px;">Товар</th>';
-    html += '<th style="min-width: 70px;">Брак</th>';
-    html += '<th style="min-width: 200px;">Комментарий к браку</th>';
-    
+    html += '<th style="min-width: 80px;">Брак</th>';
+    html += '<th style="min-width: 150px;">Комментарий</th>';
     matrix.employees.forEach(emp => {
-        // Имя сотрудника может быть длинным, поэтому добавляем min-width
-        html += `<th style="min-width: 100px;" title="${emp.name}">${emp.name}</th>`;
+        html += `<th style="min-width: 100px;" title="${escapeHtml(emp.name)}">${escapeHtml(emp.name)}</th>`;
     });
     html += '</tr></thead>';
     
-    // 2. Рисуем тело таблицы
+    // 2. Тело таблицы (с input-ами)
     html += '<tbody>';
     matrix.rows.forEach(row => {
-        html += '<tr>';
-        // Колонка 1: Название товара
-        html += `<td class="text-start">${row.product_name}</td>`;
+        // Добавляем data-атрибуты для делегирования событий
+        html += `<tr data-product-id="${row.product_id}" data-expected-qty="${row.expected_quantity || 0}" data-task-id="${task.task_id}" data-deal-id="${dealId}">`;
         
-        // Колонка 2: Брак (красным, если > 0)
-        const defectClass = row.defect_qty > 0 ? 'text-danger fw-bold' : 'text-muted';
-        html += `<td class="${defectClass}">${row.defect_qty || 0}</td>`;
+        // Товар
+        html += `<td class="text-start">${escapeHtml(row.product_name)}</td>`;
         
-        // Колонка 3: Комментарий к браку (НОВАЯ)
-        const comment = row.defect_comment;
-        const commentDisplay = comment ? escapeHtml(comment) : '<span class="text-muted">—</span>';
-        // Добавляем title, чтобы при наведении был виден полный текст, если он длинный
-        html += `<td class="text-start small" title="${comment ? escapeHtml(comment) : ''}">${commentDisplay}</td>`;
+        // Брак
+        html += `<td><input type="number" class="matrix-defect-qty" data-product-id="${row.product_id}" value="${row.defect_qty || 0}" min="0" style="width: 70px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center;"></td>`;
         
-        // Колонки 4+: Количество, произведенное каждым сотрудником
+        // Комментарий (экранируем кавычки для value)
+        const safeComment = (row.defect_comment || '').replace(/"/g, '&quot;');
+        html += `<td><input type="text" class="matrix-defect-comment" data-product-id="${row.product_id}" value="${safeComment}" style="width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 6px;"></td>`;
+        
+        // Распределение по сотрудникам
         matrix.employees.forEach(emp => {
-            // JS ключи в JSON всегда строки, поэтому ищем по String(emp.id)
             const qty = row.produced_by[String(emp.id)] || 0;
-            const cellClass = qty > 0 ? 'fw-bold text-success' : 'text-muted';
-            html += `<td class="${cellClass}">${qty}</td>`;
+            html += `<td><input type="number" class="matrix-dist-qty" data-product-id="${row.product_id}" data-employee-id="${emp.id}" value="${qty}" min="0" style="width: 80px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 6px; text-align: center;"></td>`;
         });
         
         html += '</tr>';
     });
     html += '</tbody></table></div>';
-    
     return html;
 }
 </script>

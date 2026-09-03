@@ -481,6 +481,30 @@
         #completeTaskModal .modal-content .distribution-input {
             background-color: #f0fdf4; /* лёгкий зелёный оттенок для производства */
         }
+        /* Обертка для статуса с кнопкой редактирования */
+        .task-status-wrapper {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .task-status-wrapper .edit-completion-btn {
+            display: none; /* Скрыто по умолчанию */
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0;
+            line-height: 1;
+            transition: transform 0.2s;
+        }
+        .task-status-wrapper .edit-completion-btn:hover {
+            transform: scale(1.2);
+        }
+        /* Показываем кнопку при наведении на обертку */
+        .task-status-wrapper:hover .edit-completion-btn {
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
@@ -2175,7 +2199,21 @@
             } else if (status === 'completed') {
                 statusText = 'Выполнена';
                 statusColor = '#22c55e';
-                actionButtons = `<span style="color:#22c55e;">✅ Выполнена</span>`;
+                // Проверяем, является ли текущий сотрудник основным исполнителем
+                if (n.is_main_executor) {
+                    actionButtons = `
+                        <span class="task-status-wrapper">
+                            <span style="color:#22c55e;">✅ Выполнена</span>
+                            <button class="edit-completion-btn" 
+                                    data-deal="${dealId}" 
+                                    data-task="${taskId}" 
+                                    data-notif="${notifId}"
+                                    data-products='${productsJson}'
+                                    title="Исправить данные завершения">✏️</button>
+                        </span>`;
+                } else {
+                    actionButtons = `<span style="color:#22c55e;">✅ Выполнена</span>`;
+                }
             }
 
             let timeInfo = '';
@@ -2277,6 +2315,27 @@
                 if (id) completeTask(id);
             });
         });
+        // Обработчик для кнопки редактирования (карандаш)
+        container.querySelectorAll('.edit-completion-btn').forEach(btn => {
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                const notifId = parseInt(this.dataset.notif);
+                const dealId = parseInt(this.dataset.deal);
+                const taskId = parseInt(this.dataset.task);
+                let products = [];
+                try {
+                    products = JSON.parse(this.dataset.products || '[]');
+                } catch (err) {
+                    products = [];
+                }
+                
+                // Устанавливаем глобальный флаг режима редактирования
+                window.isEditingCompletion = true;
+                
+                // Открываем модалку с подгрузкой данных
+                await openCompletionModal(dealId, taskId, notifId, products);
+            });
+        });
         // Новый обработчик для простого завершения (только для соисполнителей)
         container.querySelectorAll('.task-complete-simple').forEach(btn => {
             btn.addEventListener('click', function(e) {
@@ -2348,62 +2407,45 @@
         }
     }
 
-    async function completeTask(notificationId) {
-        if (!notificationId) {
-            showToast('Ошибка: идентификатор уведомления не найден', true);
+        // Унифицированная функция открытия модалки (для завершения и редактирования)
+    async function openCompletionModal(dealId, taskId, notificationId, products) {
+        if (!dealId || !taskId || !notificationId) {
+            showToast('Ошибка: не удалось определить задачу', true);
             return;
         }
 
-        // Находим кнопку "Завершить" по data-id
-        const btn = document.querySelector(`.task-complete[data-id="${notificationId}"]`);
-        if (!btn) {
-            showToast('Кнопка задачи не найдена, обновите страницу', true);
-            return;
-        }
-
-        // Читаем данные из атрибутов
-        const dealId = parseInt(btn.dataset.dealId);
-        const taskId = parseInt(btn.dataset.taskId);
-        let products = [];
-        try {
-            products = JSON.parse(btn.dataset.products || '[]');
-        } catch (e) {
-            products = [];
-        }
-
-        if (!dealId || !taskId) {
-            showToast('Не удалось определить сделку или задачу', true);
-            return;
-        }
-
-        // Открываем модальное окно
         const modal = document.getElementById('completeTaskModal');
         modal.style.display = 'block';
         document.getElementById('completeError').innerText = '';
         document.getElementById('finalCompleteBtn').disabled = false;
+        
+        // Меняем текст и цвет кнопки в зависимости от режима
+        const finalBtn = document.getElementById('finalCompleteBtn');
+        if (window.isEditingCompletion) {
+            finalBtn.textContent = '💾 Сохранить изменения';
+            finalBtn.style.background = '#f59e0b'; // Оранжевый
+        } else {
+            finalBtn.textContent = '✅ Завершить задачу';
+            finalBtn.style.background = '#22c55e'; // Зеленый
+        }
 
         try {
-            // Сохраняем в глобальный объект
             currentCompleteData.notificationId = notificationId;
             currentCompleteData.dealId = dealId;
             currentCompleteData.taskId = taskId;
 
-            // Загружаем данные о сделке (исполнители и товары)
             const dealResp = await fetch(`/api/sandbox/deals/${dealId}`, { credentials: 'include' });
             if (!dealResp.ok) throw new Error('Ошибка загрузки сделки');
             const deal = await dealResp.json();
 
-            // Находим информацию о задаче в сделке
             const taskInfo = deal.tasks?.find(t => t.task_id === taskId);
             if (!taskInfo) throw new Error('Задача не найдена в сделке');
             const assignees = taskInfo.assignees || [];
 
-            // Получаем типы товаров из сделки для сопоставления
             const productTypesFromDeal = deal.products || [];
             const productTypeMap = {};
             productTypesFromDeal.forEach(p => productTypeMap[p.name] = p.id);
 
-            // Формируем список productTypes с id, количеством и дефектами
             const productTypes = products.map(p => {
                 const id = productTypeMap[p.name] || null;
                 return {
@@ -2419,20 +2461,19 @@
                 throw new Error('Для задачи не найдены товары');
             }
 
-            // Загружаем существующие данные о завершении
+            // Загружаем существующие данные (для редактирования они уже будут, для нового завершения - пустые)
             const completionsResp = await fetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/completions`, { credentials: 'include' });
             let completions = [];
             if (completionsResp.ok) {
                 completions = await completionsResp.json();
             }
 
-            // Обогащаем productTypes данными из completions
             const compMap = {};
             completions.forEach(c => compMap[c.product_type_id] = c);
+
             productTypes.forEach(pt => {
                 const comp = compMap[pt.id];
                 if (comp) {
-                    // Если уже есть сохранённые распределения – используем их
                     pt.defect_quantity = comp.defect_quantity || 0;
                     pt.defect_comment = comp.defect_comment || '';
                     currentCompleteData.distributions[pt.id] = {};
@@ -2441,7 +2482,6 @@
                             currentCompleteData.distributions[pt.id][d.employee_id] = d.quantity;
                         });
                     } else {
-                        // Если распределений нет – заполняем по умолчанию (всё первому исполнителю)
                         if (assignees.length > 0) {
                             currentCompleteData.distributions[pt.id][assignees[0].employee_id] = pt.quantity;
                             for (let i = 1; i < assignees.length; i++) {
@@ -2450,7 +2490,6 @@
                         }
                     }
                 } else {
-                    // Нет записи – создаём с распределением по умолчанию
                     currentCompleteData.distributions[pt.id] = {};
                     if (assignees.length > 0) {
                         currentCompleteData.distributions[pt.id][assignees[0].employee_id] = pt.quantity;
@@ -2468,27 +2507,39 @@
             currentCompleteData.productTypes = productTypes;
             currentCompleteData.assignees = assignees;
 
-            // Рендерим таблицы
             renderDefectTable();
             renderDistributionTable();
 
-            // Устанавливаем заголовок и информацию
-            document.getElementById('completeTaskTitle').innerText = `✅ Завершение задачи: ${taskInfo.task_name || 'Задача'}`;
+            const modeText = window.isEditingCompletion ? 'Редактирование' : 'Завершение';
+            document.getElementById('completeTaskTitle').innerText = `✅ ${modeText} задачи: ${taskInfo.task_name || 'Задача'}`;
             document.getElementById('completeTaskInfo').innerHTML = `
                 <strong>Сделка:</strong> ${deal.title || '—'} &nbsp;|&nbsp;
                 <strong>Задача:</strong> ${taskInfo.task_name || '—'}
             `;
 
-            // Обработчики для автосохранения
             attachDefectHandlers();
             attachDistributionHandlers();
-
         } catch (err) {
             document.getElementById('completeError').innerText = 'Ошибка: ' + err.message;
             console.error(err);
         }
     }
 
+    // Старая функция-обертка для совместимости (если вызывается из других мест)
+    async function completeTask(notificationId) {
+        const btn = document.querySelector(`.task-complete[data-id="${notificationId}"]`);
+        if (!btn) {
+            showToast('Кнопка задачи не найдена', true);
+            return;
+        }
+        const dealId = parseInt(btn.dataset.dealId);
+        const taskId = parseInt(btn.dataset.taskId);
+        let products = [];
+        try { products = JSON.parse(btn.dataset.products || '[]'); } catch (e) {}
+        
+        window.isEditingCompletion = false;
+        await openCompletionModal(dealId, taskId, notificationId, products);
+    }
     // ===== ДОБАВЛЕНИЕ / УДАЛЕНИЕ СОИСПОЛНИТЕЛЕЙ =====
     function openAddAssigneeModal(dealId, taskId) {
         fetch('/api/employees/list?active_only=true', { credentials: 'include' })
@@ -2842,7 +2893,8 @@ async function saveCompletionForProduct(productTypeId) {
             defect_comment: pt.defect_comment,
             distributions: dists
         };
-        const resp = await fetch(`/api/sandbox/deals/${currentCompleteData.dealId}/tasks/${currentCompleteData.taskId}/products/${productTypeId}/completion`, {
+        // Используем эндпоинт сотрудника, который проверяет права основного исполнителя
+        const resp = await fetch(`/api/employee/tasks/${currentCompleteData.notificationId}/completion`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -2882,12 +2934,29 @@ document.getElementById('finalCompleteBtn').addEventListener('click', async func
             return;
         }
 
-        // Отправляем запрос на завершение задачи
+        // Если мы в режиме редактирования, нам не нужно менять статус задачи, она уже завершена
+        if (window.isEditingCompletion) {
+            showToast('✅ Данные успешно исправлены!');
+            document.getElementById('completeTaskModal').style.display = 'none';
+            window.isEditingCompletion = false; // Сбрасываем флаг
+            loadTaskNotifications(); 
+            return;
+        }
+
+        // Обычный режим: отправляем запрос на завершение задачи
         const resp = await fetch(`/api/employee/tasks/${currentCompleteData.notificationId}/complete`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' }
         });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || 'Ошибка завершения задачи');
+        }
+        showToast('✅ Задача успешно завершена');
+        document.getElementById('completeTaskModal').style.display = 'none';
+        window.isEditingCompletion = false; // Сбрасываем флаг
+        loadTaskNotifications(); 
         if (!resp.ok) {
             const err = await resp.json();
             throw new Error(err.detail || 'Ошибка завершения задачи');
@@ -2902,9 +2971,11 @@ document.getElementById('finalCompleteBtn').addEventListener('click', async func
 });
 document.getElementById('cancelCompleteBtn').addEventListener('click', function() {
     document.getElementById('completeTaskModal').style.display = 'none';
+    window.isEditingCompletion = false;
 });
 document.querySelector('#completeTaskModal .close-complete-modal').addEventListener('click', function() {
     document.getElementById('completeTaskModal').style.display = 'none';
+    window.isEditingCompletion = false;
 });
 window.addEventListener('click', function(e) {
     const modal = document.getElementById('completeTaskModal');

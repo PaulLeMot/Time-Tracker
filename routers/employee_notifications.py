@@ -327,10 +327,27 @@ async def get_my_tasks(
     result = await db.execute(stmt)
     notifications = result.scalars().all()
 
-    # Для каждого уведомления подгружаем статус выполнения
+    # 1. Находим ID самого старого уведомления для каждой задачи (это и есть основной исполнитель)
+    task_oldest_notif = {}
+    for notif in notifications:
+        extra = notif.extra_data or {}
+        d_id = extra.get('deal_id')
+        t_id = extra.get('task_id')
+        if d_id and t_id:
+            key = f"{d_id}_{t_id}"
+            if key not in task_oldest_notif or notif.id < task_oldest_notif[key]:
+                task_oldest_notif[key] = notif.id
+
+    # 2. Формируем ответ
     output = []
     for notif in notifications:
         task_exec = await get_task_execution_by_notification(db, notif.id)
+        
+        # Проверяем, является ли этот сотрудник основным исполнителем
+        extra = notif.extra_data or {}
+        key = f"{extra.get('deal_id')}_{extra.get('task_id')}" if extra.get('deal_id') and extra.get('task_id') else None
+        is_main_executor = (task_oldest_notif.get(key) == notif.id) if key else False
+
         output.append({
             "id": notif.id,
             "message": notif.message,
@@ -338,7 +355,8 @@ async def get_my_tasks(
             "extra_data": notif.extra_data,
             "status": task_exec.status.value if task_exec else TaskExecutionStatus.NOT_STARTED.value,
             "started_at": task_exec.started_at.isoformat() if task_exec and task_exec.started_at else None,
-            "completed_at": task_exec.completed_at.isoformat() if task_exec and task_exec.completed_at else None
+            "completed_at": task_exec.completed_at.isoformat() if task_exec and task_exec.completed_at else None,
+            "is_main_executor": is_main_executor  # <-- НОВОЕ ПОЛЕ
         })
     return output
 
@@ -647,3 +665,66 @@ async def get_task_breaks(
         }
         for b in breaks
     ]
+
+from pydantic import BaseModel
+from typing import List, Optional
+
+class EmployeeCompletionDist(BaseModel):
+    employee_id: int
+    quantity: int
+
+class EmployeeTaskCompletionRequest(BaseModel):
+    product_type_id: int
+    defect_quantity: int = 0
+    defect_comment: Optional[str] = None
+    distributions: List[EmployeeCompletionDist]
+
+@router.post("/tasks/{notification_id}/completion")
+async def save_or_update_task_completion(
+    notification_id: int,
+    data: EmployeeTaskCompletionRequest,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db)
+):
+    """Сохранить или обновить данные о браке и распределении для сотрудника."""
+    # 1. Проверяем, что уведомление принадлежит сотруднику
+    notif = await db.get(Notification, notification_id)
+    if not notif or notif.employee_id != employee.id:
+        raise HTTPException(403, "Это не ваше уведомление")
+        
+    # 2. Проверяем, что сотрудник является ОСНОВНЫМ исполнителем
+    extra = notif.extra_data or {}
+    deal_id = extra.get('deal_id')
+    task_id = extra.get('task_id')
+    if not deal_id or not task_id:
+        raise HTTPException(400, "Неверные данные уведомления")
+
+    stmt_oldest = select(Notification.id).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    ).order_by(Notification.id.asc()).limit(1)
+    oldest_result = await db.execute(stmt_oldest)
+    oldest_id = oldest_result.scalar()
+    
+    if oldest_id != notification_id:
+        raise HTTPException(403, "Только основной исполнитель может редактировать данные завершения")
+
+    # 3. Сохраняем данные через существующий CRUD
+    distributions = [{"employee_id": d.employee_id, "quantity": d.quantity} for d in data.distributions]
+    
+    try:
+        await crud.create_or_update_task_completion(
+            db,
+            deal_id=deal_id,
+            task_id=task_id,
+            product_type_id=data.product_type_id,
+            defect_quantity=data.defect_quantity,
+            defect_comment=data.defect_comment,
+            distributions=distributions
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+        
+    return {"message": "Данные успешно обновлены"}

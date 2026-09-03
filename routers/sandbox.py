@@ -330,10 +330,13 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
 
         employees_columns = [{"id": eid, "name": ename} for eid, ename in employees_map.items()]
 
+        # Маппинг product_id -> quantity из товаров сделки (для валидации на фронте)
+        deal_products_map = {dp.product_id: dp.quantity for dp in deal.deal_products if dp.product_id}
+
         # Формируем строки (товары)
         products_table = []
         assigned_products = {p["id"]: p for p in task_data.get("products", []) if "id" in p}
-
+        
         for comp in task_completions:
             pid = comp["product_type_id"]
             if pid in assigned_products:
@@ -341,6 +344,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
             products_table.append({
                 "product_id": pid,
                 "product_name": comp["product_type_name"],
+                "expected_quantity": deal_products_map.get(pid, 0),  # <-- ДОБАВЛЕНО
                 "defect_qty": comp["defect_quantity"],
                 "defect_comment": comp.get("defect_comment"),
                 "produced_by": {str(d["employee_id"]): d["quantity"] for d in comp["distributions"]}
@@ -350,6 +354,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
             products_table.append({
                 "product_id": pid,
                 "product_name": p_data.get("name", f"Товар #{pid}"),
+                "expected_quantity": deal_products_map.get(pid, 0),  # <-- ДОБАВЛЕНО
                 "defect_qty": 0,
                 "defect_comment": None,
                 "produced_by": {}
