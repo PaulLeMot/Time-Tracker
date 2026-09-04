@@ -1164,14 +1164,14 @@ async def get_mailing_notifications(
     end_date: Optional[str] = None,
     deal_type: Optional[str] = None,
     task_type_id: Optional[int] = None,
-    task_id: Optional[int] = None,
+    task_id: Optional[int] = None,          # <-- Параметр фильтра
     product_name: Optional[str] = None,
     employee_id: Optional[int] = None,
     role: Optional[str] = None,
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Базовый SQL-запрос с подтягиванием всех связанных таблиц
+    # 1. Базовый SQL-запрос
     stmt = text("""
         SELECT
             n.id, n.extra_data, n.message, n.created_at,
@@ -1200,9 +1200,12 @@ async def get_mailing_notifications(
     first_notif_map = {}
     for row in rows:
         extra = row.extra_data or {}
-        deal_id, task_id = extra.get('deal_id'), extra.get('task_id')
-        if deal_id and task_id:
-            key = (deal_id, task_id)
+        # ИСПРАВЛЕНИЕ: используем уникальные имена переменных для данных строки
+        row_deal_id = extra.get('deal_id')
+        row_task_id = extra.get('task_id')
+        
+        if row_deal_id and row_task_id:
+            key = (row_deal_id, row_task_id)
             if key not in first_notif_map or row.id < first_notif_map[key]:
                 first_notif_map[key] = row.id
 
@@ -1210,8 +1213,10 @@ async def get_mailing_notifications(
     output = []
     for row in rows:
         extra = row.extra_data or {}
-        deal_id, task_id = extra.get('deal_id'), extra.get('task_id')
-        key = (deal_id, task_id)
+        row_deal_id = extra.get('deal_id')
+        row_task_id = extra.get('task_id')
+        
+        key = (row_deal_id, row_task_id)
         
         current_role = "Основной" if first_notif_map.get(key) == row.id else "Соисполнитель"
         exec_status = row.exec_status or "not_started"
@@ -1230,14 +1235,16 @@ async def get_mailing_notifications(
             except ValueError: pass
             
         if deal_type and deal_type.lower() not in deal_type_name.lower(): continue
-        if task_type_id and row.task_type_id != task_type_id: continue
-        if task_id and row.task_id != task_id: continue  # <-- НОВОЕ
+        if task_type_id is not None and row.task_type_id != task_type_id: continue
+        
+        # ИСПРАВЛЕНИЕ: сравниваем параметр функции task_id с row_task_id из строки
+        if task_id is not None and row_task_id != task_id: continue  
         
         if product_name:
             prod_names = [p.get("name", "").lower() for p in products]
             if not any(product_name.lower() in pn for pn in prod_names): continue
             
-        if employee_id and row.employee_id != employee_id: continue
+        if employee_id is not None and row.employee_id != employee_id: continue
         
         if role:
             if role == "main" and current_role != "Основной": continue
@@ -1250,10 +1257,10 @@ async def get_mailing_notifications(
             "id": row.id,
             "employee_id": row.employee_id,
             "employee_name": row.employee_name,
-            "task_id": row.task_id,
+            "task_id": row_task_id,
             "task_name": row.task_name,
             "task_type_name": task_type_name,
-            "deal_id": row.deal_id,
+            "deal_id": row_deal_id,
             "deal_title": row.deal_title,
             "deal_type_name": deal_type_name,
             "role": current_role,
@@ -1299,43 +1306,6 @@ async def delete_mailing_notification(
     await db.delete(notification)
     await db.commit()
     return {"message": "Уведомление удалено"}
-
-    class UpdateProductQuantity(BaseModel):
-        product_id: int
-        quantity: int
-
-    @router.put("/deals/{deal_id}/products")
-    async def update_deal_products(
-        deal_id: int,
-        products: List[UpdateProductQuantity],
-        db: AsyncSession = Depends(get_db),
-        admin: Employee = Depends(get_current_admin)
-    ):
-        deal = await crud.get_deal_by_id(db, deal_id)
-        if not deal:
-            raise HTTPException(404, "Сделка не найдена")
-        
-        # Обновляем количества
-        for item in products:
-            # Ищем DealProductType
-            stmt = select(DealProductType).where(
-                DealProductType.deal_id == deal_id,
-                DealProductType.product_id == item.product_id
-            )
-            result = await db.execute(stmt)
-            dp = result.scalar_one_or_none()
-            if dp:
-                dp.quantity = item.quantity
-            else:
-                # Если товара нет – создаём (опционально)
-                dp = DealProductType(
-                    deal_id=deal_id,
-                    product_id=item.product_id,
-                    quantity=item.quantity
-                )
-                db.add(dp)
-        await db.commit()
-        return {"message": "Обновлено"}
 
 class UpdateTaskAssignee(BaseModel):
     employee_id: int
