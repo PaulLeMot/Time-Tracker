@@ -266,11 +266,9 @@ class MP(Base):
 
 class TaskExecution(Base):
     __tablename__ = "task_executions"
-
     id = Column(Integer, primary_key=True)
     notification_id = Column(Integer, ForeignKey("notifications.id"), unique=True, nullable=False)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
-
     status = Column(
         SAEnum(
             TaskExecutionStatus,
@@ -280,15 +278,13 @@ class TaskExecution(Base):
         default=TaskExecutionStatus.NOT_STARTED,
         nullable=False,
     )
-
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    general_comment = Column(Text, nullable=True)
 
-    # Связи
     notification = relationship("Notification", back_populates="task_execution")
     employee = relationship("Employee", back_populates="task_executions")
     breaks = relationship("TaskBreak", back_populates="task_execution", cascade="all, delete-orphan")
-
     __table_args__ = (UniqueConstraint('notification_id', name='uq_notification_task'),)
 
 class TaskBreak(Base):

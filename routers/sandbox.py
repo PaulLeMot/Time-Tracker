@@ -273,6 +273,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
             te.status as exec_status,
             te.started_at,
             te.completed_at,
+            te.general_comment as general_comment,  -- <-- ДОБАВЛЕНО
             e.id as employee_id,
             e.full_name,
             (n.extra_data->>'task_id')::integer as task_id,
@@ -308,7 +309,8 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
             "status": row.exec_status or "not_started",
             "started_at": row.started_at.isoformat() if row.started_at else None,
             "completed_at": row.completed_at.isoformat() if row.completed_at else None,
-            "notification_id": row.notification_id
+            "notification_id": row.notification_id,
+            "general_comment": row.general_comment
         })
 
     completions = await crud.get_all_task_completions_for_deal(db, deal_id)
@@ -1373,6 +1375,44 @@ class UpdateTaskTime(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     notification_id: Optional[int] = None
+
+class UpdateTaskCommentRequest(BaseModel):
+    general_comment: Optional[str] = None
+
+@router.put("/deals/{deal_id}/tasks/{task_id}/comment")
+async def update_task_comment(
+    deal_id: int,
+    task_id: int,
+    data: UpdateTaskCommentRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    """Обновить общий комментарий к задаче (для основного исполнителя)"""
+    # Находим ID уведомления основного исполнителя для этой задачи в этой сделке
+    stmt = text("""
+        SELECT id FROM notifications
+        WHERE type = 'task_assignment'
+        AND status = 'sent'
+        AND (extra_data->>'deal_id')::integer = :deal_id
+        AND (extra_data->>'task_id')::integer = :task_id
+        ORDER BY id ASC
+        LIMIT 1
+    """)
+    result = await db.execute(stmt, {"deal_id": deal_id, "task_id": task_id})
+    row = result.first()
+    
+    if not row:
+        raise HTTPException(404, "Основной исполнитель не найден")
+    
+    notif_id = row[0]
+    te = await crud.get_task_execution_by_notification(db, notif_id)
+    
+    if te:
+        te.general_comment = data.general_comment
+        await db.commit()
+        return {"message": "Комментарий обновлён"}
+    
+    raise HTTPException(404, "Запись выполнения не найдена")
 
 @router.put("/deals/{deal_id}/tasks/{task_id}/time")
 async def update_task_time(

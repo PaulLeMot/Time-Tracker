@@ -723,6 +723,10 @@
             </table>
         </div>
 
+        <!-- НОВОЕ ПОЛЕ: Общий комментарий -->
+        <h4 style="margin: 16px 0 8px;">💬 Общий комментарий к задаче</h4>
+        <textarea id="generalTaskComment" rows="3" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.95rem; resize: vertical; box-sizing:border-box;" placeholder="Условия работы, нюансы, проблемы с оборудованием..."></textarea>
+
         <div style="margin-top: 20px; display: flex; gap: 12px; justify-content: flex-end;">
             <button id="cancelCompleteBtn" class="btn" style="background:#94a3b8;">Отмена</button>
             <button id="finalCompleteBtn" class="btn" style="background:#22c55e;">✅ Завершить задачу</button>
@@ -735,9 +739,10 @@
         notificationId: null,
         dealId: null,
         taskId: null,
-        productTypes: [],          // массив объектов {id, name, quantity, defect_quantity, defect_comment}
-        assignees: [],             // массив {employee_id, full_name}
-        distributions: {}          // ключ - product_type_id, значение - объект {employee_id: quantity}
+        productTypes: [],
+        assignees: [],
+        distributions: {},
+        generalComment: ''
     };
     let isSaving = false;
 
@@ -2199,16 +2204,18 @@
             } else if (status === 'completed') {
                 statusText = 'Выполнена';
                 statusColor = '#22c55e';
-                // Проверяем, является ли текущий сотрудник основным исполнителем
+                
                 if (n.is_main_executor) {
+                    const safeComment = (n.general_comment || '').replace(/"/g, '&quot;');
                     actionButtons = `
                         <span class="task-status-wrapper">
                             <span style="color:#22c55e;">✅ Выполнена</span>
-                            <button class="edit-completion-btn" 
-                                    data-deal="${dealId}" 
-                                    data-task="${taskId}" 
+                            <button class="edit-completion-btn"
+                                    data-deal="${dealId}"
+                                    data-task="${taskId}"
                                     data-notif="${notifId}"
                                     data-products='${productsJson}'
+                                    data-general-comment="${safeComment}" 
                                     title="Исправить данные завершения">✏️</button>
                         </span>`;
                 } else {
@@ -2322,18 +2329,20 @@
                 const notifId = parseInt(this.dataset.notif);
                 const dealId = parseInt(this.dataset.deal);
                 const taskId = parseInt(this.dataset.task);
+                
+                // Читаем комментарий из data-атрибута (если он там есть)
+                const generalComment = this.dataset.generalComment || ''; 
+                
                 let products = [];
                 try {
                     products = JSON.parse(this.dataset.products || '[]');
                 } catch (err) {
                     products = [];
                 }
-                
-                // Устанавливаем глобальный флаг режима редактирования
                 window.isEditingCompletion = true;
                 
-                // Открываем модалку с подгрузкой данных
-                await openCompletionModal(dealId, taskId, notifId, products);
+                // Передаем generalComment пятым аргументом
+                await openCompletionModal(dealId, taskId, notifId, products, generalComment);
             });
         });
         // Новый обработчик для простого завершения (только для соисполнителей)
@@ -2408,7 +2417,7 @@
     }
 
         // Унифицированная функция открытия модалки (для завершения и редактирования)
-    async function openCompletionModal(dealId, taskId, notificationId, products) {
+    async function openCompletionModal(dealId, taskId, notificationId, products, generalComment = '') {
         if (!dealId || !taskId || !notificationId) {
             showToast('Ошибка: не удалось определить задачу', true);
             return;
@@ -2509,6 +2518,24 @@
 
             renderDefectTable();
             renderDistributionTable();
+
+            // Инициализация поля общего комментария
+            const commentTextarea = document.getElementById('generalTaskComment');
+            if (commentTextarea) {
+                // Используем переданный generalComment (при редактировании) или пустую строку
+                commentTextarea.value = generalComment;
+                
+                // Автосохранение комментария при потере фокуса (blur)
+                commentTextarea.onblur = function() {
+                    const val = this.value;
+                    currentCompleteData.generalComment = val; // <-- Сохраняем в глобальный объект
+                    
+                    // Отправляем на бэкенд через первый продукт
+                    if (currentCompleteData.productTypes.length > 0) {
+                        saveCompletionForProduct(currentCompleteData.productTypes[0].id);
+                    }
+                };
+            }
 
             const modeText = window.isEditingCompletion ? 'Редактирование' : 'Завершение';
             document.getElementById('completeTaskTitle').innerText = `✅ ${modeText} задачи: ${taskInfo.task_name || 'Задача'}`;
@@ -2891,7 +2918,8 @@ async function saveCompletionForProduct(productTypeId) {
             product_type_id: productTypeId,
             defect_quantity: pt.defect_quantity,
             defect_comment: pt.defect_comment,
-            distributions: dists
+            distributions: dists,
+            general_comment: currentCompleteData.generalComment
         };
         // Используем эндпоинт сотрудника, который проверяет права основного исполнителя
         const resp = await fetch(`/api/employee/tasks/${currentCompleteData.notificationId}/completion`, {

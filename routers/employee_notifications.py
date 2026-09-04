@@ -356,7 +356,8 @@ async def get_my_tasks(
             "status": task_exec.status.value if task_exec else TaskExecutionStatus.NOT_STARTED.value,
             "started_at": task_exec.started_at.isoformat() if task_exec and task_exec.started_at else None,
             "completed_at": task_exec.completed_at.isoformat() if task_exec and task_exec.completed_at else None,
-            "is_main_executor": is_main_executor  # <-- НОВОЕ ПОЛЕ
+            "is_main_executor": is_main_executor,
+            "general_comment": task_exec.general_comment if task_exec else None
         })
     return output
 
@@ -678,6 +679,7 @@ class EmployeeTaskCompletionRequest(BaseModel):
     defect_quantity: int = 0
     defect_comment: Optional[str] = None
     distributions: List[EmployeeCompletionDist]
+    general_comment: Optional[str] = None
 
 @router.post("/tasks/{notification_id}/completion")
 async def save_or_update_task_completion(
@@ -711,7 +713,7 @@ async def save_or_update_task_completion(
     if oldest_id != notification_id:
         raise HTTPException(403, "Только основной исполнитель может редактировать данные завершения")
 
-    # 3. Сохраняем данные через существующий CRUD
+    # 3. Сохраняем данные через существующий CRUD (для продуктов)
     distributions = [{"employee_id": d.employee_id, "quantity": d.quantity} for d in data.distributions]
     
     try:
@@ -727,4 +729,11 @@ async def save_or_update_task_completion(
     except ValueError as e:
         raise HTTPException(400, str(e))
         
+    # 4. НОВОЕ: Обновляем общий комментарий в TaskExecution, если он передан
+    if data.general_comment is not None:
+        task_exec = await crud.get_task_execution_by_notification(db, notification_id)
+        if task_exec:
+            task_exec.general_comment = data.general_comment
+            await db.commit()
+            
     return {"message": "Данные успешно обновлены"}

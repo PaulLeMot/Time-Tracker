@@ -6682,6 +6682,26 @@ function showDetail(deal) {
                     <strong>Производство и брак:</strong>
                     ${renderProductionMatrix(task, deal.id)}
                 </div>`;
+
+                // ----------------------
+                // 2.6. Общий комментарий к задаче
+                // ----------------------
+                // Комментарий хранится у основного исполнителя (первого в списке assignees)
+                const generalComment = (task.assignees && task.assignees.length > 0) 
+                    ? (task.assignees[0].general_comment || '') 
+                    : '';
+                
+                html += `<div style="margin-bottom:12px;">
+                    <strong>💬 Общий комментарий к задаче:</strong>
+                    <textarea 
+                        class="matrix-general-comment" 
+                        data-task-id="${taskId}" 
+                        data-deal-id="${deal.id}"
+                        rows="3" 
+                        style="width:100%; margin-top: 6px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; resize: vertical; box-sizing: border-box;"
+                        placeholder="Комментарий исполнителя или заметка администратора...">${escapeHtml(generalComment)}</textarea>
+                </div>`;
+
             // ----------------------
             // 3. Поля редактирования (статус, время)
             // ----------------------
@@ -7149,7 +7169,36 @@ function showDetail(deal) {
 
     window._matrixChangeHandler = async function(e) {
         const target = e.target;
-        // Реагируем только на наши инпуты
+        
+        // 1. Обработка общего комментария к задаче
+        if (target.classList.contains('matrix-general-comment')) {
+            const taskId = parseInt(target.dataset.taskId);
+            const dealId = parseInt(target.dataset.dealId);
+            const commentText = target.value;
+
+            try {
+                target.disabled = true; // Блокируем на время запроса
+                const resp = await fetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/comment`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ general_comment: commentText }),
+                    credentials: 'include'
+                });
+                
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || 'Ошибка сохранения комментария');
+                }
+                showToast('✅ Комментарий сохранён', false);
+            } catch (err) {
+                showToast(`❌ ${err.message}`, true);
+            } finally {
+                target.disabled = false;
+            }
+            return; // Выходим, логика для товаров ниже
+        }
+
+        // 2. Обработка ячеек матрицы (товары, брак, распределение)
         if (!target.matches('.matrix-defect-qty, .matrix-defect-comment, .matrix-dist-qty')) return;
 
         const row = target.closest('tr');

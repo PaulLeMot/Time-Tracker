@@ -1515,7 +1515,8 @@ async def update_task_execution_status(
     notification_id: int,
     status: TaskExecutionStatus,
     started_at: Optional[datetime] = None,
-    completed_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None,
+    general_comment: Optional[str] = None
 ) -> TaskExecution:
     task_exec = await get_task_execution_by_notification(db, notification_id)
     if not task_exec:
@@ -1525,6 +1526,8 @@ async def update_task_execution_status(
         task_exec.started_at = started_at
     if completed_at is not None:
         task_exec.completed_at = completed_at
+    if general_comment is not None:
+        task_exec.general_comment = general_comment
     await db.commit()
     await db.refresh(task_exec)
     return task_exec
