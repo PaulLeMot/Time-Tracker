@@ -9416,9 +9416,9 @@ async function loadMailingNotifications() {
             return;
         }
 
+        // Убрали "Тип задачи" из шапки. Остались 7 колонок.
         let html = `<div class="recent-table"><table><thead><tr>
             <th>Сделка</th>
-            <th>Тип задачи</th>
             <th>Задача</th>
             <th>Товары</th>
             <th>Сотрудник</th>
@@ -9434,20 +9434,17 @@ async function loadMailingNotifications() {
                 : '';
             const dealCell = `${escapeHtml(n.deal_title || '—')} ${dealTypeBadge}`;
 
-            // 2. Тип задачи
-            const taskTypeCell = `<span style="color:#475569; font-size:0.9rem;">${escapeHtml(n.task_type_name)}</span>`;
-
-            // 3. Задача
+            // 2. Задача
             const taskCell = `<strong>${escapeHtml(n.task_name || '—')}</strong>`;
 
-            // 4. Товары
+            // 3. Товары
             let productsHtml = '—';
-            const products = n.products || [];
+            const products = n.products || n.extra_data?.products || [];
             if (products.length) {
                 productsHtml = products.map(p => `${escapeHtml(p.name)} <span style="color:#64748b;">(${p.quantity})</span>`).join('<br>');
             }
 
-            // 5. Сотрудник + Бейдж роли (Синий/Серый)
+            // 4. Сотрудник + Бейдж роли (Синий/Серый)
             const empName = escapeHtml(n.employee_name || '—');
             let employeeCell = empName;
             if (n.role === 'Основной') {
@@ -9460,7 +9457,7 @@ async function loadMailingNotifications() {
                 </span>`;
             }
 
-            // 6. Статус
+            // 5. Статус
             const statusMap = {
                 'not_started': { icon: '❌', text: 'Не начата', color: '#64748b' },
                 'in_progress': { icon: '🔄', text: 'В процессе', color: '#f59e0b' },
@@ -9470,19 +9467,19 @@ async function loadMailingNotifications() {
             const st = statusMap[n.execution_status] || statusMap['not_started'];
             const statusCell = `<span style="color:${st.color}; white-space:nowrap;">${st.icon} ${st.text}</span>`;
 
-            // 7. Время
+            // 6. Время (Начало и Завершение)
             let timeHtml = '<div style="font-size:0.85rem; line-height:1.4;">';
             if (n.started_at) timeHtml += `<div>🟢 ${new Date(n.started_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>`;
             if (n.completed_at) timeHtml += `<div>🏁 ${new Date(n.completed_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>`;
             if (!n.started_at && !n.completed_at) timeHtml += '<span style="color:#94a3b8;">—</span>';
             timeHtml += '</div>';
 
-            // 8. Действия
+            // 7. Действия
             const actionsCell = `<button class="btn-sm btn-danger delete-mailing-btn" data-id="${n.id}" title="Удалить">🗑️</button>`;
 
+            // Собираем строку (БЕЗ колонки "Тип задачи")
             html += `<tr>
                 <td>${dealCell}</td>
-                <td>${taskTypeCell}</td>
                 <td>${taskCell}</td>
                 <td>${productsHtml}</td>
                 <td>${employeeCell}</td>
