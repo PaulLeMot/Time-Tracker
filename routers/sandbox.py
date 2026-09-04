@@ -1200,24 +1200,45 @@ async def get_mailing_notifications(
     first_notif_map = {}
     for row in rows:
         extra = row.extra_data or {}
-        # ИСПРАВЛЕНИЕ: используем уникальные имена переменных для данных строки
         row_deal_id = extra.get('deal_id')
         row_task_id = extra.get('task_id')
-        
         if row_deal_id and row_task_id:
             key = (row_deal_id, row_task_id)
             if key not in first_notif_map or row.id < first_notif_map[key]:
                 first_notif_map[key] = row.id
 
-    # 3. Обогащаем данные и применяем фильтры
+    # 3. Если указан фильтр по сотруднику, находим все задачи, в которых он участвует
+    allowed_task_keys = None
+    if employee_id is not None:
+        allowed_task_keys = set()
+        for row in rows:
+            if row.employee_id == employee_id:
+                extra = row.extra_data or {}
+                d_id = extra.get('deal_id')
+                t_id = extra.get('task_id')
+                if d_id and t_id:
+                    key = (d_id, t_id)
+                    # Если также указан фильтр по роли, проверяем его
+                    if role:
+                        is_main = (first_notif_map.get(key) == row.id)
+                        if role == "main" and not is_main:
+                            continue
+                        if role == "co" and is_main:
+                            continue
+                    allowed_task_keys.add(key)
+
+    # 4. Обогащаем данные и применяем фильтры
     output = []
     for row in rows:
         extra = row.extra_data or {}
         row_deal_id = extra.get('deal_id')
         row_task_id = extra.get('task_id')
-        
         key = (row_deal_id, row_task_id)
         
+        # Если включен фильтр по сотруднику, пропускаем уведомления не из целевых задач
+        if allowed_task_keys is not None and key not in allowed_task_keys:
+            continue
+
         current_role = "Основной" if first_notif_map.get(key) == row.id else "Соисполнитель"
         exec_status = row.exec_status or "not_started"
         deal_type_name = row.deal_type_name or "—"
@@ -1236,20 +1257,15 @@ async def get_mailing_notifications(
             
         if deal_type and deal_type.lower() not in deal_type_name.lower(): continue
         if task_type_id is not None and row.task_type_id != task_type_id: continue
-        
-        # ИСПРАВЛЕНИЕ: сравниваем параметр функции task_id с row_task_id из строки
         if task_id is not None and row_task_id != task_id: continue  
         
         if product_name:
             prod_names = [p.get("name", "").lower() for p in products]
             if not any(product_name.lower() in pn for pn in prod_names): continue
             
-        if employee_id is not None and row.employee_id != employee_id: continue
+        # ВАЖНО: фильтры по employee_id и role уже учтены на этапе формирования allowed_task_keys,
+        # поэтому здесь их применять НЕ НУЖНО, чтобы не отсечь соисполнителей из найденных задач.
         
-        if role:
-            if role == "main" and current_role != "Основной": continue
-            if role == "co" and current_role != "Соисполнитель": continue
-            
         if status and exec_status != status: continue
 
         # Если все фильтры пройдены, добавляем в выдачу

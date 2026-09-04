@@ -9359,7 +9359,7 @@ function renderMailingFilters(container) {
 }
 
 // ================================================
-// 2. ЗАГРУЗКА ДАННЫХ С УЧЕТОМ ФИЛЬТРОВ
+// 2. ЗАГРУЗКА ДАННЫХ С УЧЕТОМ ФИЛЬТРОВ И ГРУППИРОВКА
 // ================================================
 async function loadMailingNotifications() {
     const container = document.getElementById('mailingContainer');
@@ -9372,14 +9372,14 @@ async function loadMailingNotifications() {
 
     container.innerHTML = '<p>Загрузка...</p>';
 
-    // Собираем параметры из UI
+    // Собираем параметры из UI фильтров
     const params = new URLSearchParams();
     const dateRange = document.getElementById('filterDateRange')?._flatpickr?.selectedDates;
     if (dateRange && dateRange.length === 2) {
         params.append('start_date', dateRange[0].toISOString().split('T')[0]);
         params.append('end_date', dateRange[1].toISOString().split('T')[0]);
     }
-    
+
     const mappings = [
         ['filterDealType', 'deal_type'],
         ['filterTaskType', 'task_type_id'],
@@ -9389,7 +9389,7 @@ async function loadMailingNotifications() {
         ['filterRole', 'role'],
         ['filterStatus', 'status']
     ];
-    
+
     mappings.forEach(([uiId, apiParam]) => {
         const val = document.getElementById(uiId)?.value;
         if (val) params.append(apiParam, val);
@@ -9401,110 +9401,154 @@ async function loadMailingNotifications() {
         const resp = await fetch(`/api/sandbox/mailing/notifications${queryString}`, { credentials: 'include' });
         if (!resp.ok) throw new Error('Ошибка загрузки');
         const data = await resp.json();
-        renderMailingTable(data, container);
+
+        // --- 🚀 НОВЫЙ БЛОК: ГРУППИРОВКА ПО ЗАДАЧАМ ---
+        const grouped = {};
+        for (const n of data) {
+            const key = `${n.deal_id}_${n.task_id}`;
+            if (!grouped[key]) {
+                grouped[key] = {
+                    deal_id: n.deal_id,
+                    deal_title: n.deal_title,
+                    deal_type_name: n.deal_type_name,
+                    task_id: n.task_id,
+                    task_name: n.task_name,
+                    task_type_name: n.task_type_name,
+                    products: n.products || n.extra_data?.products || [],
+                    created_at: n.created_at,
+                    employees: []
+                };
+            }
+            grouped[key].employees.push({
+                id: n.id,
+                employee_id: n.employee_id,
+                employee_name: n.employee_name,
+                role: n.role,
+                execution_status: n.execution_status,
+                started_at: n.started_at,
+                completed_at: n.completed_at
+            });
+        }
+        const groupedNotifications = Object.values(grouped);
+        renderMailingTable(groupedNotifications, container);
     } catch (err) {
         container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
     }
 }
 
     // ================================================
-    // 3. ОТРИСОВКА ТАБЛИЦЫ (С БЕЙДЖАМИ)
+    // 3. ОТРИСОВКА ТАБЛИЦЫ
     // ================================================
-    function renderMailingTable(notifications, container) {
-        if (!notifications || notifications.length === 0) {
+    function renderMailingTable(groupedNotifications, container) {
+        if (!groupedNotifications || groupedNotifications.length === 0) {
             container.innerHTML = '<p style="color:#94a3b8;">Нет уведомлений по задачам</p>';
             return;
         }
 
-        // Убрали "Тип задачи" из шапки. Остались 7 колонок.
         let html = `<div class="recent-table"><table><thead><tr>
             <th>Сделка</th>
             <th>Задача</th>
             <th>Товары</th>
-            <th>Сотрудник</th>
-            <th>Статус</th>
-            <th>Время</th>
+            <th>Сотрудники и статусы</th>
             <th>Действия</th>
         </tr></thead><tbody>`;
 
-        for (const n of notifications) {
-            // 1. Сделка + Бейдж типа (FBS/FBO/FSK)
-            const dealTypeBadge = n.deal_type_name && n.deal_type_name !== '—' 
-                ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:8px; font-size:0.75rem; margin-left:4px;">${escapeHtml(n.deal_type_name)}</span>` 
+        for (const task of groupedNotifications) {
+            // 1. Сделка
+            const dealTypeBadge = task.deal_type_name && task.deal_type_name !== '—' 
+                ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:8px; font-size:0.75rem; margin-left:4px;">${escapeHtml(task.deal_type_name)}</span>` 
                 : '';
-            const dealCell = `${escapeHtml(n.deal_title || '—')} ${dealTypeBadge}`;
+            const dealCell = `${escapeHtml(task.deal_title || '—')} ${dealTypeBadge}`;
 
             // 2. Задача
-            const taskCell = `<strong>${escapeHtml(n.task_name || '—')}</strong>`;
+            const taskCell = `<strong>${escapeHtml(task.task_name || '—')}</strong>`;
 
             // 3. Товары
             let productsHtml = '—';
-            const products = n.products || n.extra_data?.products || [];
-            if (products.length) {
-                productsHtml = products.map(p => `${escapeHtml(p.name)} <span style="color:#64748b;">(${p.quantity})</span>`).join('<br>');
+            if (task.products.length) {
+                productsHtml = task.products.map(p => `${escapeHtml(p.name)} <span style="color:#64748b;">(${p.quantity})</span>`).join('<br>');
             }
 
-            // 4. Сотрудник + Бейдж роли (Синий/Серый)
-            const empName = escapeHtml(n.employee_name || '—');
-            let employeeCell = empName;
-            if (n.role === 'Основной') {
-                employeeCell = `<span style="color: #1d4ed8; font-weight: 600;">${empName} 
-                    <span style="font-size: 0.7rem; background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 8px; margin-left: 4px; font-weight: 500;">Основной</span>
-                </span>`;
-            } else {
-                employeeCell = `<span style="color: #475569;">${empName} 
-                    <span style="font-size: 0.7rem; background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 8px; margin-left: 4px;">Соисполнитель</span>
-                </span>`;
+            // 4. Сотрудники (объединяем в одну ячейку)
+            let employeesHtml = '<div style="display: flex; flex-direction: column; gap: 6px;">';
+            
+            // Сортируем: сначала основной исполнитель, потом соисполнители
+            const sortedEmployees = [...task.employees].sort((a, b) => {
+                if (a.role === 'Основной' && b.role !== 'Основной') return -1;
+                if (a.role !== 'Основной' && b.role === 'Основной') return 1;
+                return 0;
+            });
+
+            for (const emp of sortedEmployees) {
+                // Бейдж роли
+                const roleBadge = emp.role === 'Основной' 
+                    ? `<span style="font-size: 0.7rem; background: #dbeafe; color: #1e40af; padding: 1px 6px; border-radius: 8px; font-weight: 500;">Основной</span>`
+                    : `<span style="font-size: 0.7rem; background: #f1f5f9; color: #64748b; padding: 1px 6px; border-radius: 8px;">Соисполнитель</span>`;
+                
+                // Статус
+                const statusMap = {
+                    'not_started': { icon: '❌', text: 'Не начата', color: '#64748b' },
+                    'in_progress': { icon: '🔄', text: 'В процессе', color: '#f59e0b' },
+                    'on_break':    { icon: '⏸️', text: 'Перерыв', color: '#8b5cf6' },
+                    'completed':   { icon: '✅', text: 'Завершена', color: '#22c55e' }
+                };
+                const st = statusMap[emp.execution_status] || statusMap['not_started'];
+                const statusSpan = `<span style="color:${st.color}; white-space:nowrap;">${st.icon} ${st.text}</span>`;
+
+                // Время
+                let timeStr = '';
+                if (emp.started_at) {
+                    const start = new Date(emp.started_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+                    timeStr += `🟢 ${start}`;
+                }
+                if (emp.completed_at) {
+                    const end = new Date(emp.completed_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+                    timeStr += ` 🏁 ${end}`;
+                }
+
+                employeesHtml += `
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem;">
+                        <span style="font-weight: 500; color: #0f172a;">${escapeHtml(emp.employee_name)}</span>
+                        ${roleBadge}
+                        ${statusSpan}
+                        ${timeStr ? `<span style="color: #64748b; font-size: 0.8rem;">${timeStr}</span>` : ''}
+                    </div>
+                `;
             }
+            employeesHtml += '</div>';
 
-            // 5. Статус
-            const statusMap = {
-                'not_started': { icon: '❌', text: 'Не начата', color: '#64748b' },
-                'in_progress': { icon: '🔄', text: 'В процессе', color: '#f59e0b' },
-                'on_break':    { icon: '⏸️', text: 'Перерыв', color: '#8b5cf6' },
-                'completed':   { icon: '✅', text: 'Завершена', color: '#22c55e' }
-            };
-            const st = statusMap[n.execution_status] || statusMap['not_started'];
-            const statusCell = `<span style="color:${st.color}; white-space:nowrap;">${st.icon} ${st.text}</span>`;
+            // 5. Действия (Удаление всей задачи целиком)
+            const allIds = task.employees.map(e => e.id).join(',');
+            const actionsCell = `<button class="btn-sm btn-danger delete-task-group-btn" data-ids="${allIds}" title="Удалить задачу у всех">🗑️</button>`;
 
-            // 6. Время (Начало и Завершение)
-            let timeHtml = '<div style="font-size:0.85rem; line-height:1.4;">';
-            if (n.started_at) timeHtml += `<div>🟢 ${new Date(n.started_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>`;
-            if (n.completed_at) timeHtml += `<div>🏁 ${new Date(n.completed_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>`;
-            if (!n.started_at && !n.completed_at) timeHtml += '<span style="color:#94a3b8;">—</span>';
-            timeHtml += '</div>';
-
-            // 7. Действия
-            const actionsCell = `<button class="btn-sm btn-danger delete-mailing-btn" data-id="${n.id}" title="Удалить">🗑️</button>`;
-
-            // Собираем строку (БЕЗ колонки "Тип задачи")
             html += `<tr>
                 <td>${dealCell}</td>
                 <td>${taskCell}</td>
                 <td>${productsHtml}</td>
-                <td>${employeeCell}</td>
-                <td>${statusCell}</td>
-                <td>${timeHtml}</td>
+                <td>${employeesHtml}</td>
                 <td>${actionsCell}</td>
             </tr>`;
         }
         html += '</tbody></table></div>';
         container.innerHTML = html;
 
-        // Обработчики удаления
-        container.querySelectorAll('.delete-mailing-btn').forEach(btn => {
+        // Обработчики удаления (массовое удаление всех копий задачи)
+        container.querySelectorAll('.delete-task-group-btn').forEach(btn => {
             btn.addEventListener('click', async function() {
-                const id = this.dataset.id;
-                if (!confirm('Удалить это уведомление?')) return;
+                if (!confirm('Удалить эту задачу у всех назначенных сотрудников?')) return;
+                const ids = this.dataset.ids.split(',').map(Number);
                 try {
-                    const resp = await fetch(`/api/sandbox/mailing/notifications/${id}`, {
-                        method: 'DELETE', credentials: 'include'
-                    });
-                    if (!resp.ok) throw new Error('Ошибка удаления');
-                    showToast('✅ Уведомление удалено');
+                    // Удаляем все уведомления параллельно
+                    await Promise.all(ids.map(id => 
+                        fetch(`/api/sandbox/mailing/notifications/${id}`, {
+                            method: 'DELETE',
+                            credentials: 'include'
+                        })
+                    ));
+                    showToast('✅ Задача удалена');
                     loadMailingNotifications(); 
                 } catch (err) {
-                    showToast(err.message, true);
+                    showToast('Ошибка удаления: ' + err.message, true);
                 }
             });
         });
