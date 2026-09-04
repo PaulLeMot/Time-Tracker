@@ -9246,75 +9246,249 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
     }
 
     // ---- Загрузка уведомлений для вкладки "Рассылка" ----
-    async function loadMailingNotifications() {
-        const container = document.getElementById('mailingContainer');
-        if (!container) return;
-        container.innerHTML = '<p>Загрузка...</p>';
-        try {
-            const resp = await apiFetch('/api/sandbox/mailing/notifications');
-            const data = await resp.json();
-            renderMailingTable(data, container);
-        } catch (err) {
-            container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
-        }
+// ================================================
+// 1. ГЕНЕРАЦИЯ ПАНЕЛИ ФИЛЬТРОВ
+// ================================================
+function renderMailingFilters(container) {
+    let filterHtml = `
+    <div id="mailingFilters" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 12px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 0.8rem; color: #64748b;">Период</label>
+            <input type="text" id="filterDateRange" placeholder="Выберите даты" style="width: 200px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 0.8rem; color: #64748b;">Тип сделки</label>
+            <select id="filterDealType" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                <option value="">Все</option>
+                <option value="FBS">FBS</option>
+                <option value="FBO">FBO</option>
+                <option value="FSK">FSK</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 0.8rem; color: #64748b;">Тип задачи</label>
+            <select id="filterTaskType" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                <option value="">Все</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 0.8rem; color: #64748b;">Задача</label>
+            <select id="filterTask" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px; min-width: 150px;">
+                <option value="">Все</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 0.8rem; color: #64748b;">Товар</label>
+            <input type="text" id="filterProduct" placeholder="Название..." style="width: 150px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 0.8rem; color: #64748b;">Сотрудник</label>
+            <select id="filterEmployee" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                <option value="">Все</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 0.8rem; color: #64748b;">Роль</label>
+            <select id="filterRole" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                <option value="">Все</option>
+                <option value="main">Основной</option>
+                <option value="co">Соисполнитель</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 0.8rem; color: #64748b;">Статус</label>
+            <select id="filterStatus" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+                <option value="">Все</option>
+                <option value="not_started">❌ Не начата</option>
+                <option value="in_progress">🔄 В процессе</option>
+                <option value="on_break">⏸️ Перерыв</option>
+                <option value="completed">✅ Завершена</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: flex-end; padding-bottom: 2px;">
+            <button id="applyMailingFilters" class="btn" style="background: #3b82f6; height: 34px;">🔍 Найти</button>
+            <button id="resetMailingFilters" class="btn" style="background: #94a3b8; height: 34px;">✖️</button>
+        </div>
+    </div>`;
+
+    const tableContainer = document.getElementById('mailingContainer');
+    if (tableContainer) {
+        tableContainer.insertAdjacentHTML('beforebegin', filterHtml);
     }
 
+    // Инициализация календаря
+    if (typeof flatpickr !== 'undefined') {
+        flatpickr("#filterDateRange", { mode: "range", dateFormat: "Y-m-d", locale: { firstDayOfWeek: 1 } });
+    }
+
+    // Подгрузка типов задач
+    fetch('/api/sandbox/task-types', { credentials: 'include' }).then(res => res.json()).then(types => {
+        const sel = document.getElementById('filterTaskType');
+        types.forEach(t => sel.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`);
+    });
+
+    // Подгрузка конкретных задач
+    fetch('/api/sandbox/tasks', { credentials: 'include' }).then(res => res.json()).then(tasks => {
+        const sel = document.getElementById('filterTask');
+        // Сортируем по алфавиту для удобства
+        tasks.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        tasks.forEach(t => sel.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`);
+    });
+
+    // Подгрузка сотрудников
+    fetch('/api/employees?active_only=false', { credentials: 'include' }).then(res => res.json()).then(emps => {
+        const sel = document.getElementById('filterEmployee');
+        emps.sort((a,b) => a.full_name.localeCompare(b.full_name, 'ru'));
+        emps.forEach(e => sel.innerHTML += `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`);
+    });
+
+    // Обработчики кнопок
+    document.getElementById('applyMailingFilters').addEventListener('click', loadMailingNotifications);
+    document.getElementById('resetMailingFilters').addEventListener('click', () => {
+        const picker = document.getElementById('filterDateRange')._flatpickr;
+        if (picker) picker.clear();
+        document.getElementById('filterDealType').value = '';
+        document.getElementById('filterTaskType').value = '';
+        document.getElementById('filterTask').value = '';
+        document.getElementById('filterProduct').value = '';
+        document.getElementById('filterEmployee').value = '';
+        document.getElementById('filterRole').value = '';
+        document.getElementById('filterStatus').value = '';
+        loadMailingNotifications();
+    });
+}
+
+// ================================================
+// 2. ЗАГРУЗКА ДАННЫХ С УЧЕТОМ ФИЛЬТРОВ
+// ================================================
+async function loadMailingNotifications() {
+    const container = document.getElementById('mailingContainer');
+    if (!container) return;
+
+    // Рендерим фильтры при первом вызове
+    if (!document.getElementById('mailingFilters')) {
+        renderMailingFilters(container);
+    }
+
+    container.innerHTML = '<p>Загрузка...</p>';
+
+    // Собираем параметры из UI
+    const params = new URLSearchParams();
+    const dateRange = document.getElementById('filterDateRange')?._flatpickr?.selectedDates;
+    if (dateRange && dateRange.length === 2) {
+        params.append('start_date', dateRange[0].toISOString().split('T')[0]);
+        params.append('end_date', dateRange[1].toISOString().split('T')[0]);
+    }
+    
+    const mappings = [
+        ['filterDealType', 'deal_type'],
+        ['filterTaskType', 'task_type_id'],
+        ['filterTask', 'task_id'],
+        ['filterProduct', 'product_name'],
+        ['filterEmployee', 'employee_id'],
+        ['filterRole', 'role'],
+        ['filterStatus', 'status']
+    ];
+    
+    mappings.forEach(([uiId, apiParam]) => {
+        const val = document.getElementById(uiId)?.value;
+        if (val) params.append(apiParam, val);
+    });
+
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+
+    try {
+        const resp = await fetch(`/api/sandbox/mailing/notifications${queryString}`, { credentials: 'include' });
+        if (!resp.ok) throw new Error('Ошибка загрузки');
+        const data = await resp.json();
+        renderMailingTable(data, container);
+    } catch (err) {
+        container.innerHTML = `<p style="color:red;">Ошибка загрузки: ${err.message}</p>`;
+    }
+}
+
+    // ================================================
+    // 3. ОТРИСОВКА ТАБЛИЦЫ (С БЕЙДЖАМИ)
+    // ================================================
     function renderMailingTable(notifications, container) {
         if (!notifications || notifications.length === 0) {
             container.innerHTML = '<p style="color:#94a3b8;">Нет уведомлений по задачам</p>';
             return;
         }
+
         let html = `<div class="recent-table"><table><thead><tr>
-            <th>Сотрудник</th>
-            <th>Задача</th>
             <th>Сделка</th>
+            <th>Тип задачи</th>
+            <th>Задача</th>
             <th>Товары</th>
+            <th>Сотрудник</th>
             <th>Статус</th>
-            <th>Начало</th>
-            <th>Завершение</th>
+            <th>Время</th>
             <th>Действия</th>
         </tr></thead><tbody>`;
+
         for (const n of notifications) {
-            // ---- Извлекаем товары из extra_data или парсим сообщение ----
-            let productsHtml = '';
-            const extra = n.extra_data || {};
-            let products = extra.products || [];
+            // 1. Сделка + Бейдж типа (FBS/FBO/FSK)
+            const dealTypeBadge = n.deal_type_name && n.deal_type_name !== '—' 
+                ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:8px; font-size:0.75rem; margin-left:4px;">${escapeHtml(n.deal_type_name)}</span>` 
+                : '';
+            const dealCell = `${escapeHtml(n.deal_title || '—')} ${dealTypeBadge}`;
+
+            // 2. Тип задачи
+            const taskTypeCell = `<span style="color:#475569; font-size:0.9rem;">${escapeHtml(n.task_type_name)}</span>`;
+
+            // 3. Задача
+            const taskCell = `<strong>${escapeHtml(n.task_name || '—')}</strong>`;
+
+            // 4. Товары
+            let productsHtml = '—';
+            const products = n.products || [];
             if (products.length) {
-                productsHtml = products.map(p => `${escapeHtml(p.name)} (${p.quantity})`).join(', ');
-            } else {
-                // fallback: парсим из сообщения
-                const match = n.message.match(/Товары:\s*(.*)/);
-                if (match) {
-                    const items = match[1].split(',').map(s => s.trim());
-                    productsHtml = items.map(item => {
-                        const m = item.match(/^(.*?)\s*[—\-]\s*(\d+)\s*шт\.?/);
-                        if (m) return `${m[1].trim()} (${m[2]})`;
-                        return item;
-                    }).join(', ');
-                } else {
-                    productsHtml = '—';
-                }
+                productsHtml = products.map(p => `${escapeHtml(p.name)} <span style="color:#64748b;">(${p.quantity})</span>`).join('<br>');
             }
 
-            const statusText = {
-                'not_started': '❌',
-                'in_progress': '🔄',
-                'on_break': '⏸️',
-                'completed': '✅'
-            }[n.execution_status] || n.execution_status || '—';
+            // 5. Сотрудник + Бейдж роли (Синий/Серый)
+            const empName = escapeHtml(n.employee_name || '—');
+            let employeeCell = empName;
+            if (n.role === 'Основной') {
+                employeeCell = `<span style="color: #1d4ed8; font-weight: 600;">${empName} 
+                    <span style="font-size: 0.7rem; background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 8px; margin-left: 4px; font-weight: 500;">Основной</span>
+                </span>`;
+            } else {
+                employeeCell = `<span style="color: #475569;">${empName} 
+                    <span style="font-size: 0.7rem; background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 8px; margin-left: 4px;">Соисполнитель</span>
+                </span>`;
+            }
 
-            const startedAt = n.started_at ? new Date(n.started_at).toLocaleString('ru-RU') : '—';
-            const completedAt = n.completed_at ? new Date(n.completed_at).toLocaleString('ru-RU') : '—';
+            // 6. Статус
+            const statusMap = {
+                'not_started': { icon: '❌', text: 'Не начата', color: '#64748b' },
+                'in_progress': { icon: '🔄', text: 'В процессе', color: '#f59e0b' },
+                'on_break':    { icon: '⏸️', text: 'Перерыв', color: '#8b5cf6' },
+                'completed':   { icon: '✅', text: 'Завершена', color: '#22c55e' }
+            };
+            const st = statusMap[n.execution_status] || statusMap['not_started'];
+            const statusCell = `<span style="color:${st.color}; white-space:nowrap;">${st.icon} ${st.text}</span>`;
+
+            // 7. Время
+            let timeHtml = '<div style="font-size:0.85rem; line-height:1.4;">';
+            if (n.started_at) timeHtml += `<div>🟢 ${new Date(n.started_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>`;
+            if (n.completed_at) timeHtml += `<div>🏁 ${new Date(n.completed_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</div>`;
+            if (!n.started_at && !n.completed_at) timeHtml += '<span style="color:#94a3b8;">—</span>';
+            timeHtml += '</div>';
+
+            // 8. Действия
+            const actionsCell = `<button class="btn-sm btn-danger delete-mailing-btn" data-id="${n.id}" title="Удалить">🗑️</button>`;
 
             html += `<tr>
-                <td>${escapeHtml(n.employee_name || '—')}</td>
-                <td>${escapeHtml(n.task_name || '—')}</td>
-                <td>${escapeHtml(n.deal_title || '—')}</td>
+                <td>${dealCell}</td>
+                <td>${taskTypeCell}</td>
+                <td>${taskCell}</td>
                 <td>${productsHtml}</td>
-                <td>${statusText}</td>
-                <td>${startedAt}</td>
-                <td>${completedAt}</td>
-                <td><button class="btn-sm btn-danger delete-mailing-btn" data-id="${n.id}">🗑️</button></td>
+                <td>${employeeCell}</td>
+                <td>${statusCell}</td>
+                <td>${timeHtml}</td>
+                <td>${actionsCell}</td>
             </tr>`;
         }
         html += '</tbody></table></div>';
@@ -9327,15 +9501,11 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
                 if (!confirm('Удалить это уведомление?')) return;
                 try {
                     const resp = await fetch(`/api/sandbox/mailing/notifications/${id}`, {
-                        method: 'DELETE',
-                        credentials: 'include'
+                        method: 'DELETE', credentials: 'include'
                     });
-                    if (!resp.ok) {
-                        const err = await resp.json();
-                        throw new Error(err.detail || 'Ошибка удаления');
-                    }
+                    if (!resp.ok) throw new Error('Ошибка удаления');
                     showToast('✅ Уведомление удалено');
-                    loadMailingNotifications(); // перезагружаем таблицу
+                    loadMailingNotifications(); 
                 } catch (err) {
                     showToast(err.message, true);
                 }

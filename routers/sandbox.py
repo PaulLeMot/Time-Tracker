@@ -1160,48 +1160,110 @@ async def start_deal(
 
 @router.get("/mailing/notifications")
 async def get_mailing_notifications(
-    db: AsyncSession = Depends(get_db),
-    skip: int = 0,
-    limit: int = 100
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    deal_type: Optional[str] = None,
+    task_type_id: Optional[int] = None,
+    task_id: Optional[int] = None,
+    product_name: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
 ):
+    # 1. Базовый SQL-запрос с подтягиванием всех связанных таблиц
     stmt = text("""
-        SELECT 
-            n.id,
-            n.extra_data,
-            n.message,
-            n.created_at,
-            te.status AS exec_status,
-            te.started_at,
-            te.completed_at,
-            e.full_name AS employee_name,
-            t.name AS task_name,
-            d.title AS deal_title
+        SELECT
+            n.id, n.extra_data, n.message, n.created_at,
+            te.status AS exec_status, te.started_at, te.completed_at,
+            e.id AS employee_id, e.full_name AS employee_name,
+            t.id AS task_id, t.name AS task_name,
+            tt.id AS task_type_id, tt.name AS task_type_name,
+            d.id AS deal_id, d.title AS deal_title,
+            dt.name AS deal_type_name
         FROM notifications n
         LEFT JOIN task_executions te ON te.notification_id = n.id
         JOIN employees e ON e.id = n.employee_id
-        JOIN tasks t ON t.id = (n.extra_data->>'task_id')::integer
-        JOIN deals d ON d.id = (n.extra_data->>'deal_id')::integer
+        JOIN tasks t ON t.id = CAST(n.extra_data->>'task_id' AS INTEGER)
+        LEFT JOIN task_types tt ON tt.id = t.task_type_id
+        JOIN deals d ON d.id = CAST(n.extra_data->>'deal_id' AS INTEGER)
+        LEFT JOIN deal_types dt ON dt.id = d.deal_type_id
         WHERE n.type = 'task_assignment'
-            AND n.status = 'sent'
+          AND n.status = 'sent'
         ORDER BY n.created_at DESC
-        OFFSET :skip LIMIT :limit
+        LIMIT 5000
     """)
-    result = await db.execute(stmt, {"skip": skip, "limit": limit})
+    result = await db.execute(stmt)
     rows = result.fetchall()
 
+    # 2. Вычисляем роли (Основной = самый старый notification_id для связки deal+task)
+    first_notif_map = {}
+    for row in rows:
+        extra = row.extra_data or {}
+        deal_id, task_id = extra.get('deal_id'), extra.get('task_id')
+        if deal_id and task_id:
+            key = (deal_id, task_id)
+            if key not in first_notif_map or row.id < first_notif_map[key]:
+                first_notif_map[key] = row.id
+
+    # 3. Обогащаем данные и применяем фильтры
     output = []
     for row in rows:
+        extra = row.extra_data or {}
+        deal_id, task_id = extra.get('deal_id'), extra.get('task_id')
+        key = (deal_id, task_id)
+        
+        current_role = "Основной" if first_notif_map.get(key) == row.id else "Соисполнитель"
+        exec_status = row.exec_status or "not_started"
+        deal_type_name = row.deal_type_name or "—"
+        task_type_name = row.task_type_name or "Без типа"
+        products = extra.get("products", [])
+
+        # --- ПРИМЕНЕНИЕ ФИЛЬТРОВ ---
+        if start_date:
+            try:
+                if row.created_at.date() < datetime.strptime(start_date, "%Y-%m-%d").date(): continue
+            except ValueError: pass
+        if end_date:
+            try:
+                if row.created_at.date() > datetime.strptime(end_date, "%Y-%m-%d").date(): continue
+            except ValueError: pass
+            
+        if deal_type and deal_type.lower() not in deal_type_name.lower(): continue
+        if task_type_id and row.task_type_id != task_type_id: continue
+        if task_id and row.task_id != task_id: continue  # <-- НОВОЕ
+        
+        if product_name:
+            prod_names = [p.get("name", "").lower() for p in products]
+            if not any(product_name.lower() in pn for pn in prod_names): continue
+            
+        if employee_id and row.employee_id != employee_id: continue
+        
+        if role:
+            if role == "main" and current_role != "Основной": continue
+            if role == "co" and current_role != "Соисполнитель": continue
+            
+        if status and exec_status != status: continue
+
+        # Если все фильтры пройдены, добавляем в выдачу
         output.append({
             "id": row.id,
+            "employee_id": row.employee_id,
             "employee_name": row.employee_name,
+            "task_id": row.task_id,
             "task_name": row.task_name,
+            "task_type_name": task_type_name,
+            "deal_id": row.deal_id,
             "deal_title": row.deal_title,
-            "message": row.message,
-            "extra_data": row.extra_data,  # JSON
-            "execution_status": row.exec_status if row.exec_status else "not_started",
+            "deal_type_name": deal_type_name,
+            "role": current_role,
+            "products": products, 
+            "execution_status": exec_status,
             "started_at": row.started_at.isoformat() if row.started_at else None,
             "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+            "created_at": row.created_at.isoformat() if row.created_at else None
         })
+
     return output
 
 @router.delete("/mailing/notifications/{notification_id}")
