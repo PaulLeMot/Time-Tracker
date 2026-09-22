@@ -982,9 +982,18 @@ async def auto_import(
 class ImportPathRequest(BaseModel):
     path: str
 
+def normalize_import_path(path: str) -> str:
+    """Convert a Windows W: path from the UI to the /work Docker mount."""
+    normalized = path.strip().replace('\\', '/')
+    if normalized.lower() == 'w:':
+        return '/work'
+    if normalized.lower().startswith('w:/'):
+        return '/work/' + normalized[3:].lstrip('/')
+    return normalized
+
 @router.post("/import/by-path")
 async def import_by_path(data: ImportPathRequest, db: AsyncSession = Depends(get_db)):
-    file_path = data.path
+    file_path = normalize_import_path(data.path)
     if not os.path.exists(file_path):
         raise HTTPException(404, f"Файл не найден: {file_path}")
 
@@ -1642,6 +1651,103 @@ from typing import List
 class UpdateProductQuantity(BaseModel):
     product_id: int
     quantity: int
+
+async def update_task_products_in_notifications(
+    db: AsyncSession,
+    deal_id: int,
+    task_id: int,
+    products: list[dict]
+) -> None:
+    stmt = select(Notification).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    )
+    notifications = (await db.execute(stmt)).scalars().all()
+    if not notifications:
+        raise HTTPException(404, "Задача в сделке не найдена")
+    for notification in notifications:
+        extra_data = dict(notification.extra_data or {})
+        extra_data['products'] = products
+        notification.extra_data = extra_data
+
+@router.put("/deals/{deal_id}/tasks/{task_id}/products")
+async def update_task_products(
+    deal_id: int,
+    task_id: int,
+    items: List[UpdateProductQuantity],
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    current_stmt = select(Notification).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    ).limit(1)
+    notification = (await db.execute(current_stmt)).scalar_one_or_none()
+    if not notification:
+        raise HTTPException(404, "Задача в сделке не найдена")
+
+    current_products = {
+        int(product['id']): dict(product)
+        for product in (notification.extra_data or {}).get('products', [])
+        if product.get('id') is not None
+    }
+    for item in items:
+        product = await crud.get_product_type(db, item.product_id)
+        if not product:
+            raise HTTPException(404, f"Товар {item.product_id} не найден")
+        current_products[item.product_id] = {
+            'id': product.id,
+            'name': product.name,
+            'quantity': item.quantity
+        }
+        deal_product_stmt = select(DealProductType).where(
+            DealProductType.deal_id == deal_id,
+            DealProductType.product_id == item.product_id
+        )
+        deal_product = (await db.execute(deal_product_stmt)).scalar_one_or_none()
+        if deal_product:
+            deal_product.quantity = item.quantity
+        else:
+            db.add(DealProductType(
+                deal_id=deal_id,
+                product_id=item.product_id,
+                quantity=item.quantity
+            ))
+
+    await update_task_products_in_notifications(
+        db, deal_id, task_id, list(current_products.values())
+    )
+    await db.commit()
+    return {"message": "Товары задачи обновлены"}
+
+@router.delete("/deals/{deal_id}/tasks/{task_id}/products/{product_id}", status_code=204)
+async def delete_task_product(
+    deal_id: int,
+    task_id: int,
+    product_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin)
+):
+    stmt = select(Notification).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id)
+    ).limit(1)
+    notification = (await db.execute(stmt)).scalar_one_or_none()
+    if not notification:
+        raise HTTPException(404, "Задача в сделке не найдена")
+    products = [
+        product for product in (notification.extra_data or {}).get('products', [])
+        if int(product.get('id', -1)) != product_id
+    ]
+    await update_task_products_in_notifications(db, deal_id, task_id, products)
+    await db.commit()
+    return None
 
 @router.put("/deals/{deal_id}/products")
 async def update_deal_products(

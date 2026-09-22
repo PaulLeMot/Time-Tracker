@@ -1306,6 +1306,139 @@
     const STORAGE_KEY_TRAFFIC = 'admin_traffic_mode';
     const STORAGE_KEY_EMPLOYEE = 'admin_traffic_employee';
     const STORAGE_KEY_WEEK = 'admin_traffic_week';
+    const STORAGE_KEY_PROCSETS_TAB = 'admin_procsets_active_tab';
+    const STORAGE_KEY_SCROLL = 'admin_scroll_position';
+    const ADMIN_MODAL_KEY = 'admin_open_modal';
+    const ADMIN_MODAL_STATE_KEY = 'admin_open_modal_state';
+    const ADMIN_DEAL_MODAL_CONTEXT_KEY = 'admin_deal_modal_context';
+    const ADMIN_EMPLOYEE_MODAL_CONTEXT_KEY = 'admin_employee_modal_context';
+    const observedAdminModals = new WeakSet();
+    let scrollSaveTimer = null;
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+    function saveScrollPosition() {
+        sessionStorage.setItem(STORAGE_KEY_SCROLL, String(window.scrollY));
+    }
+
+    function restoreScrollPosition() {
+        const savedPosition = Number(sessionStorage.getItem(STORAGE_KEY_SCROLL));
+        if (!Number.isFinite(savedPosition)) return;
+        [0, 150, 500, 1200].forEach(delay => {
+            setTimeout(() => window.scrollTo(0, savedPosition), delay);
+        });
+    }
+
+    window.addEventListener('scroll', () => {
+        clearTimeout(scrollSaveTimer);
+        scrollSaveTimer = setTimeout(saveScrollPosition, 100);
+    }, { passive: true });
+    window.addEventListener('pagehide', saveScrollPosition);
+
+    function getAdminModalKey(modal) {
+        return `${modal.closest('#procsets-tab') ? 'procsets' : 'admin'}:${modal.id}`;
+    }
+
+    function captureAdminModalState(modal) {
+        const fields = Array.from(modal.querySelectorAll('input, select, textarea')).map((field, index) => ({
+            key: field.id || field.name || String(index),
+            value: field.value,
+            checked: field.checked,
+            type: field.type
+        }));
+        const labels = Array.from(modal.querySelectorAll('[id]'))
+            .filter(element => !element.matches('input, select, textarea') && element.children.length === 0)
+            .map(element => ({ id: element.id, text: element.textContent }));
+        sessionStorage.setItem(ADMIN_MODAL_STATE_KEY, JSON.stringify({ key: getAdminModalKey(modal), fields, labels, dataset: { ...modal.dataset } }));
+    }
+
+    function applyAdminModalState(modal, preservedState = null) {
+        const rawState = sessionStorage.getItem(ADMIN_MODAL_STATE_KEY);
+        if (!preservedState && !rawState) return;
+        const state = preservedState || JSON.parse(rawState);
+        if (state.key !== getAdminModalKey(modal)) return;
+        Object.assign(modal.dataset, state.dataset || {});
+        const fields = Array.from(modal.querySelectorAll('input, select, textarea'));
+        state.fields.forEach(saved => {
+            const field = fields.find((item, index) => (item.id || item.name || String(index)) === saved.key);
+            if (!field) return;
+            field.value = saved.value;
+            if (saved.type === 'checkbox' || saved.type === 'radio') field.checked = saved.checked;
+        });
+        state.labels.forEach(saved => {
+            const element = modal.querySelector(`#${CSS.escape(saved.id)}`);
+            if (element && element.children.length === 0) element.textContent = saved.text;
+        });
+        const entityId = Number(modal.dataset.entityId);
+        if (modal.id === 'editEntryModal' && entityId) currentEditEntryId = entityId;
+        if (['editUsernameModal', 'editFullnameModal'].includes(modal.id) && entityId) currentEditId = entityId;
+        if (modal.id === 'editNotificationModal' && entityId) currentEditNotificationId = entityId;
+        if (modal.id === 'editProposedTimeModal' && entityId) currentEditProposedNotifId = entityId;
+        if (modal.id === 'roleModal' && entityId) currentEmployeeIdForRole = entityId;
+        captureAdminModalState(modal);
+    }
+
+    function observeAdminModals() {
+        document.querySelectorAll('.modal[id]').forEach(modal => {
+            if (observedAdminModals.has(modal)) return;
+            observedAdminModals.add(modal);
+            const updateState = () => {
+                const key = getAdminModalKey(modal);
+                if (getComputedStyle(modal).display !== 'none') {
+                    sessionStorage.setItem(ADMIN_MODAL_KEY, key);
+                    captureAdminModalState(modal);
+                } else if (sessionStorage.getItem(ADMIN_MODAL_KEY) === key) {
+                    sessionStorage.removeItem(ADMIN_MODAL_KEY);
+                    sessionStorage.removeItem(ADMIN_MODAL_STATE_KEY);
+                    if (key === 'procsets:detailModal') sessionStorage.removeItem(ADMIN_DEAL_MODAL_CONTEXT_KEY);
+                    if (key === 'admin:detailModal') sessionStorage.removeItem(ADMIN_EMPLOYEE_MODAL_CONTEXT_KEY);
+                }
+            };
+            new MutationObserver(updateState).observe(modal, { attributes: true, attributeFilter: ['style', 'class'] });
+            modal.addEventListener('input', () => captureAdminModalState(modal));
+            modal.addEventListener('change', () => captureAdminModalState(modal));
+        });
+    }
+
+    window.addEventListener('pagehide', () => {
+        document.querySelectorAll('.modal[id]').forEach(modal => {
+            if (getComputedStyle(modal).display !== 'none') captureAdminModalState(modal);
+        });
+    });
+
+    async function restoreAdminModal() {
+        const modalKey = sessionStorage.getItem(ADMIN_MODAL_KEY);
+        if (!modalKey) return;
+        const rawPreservedState = sessionStorage.getItem(ADMIN_MODAL_STATE_KEY);
+        const preservedState = rawPreservedState ? JSON.parse(rawPreservedState) : null;
+        if (modalKey === 'procsets:detailModal') {
+            const rawContext = sessionStorage.getItem(ADMIN_DEAL_MODAL_CONTEXT_KEY);
+            if (rawContext && typeof window.viewDeal === 'function') {
+                const context = JSON.parse(rawContext);
+                await window.viewDeal(context.dealId, context.taskId ?? null);
+                const modal = document.querySelector('#procsets-tab #detailModal');
+                if (modal) applyAdminModalState(modal, preservedState);
+                return;
+            }
+        }
+        if (modalKey === 'admin:detailModal') {
+            const rawContext = sessionStorage.getItem(ADMIN_EMPLOYEE_MODAL_CONTEXT_KEY);
+            if (rawContext && typeof window.showEmployeeDetail === 'function') {
+                const context = JSON.parse(rawContext);
+                await window.showEmployeeDetail(context.employeeId, context.date);
+                const modal = document.querySelector('body > #detailModal') || document.getElementById('detailModal');
+                if (modal) applyAdminModalState(modal, preservedState);
+                return;
+            }
+        }
+        const [scope, modalId] = modalKey.split(':');
+        const selector = scope === 'procsets' ? `#procsets-tab #${modalId}` : `body > #${modalId}`;
+        const modal = document.querySelector(selector) || document.getElementById(modalId);
+        if (modal) {
+            applyAdminModalState(modal, preservedState);
+            modal.style.display = 'block';
+            setTimeout(() => applyAdminModalState(modal, preservedState), 300);
+        }
+    }
     const colorCycle = ['start', 'break_start', 'break_end', 'end'];
     let trafficModeActive = false;
     let dailyReportData = null;
@@ -1977,6 +2110,7 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
     let allEmployees = [];
 
     window.showEmployeeDetail = async (empId, date) => {
+        sessionStorage.setItem(ADMIN_EMPLOYEE_MODAL_CONTEXT_KEY, JSON.stringify({ employeeId: empId, date }));
         currentEmployeeId = empId;
         currentDate = date;
         const modal = document.getElementById('detailModal');
@@ -2267,6 +2401,7 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
         tabs.forEach(btn => {
             btn.addEventListener('click', async () => {
                 const tabId = btn.dataset.tab;
+                saveTabState(tabId);
                 tabs.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
 
@@ -2358,7 +2493,6 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
                         initProcsetsTab();
                     }
                 }
-                saveTabState(tabId);
             });
         });
     }
@@ -2462,12 +2596,13 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
         // Восстановление состояния
         const savedTab = restoreTabState();
         const { mode, employeeId, weekValue } = restoreTrafficState();
+        const savedTabBtn = document.querySelector(`.tab-btn[data-tab="${savedTab}"]`);
+        if (savedTabBtn) savedTabBtn.click();
+        restoreScrollPosition();
+        observeAdminModals();
+        setTimeout(restoreAdminModal, 200);
 
         if (savedTab === 'weekly' && mode) {
-            // Переключаемся на вкладку weekly
-            const weeklyTabBtn = document.querySelector('.tab-btn[data-tab="weekly"]');
-            if (weeklyTabBtn) weeklyTabBtn.click();
-
             // Восстанавливаем неделю
             const weekPicker = document.getElementById('weekPicker');
             if (weekValue && weekPicker) {
@@ -2767,6 +2902,7 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
     function openEditModal(entryId, timestamp, actionCode) {
         currentEditEntryId = entryId;
         const modal = document.getElementById('editEntryModal');
+        modal.dataset.entityId = entryId;
         const dateInput = document.getElementById('editDate');
         const timeInput = document.getElementById('editTime');
         const actionSelect = document.getElementById('editAction');
@@ -2812,6 +2948,7 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
 
     function openEditUsernameModal(id, currentUsername) {
         currentEditId = id;
+        document.getElementById('editUsernameModal').dataset.entityId = id;
         document.getElementById('newUsername').value = currentUsername;
         document.getElementById('usernameError').innerText = '';
         document.getElementById('editUsernameModal').style.display = 'block';
@@ -2819,6 +2956,7 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
 
     function openEditFullnameModal(id, currentFullname) {
         currentEditId = id;
+        document.getElementById('editFullnameModal').dataset.entityId = id;
         document.getElementById('newFullname').value = currentFullname;
         document.getElementById('fullnameError').innerText = '';
         document.getElementById('editFullnameModal').style.display = 'block';
@@ -3484,6 +3622,7 @@ function renderNotifications(notifications) {
 
 async function openEditNotificationModal(notifId) {
     currentEditNotificationId = notifId;
+    document.getElementById('editNotificationModal').dataset.entityId = notifId;
     const resp = await fetch(`/api/admin/notifications`, { credentials: 'include' });
     const list = await resp.json();
     const notif = list.find(n => n.id === notifId);
@@ -3837,6 +3976,7 @@ let currentEditProposedNotifId = null;
 
 function openEditProposedTimeModal(notifId, currentIsoTime) {
     currentEditProposedNotifId = notifId;
+    document.getElementById('editProposedTimeModal').dataset.entityId = notifId;
     const input = document.getElementById('editProposedTimeInput');
     if (currentIsoTime) {
         // input datetime-local ожидает формат "YYYY-MM-DDThh:mm"
@@ -3851,6 +3991,7 @@ function openEditProposedTimeModal(notifId, currentIsoTime) {
 
 async function openRoleModal(employeeId, employeeFullName) {
     currentEmployeeIdForRole = employeeId;
+    roleModal.dataset.entityId = employeeId;
     roleModalEmployeeFullName.textContent = employeeFullName;
     roleModalError.textContent = '';
     newRoleNameInput.value = '';
@@ -6258,7 +6399,7 @@ function initProcsetsTab() {
     let importedProducts = [];
 
     // ---- Базовый путь для импорта ----
-    const BASE_PATH = "/work/!МП_(FSk)";
+    const BASE_PATH = "W:\\!МП_(FSk)";
 
     // ---- Элементы ----
     const container = document.getElementById('procsets-tab');
@@ -6361,12 +6502,12 @@ function initProcsetsTab() {
 
         let path = '';
         if (typeName === 'FBS') {
-            path = `${BASE_PATH}/!FBS/${date}_FBS/Книга1.xlsx`;
+            path = `${BASE_PATH}\\!FBS\\${date}_FBS\\Книга1.xlsx`;
         } else if (typeName === 'FSK') {
-            path = `${BASE_PATH}/${date}_FSk/b24.xlsx`;
+            path = `${BASE_PATH}\\${date}_FSk\\b24.xlsx`;
         } else if (typeName === 'FBO') {
             if (ipText && mpText) {
-                path = `${BASE_PATH}/${date}_${ipText}_${mpText}/b24.xlsx`;
+                path = `${BASE_PATH}\\${date}_${ipText}_${mpText}\\b24.xlsx`;
             }
         }
         importPathInput.value = path;
@@ -6482,22 +6623,28 @@ function initProcsetsTab() {
     }
 
     // ---- Просмотр сделки ----
-    async function viewDeal(dealId) {
+    async function viewDeal(dealId, taskId = null) {
+        sessionStorage.setItem(ADMIN_DEAL_MODAL_CONTEXT_KEY, JSON.stringify({ dealId, taskId }));
         try {
             const resp = await apiFetch(`/api/sandbox/deals/${dealId}`);
             const deal = await resp.json();
-            showDetail(deal);
+            showDetail(deal, taskId);
         } catch (err) {
             showToast(err.message, true);
         }
     }
     window.viewDeal = viewDeal;
-function showDetail(deal) {
+function showDetail(deal, selectedTaskId = null) {
     // ---- Заголовок с редактированием названия ----
     const titleSpan = document.createElement('span');
-    titleSpan.textContent = `Сделка: ${deal.title}`;
+    const selectedTask = selectedTaskId
+        ? (deal.tasks || []).find(task => Number(task.task_id) === Number(selectedTaskId))
+        : null;
+    titleSpan.textContent = selectedTask
+        ? `Задача: ${selectedTask.task_name} — ${deal.title}`
+        : `Сделка: ${deal.title}`;
     titleSpan.style.cursor = 'pointer';
-    titleSpan.title = 'Кликните, чтобы изменить название';
+    titleSpan.title = selectedTask ? '' : 'Кликните, чтобы изменить название';
 
     function enableTitleEditing() {
         const currentTitle = titleSpan.textContent.replace(/^Сделка: /, '');
@@ -6541,7 +6688,7 @@ function showDetail(deal) {
         });
     }
 
-    titleSpan.addEventListener('click', enableTitleEditing);
+    if (!selectedTask) titleSpan.addEventListener('click', enableTitleEditing);
     detailTitle.innerHTML = '';
     detailTitle.appendChild(titleSpan);
 
@@ -6553,6 +6700,8 @@ function showDetail(deal) {
         </div>
     `;
 
+    // В окне отдельной задачи товары редактируются внутри блока этой задачи.
+    if (!selectedTask) {
     // ---- Товары (без изменений) ----
     if (deal.products && deal.products.length > 0) {
         html += `<h4>📦 Товары в сделке</h4>
@@ -6598,9 +6747,10 @@ function showDetail(deal) {
             <div id="addProductError" style="color:red; margin-top:4px;"></div>
         </div>
     `;
+    }
 
     // ========== ЗАДАЧИ: АККОРДЕОН (всегда открыт) ==========
-    const tasks = deal.tasks || [];
+    const tasks = selectedTask ? [selectedTask] : (deal.tasks || []);
     if (tasks.length > 0) {
         html += `<h4 style="margin-top:20px;">📋 Задачи по сделке</h4>
                  <div id="deal-tasks-accordion" class="task-accordion-container">`;
@@ -6624,11 +6774,10 @@ function showDetail(deal) {
             const displayTaskName = `${deal.title} ${taskName} : ${productsString}`;
             const firstAssignee = assignees[0] || null;
             const others = assignees.slice(1);
+            const mainNotifId = firstAssignee ? firstAssignee.notification_id : null;
+            const mainStatus = firstAssignee ? firstAssignee.status : 'not_started';
 
-            let overallStatus = 'not_started';
-            if (firstAssignee) {
-                overallStatus = firstAssignee.status || 'not_started';
-            }
+            const overallStatus = mainStatus;
             const statusInfo = statusMap[overallStatus] || statusMap['not_started'];
 
             // ----------------------
@@ -6638,10 +6787,36 @@ function showDetail(deal) {
                 <div class="task-accordion-header" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:#f8fafc; border-radius:12px 12px 0 0; border-bottom:1px solid #e2e8f0;">
                     <div style="display:flex; align-items:center; gap:12px; flex:1;">
                         <span style="font-weight:600; font-size:1.05rem;">${escapeHtml(displayTaskName)}</span>
-                        <span style="color:${statusInfo.color}; font-size:0.85rem; white-space:nowrap;">${statusInfo.label}</span>
+                        <span class="task-header-status" style="white-space:nowrap;">
+                            <span class="task-status-display task-status-header-display" data-notification-id="${mainNotifId}" style="color:${statusInfo.color}; font-size:0.85rem; cursor:pointer;">${statusInfo.label}</span>
+                            <select class="task-status-select task-status-header-select" data-notification-id="${mainNotifId}" data-saved-value="${mainStatus}" style="display:none; padding:4px 8px; border-radius:8px; border:1px solid #cbd5e1;">
+                                <option value="not_started" ${mainStatus === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
+                                <option value="in_progress" ${mainStatus === 'in_progress' ? 'selected' : ''}>🔄 В процессе</option>
+                                <option value="on_break" ${mainStatus === 'on_break' ? 'selected' : ''}>⏸️ В перерыве</option>
+                                <option value="completed" ${mainStatus === 'completed' ? 'selected' : ''}>✅ Завершена</option>
+                            </select>
+                        </span>
                     </div>
                 </div>
                 <div class="task-accordion-details" style="display:block; padding:16px; background:white; border-radius:0 0 12px 12px; border:1px solid #e2e8f0; border-top:none;">`;
+
+                if (selectedTask) {
+                    html += `<div class="task-products-editor" style="margin-bottom:16px;">
+                        <strong>Товары задачи:</strong>
+                        <div class="task-products-list" style="display:flex; gap:6px; flex-wrap:wrap; margin:8px 0;">
+                            ${productsArr.length ? productsArr.map(product => `
+                                <span style="background:#f1f5f9; border-radius:14px; padding:3px 8px;">
+                                    ${escapeHtml(product.name)} <input type="number" class="task-product-quantity" data-product-id="${product.id}" min="1" value="${product.quantity}" style="width:55px; padding:2px; border:1px solid #cbd5e1; border-radius:6px;">
+                                    <button type="button" class="task-product-delete" data-product-id="${product.id}" style="border:0; background:none; color:#ef4444; cursor:pointer;">✖</button>
+                                </span>`).join('') : '<span style="color:#94a3b8;">Нет товаров</span>'}
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <select class="task-product-add-select" style="min-width:220px; padding:6px; border:1px solid #cbd5e1; border-radius:12px;"></select>
+                            <input class="task-product-add-quantity" type="number" min="1" value="1" style="width:80px; padding:6px; border:1px solid #cbd5e1; border-radius:12px;">
+                            <button type="button" class="task-product-add btn" style="background:#22c55e;">➕ Добавить</button>
+                        </div>
+                    </div>`;
+                }
 
                 // ----------------------
                 // 2. Исполнители (как в employee.html)
@@ -6705,8 +6880,6 @@ function showDetail(deal) {
             // ----------------------
             // 3. Поля редактирования (статус, время)
             // ----------------------
-            const mainNotifId = firstAssignee ? firstAssignee.notification_id : null;
-            const mainStatus = firstAssignee ? firstAssignee.status : 'not_started';
             const mainStarted = firstAssignee ? firstAssignee.started_at : null;
             const mainCompleted = firstAssignee ? firstAssignee.completed_at : null;
 
@@ -6716,7 +6889,7 @@ function showDetail(deal) {
             html += `<div><strong>Статус:</strong></div>
                      <div>
                          <span class="task-status-display" data-notification-id="${mainNotifId}" style="cursor:pointer;">${statusMap[mainStatus]?.label || mainStatus}</span>
-                         <select class="task-status-select" data-notification-id="${mainNotifId}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
+                         <select class="task-status-select" data-notification-id="${mainNotifId}" data-saved-value="${mainStatus}" style="display:none; width:100%; padding:4px; border-radius:8px; border:1px solid #cbd5e1;">
                              <option value="not_started" ${mainStatus === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
                              <option value="in_progress" ${mainStatus === 'in_progress' ? 'selected' : ''}>🔄 В процессе</option>
                              <option value="on_break" ${mainStatus === 'on_break' ? 'selected' : ''}>⏸️ В перерыве</option>
@@ -6762,6 +6935,7 @@ function showDetail(deal) {
         });
     }
 
+    if (!selectedTask) {
     html += `<div style="margin-top: 20px; text-align: right;">`;
     if (isCompleted) {
         // Сделка уже завершена
@@ -6777,6 +6951,7 @@ function showDetail(deal) {
         html += `<button id="startDealBtn" class="btn" style="background: #22c55e; padding: 8px 24px;">▶️ Запустить</button>`;
     }
     html += `</div>`;
+    }
 
     // ---- Вставляем в DOM ----
     detailBody.innerHTML = html;
@@ -6787,6 +6962,64 @@ function showDetail(deal) {
 
     // ---- Активируем редактирование (количество, статус, время) ----
     enableInlineEditing(deal.id);
+
+    if (selectedTask) {
+        const taskContainer = detailBody.querySelector('.task-accordion-item');
+        const productSelect = taskContainer?.querySelector('.task-product-add-select');
+        const assignedProductIds = new Set((selectedTask.products || []).map(product => Number(product.id)));
+        if (productSelect) {
+            productSelect.innerHTML = '<option value="">-- Выберите товар --</option>' + products
+                .filter(product => !assignedProductIds.has(Number(product.id)))
+                .map(product => `<option value="${product.id}">${escapeHtml(product.full_name || product.name)}</option>`)
+                .join('');
+        }
+        taskContainer?.querySelector('.task-product-add')?.addEventListener('click', async () => {
+            const productId = Number(productSelect?.value);
+            const quantity = Number(taskContainer.querySelector('.task-product-add-quantity')?.value);
+            if (!productId || quantity < 1) return showToast('Выберите товар и укажите количество', true);
+            try {
+                await apiFetch(`/api/sandbox/deals/${deal.id}/tasks/${selectedTask.task_id}/products`, {
+                    method: 'PUT',
+                    body: JSON.stringify([{ product_id: productId, quantity }])
+                });
+                showToast('Товар добавлен в задачу');
+                viewDeal(deal.id, selectedTask.task_id);
+                loadMailingNotifications();
+            } catch (err) {
+                showToast(err.message, true);
+            }
+        });
+        taskContainer?.querySelectorAll('.task-product-delete').forEach(button => {
+            button.addEventListener('click', async () => {
+                if (!confirm('Удалить товар из этой задачи?')) return;
+                try {
+                    await apiFetch(`/api/sandbox/deals/${deal.id}/tasks/${selectedTask.task_id}/products/${button.dataset.productId}`, { method: 'DELETE' });
+                    showToast('Товар удалён из задачи');
+                    viewDeal(deal.id, selectedTask.task_id);
+                    loadMailingNotifications();
+                } catch (err) {
+                    showToast(err.message, true);
+                }
+            });
+        });
+        taskContainer?.querySelectorAll('.task-product-quantity').forEach(input => {
+            input.addEventListener('change', async () => {
+                const quantity = Number(input.value);
+                if (quantity < 1) return viewDeal(deal.id, selectedTask.task_id);
+                try {
+                    await apiFetch(`/api/sandbox/deals/${deal.id}/tasks/${selectedTask.task_id}/products`, {
+                        method: 'PUT',
+                        body: JSON.stringify([{ product_id: Number(input.dataset.productId), quantity }])
+                    });
+                    showToast('Количество обновлено');
+                    loadMailingNotifications();
+                } catch (err) {
+                    showToast(err.message, true);
+                    viewDeal(deal.id, selectedTask.task_id);
+                }
+            });
+        });
+    }
 
     // ---- Обработчик добавления товара ----
     const addBtn = document.getElementById('addProductToDealBtn');
@@ -6805,7 +7038,7 @@ function showDetail(deal) {
             try {
                 await deleteProductFromDeal(deal.id, productId);
                 showToast('Товар удалён из сделки');
-                viewDeal(deal.id);
+                viewDeal(deal.id, selectedTaskId);
             } catch (err) {
                 showToast(err.message, true);
             }
@@ -6829,7 +7062,7 @@ function showDetail(deal) {
                 const data = await resp.json();
                 showToast(`✅ ${data.message}`);
                 loadDeals();
-                viewDeal(deal.id);
+                viewDeal(deal.id, selectedTaskId);
             } catch (err) {
                 showToast(`❌ Ошибка: ${err.message}`, true);
             }
@@ -6854,7 +7087,7 @@ function showDetail(deal) {
                 const data = await resp.json();
                 showToast(`✅ ${data.message}`);
                 loadDeals(); // обновляем список сделок в таблице
-                viewDeal(deal.id); // обновляем модалку, чтобы кнопка сменилась на "Сделка завершена"
+                viewDeal(deal.id, selectedTaskId); // обновляем модалку, чтобы кнопка сменилась на "Сделка завершена"
             } catch (err) {
                 showToast(`❌ Ошибка: ${err.message}`, true);
             }
@@ -6951,7 +7184,7 @@ function showDetail(deal) {
                     throw new Error(err.detail || 'Ошибка обновления');
                 }
                 showToast('✅ Основной исполнитель обновлён');
-                viewDeal(deal.id);
+                viewDeal(deal.id, selectedTaskId);
             } catch (err) {
                 showToast(err.message, true);
             }
@@ -6998,7 +7231,7 @@ function showDetail(deal) {
                 throw new Error(err.detail || 'Ошибка удаления');
             }
             showToast('✅ Соисполнитель удалён');
-            viewDeal(dealId);
+            viewDeal(dealId, selectedTaskId);
         } catch (err) {
             showToast(err.message, true);
         }
@@ -7087,7 +7320,7 @@ function showDetail(deal) {
                 if (resp.ok) {
                     showToast('Соисполнитель добавлен');
                     closeModal();
-                    viewDeal(dealId);
+                    viewDeal(dealId, selectedTaskId);
                 } else {
                     const err = await resp.json();
                     showToast(err.detail || 'Ошибка', true);
@@ -7589,29 +7822,37 @@ async function saveTaskStatus(select, dealId, notificationId = null, taskId = nu
             method: 'PUT',
             body: JSON.stringify(payload)
         });
-        const span = select.closest('div').querySelector('.task-status-display');
         const statusDisplayMap = {
             'not_started': '❌ Не начата',
             'in_progress': '🔄 В процессе',
             'on_break': '⏸️ В перерыве',
             'completed': '✅ Завершена'
         };
-        span.textContent = statusDisplayMap[status] || status;
-        span.style.display = 'inline';
-        select.style.display = 'none';
+        const statusColorMap = {
+            'not_started': '#64748b',
+            'in_progress': '#f59e0b',
+            'on_break': '#8b5cf6',
+            'completed': '#22c55e'
+        };
+        const container = select.closest('.task-accordion-item');
+        container.querySelectorAll('.task-status-display').forEach(statusSpan => {
+            statusSpan.textContent = statusDisplayMap[status] || status;
+            statusSpan.style.display = 'inline';
+            if (statusSpan.classList.contains('task-status-header-display')) {
+                statusSpan.style.color = statusColorMap[status] || '#64748b';
+            }
+        });
+        container.querySelectorAll('.task-status-select').forEach(statusSelect => {
+            statusSelect.value = status;
+            statusSelect.dataset.savedValue = status;
+            statusSelect.style.display = 'none';
+        });
         showToast('Статус обновлён');
     } catch (err) {
         showToast('Ошибка: ' + err.message, true);
-        // Восстанавливаем
-        const span = select.closest('div').querySelector('.task-status-display');
-        const originalStatus = span.textContent;
-        for (let opt of select.options) {
-            if (opt.textContent === originalStatus) {
-                select.value = opt.value;
-                break;
-            }
-        }
-        span.style.display = 'inline';
+        select.value = select.dataset.savedValue || 'not_started';
+        const span = select.parentElement.querySelector('.task-status-display');
+        if (span) span.style.display = 'inline';
         select.style.display = 'none';
     }
 }
@@ -7751,17 +7992,17 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
                 // ---- Обновление пути импорта (локально) ----
                 const importPathInput = container.querySelector('#importPathInput');
                 if (importPathInput) {
-                    const basePath = "/work/!МП_(FSk)";
+                    const basePath = "W:\\!МП_(FSk)";
                     let path = '';
                     if (typeName === 'FBS') {
-                        path = basePath + '/!FBS/' + dateStr + '_FBS/Книга1.xlsx';
+                        path = basePath + '\\!FBS\\' + dateStr + '_FBS\\Книга1.xlsx';
                     } else if (typeName === 'FSK') {
-                        path = basePath + '/' + dateStr + '_FSk/b24.xlsx';
+                        path = basePath + '\\' + dateStr + '_FSk\\b24.xlsx';
                     } else if (typeName === 'FBO') {
                         const ipText = ipSelect.options[ipSelect.selectedIndex]?.text || '';
                         const mpText = mpSelect.options[mpSelect.selectedIndex]?.text || '';
                         if (ipText && mpText) {
-                            path = basePath + '/' + dateStr + '_' + ipText + '_' + mpText + '/b24.xlsx';
+                            path = basePath + '\\' + dateStr + '_' + ipText + '_' + mpText + '\\b24.xlsx';
                         }
                     }
                     importPathInput.value = path;
@@ -9175,6 +9416,7 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
     document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const target = this.dataset.target;
+            localStorage.setItem(STORAGE_KEY_PROCSETS_TAB, target);
             document.querySelectorAll('.sandbox-sidebar .nav-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             document.querySelectorAll('.sandbox-panel').forEach(p => p.classList.remove('active'));
@@ -9203,6 +9445,14 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
             }
         });
     });
+
+    const savedProcsetsTab = localStorage.getItem(STORAGE_KEY_PROCSETS_TAB);
+    const savedProcsetsBtn = savedProcsetsTab
+        ? document.querySelector(`.sandbox-sidebar .nav-btn[data-target="${savedProcsetsTab}"]`)
+        : null;
+    if (savedProcsetsBtn) savedProcsetsBtn.click();
+    observeAdminModals();
+    setTimeout(restoreAdminModal, 0);
 
     // ---- Первоначальная загрузка ----
     loadDealTypes().then(() => loadDeals());
@@ -9449,7 +9699,8 @@ async function loadMailingNotifications() {
             <th>Сделка</th>
             <th>Задача</th>
             <th>Товары</th>
-            <th>Сотрудники и статусы</th>
+            <th>Сотрудники</th>
+            <th>Статусы и отметки</th>
             <th>Действия</th>
         </tr></thead><tbody>`;
 
@@ -9461,7 +9712,7 @@ async function loadMailingNotifications() {
             const dealCell = `${escapeHtml(task.deal_title || '—')} ${dealTypeBadge}`;
 
             // 2. Задача
-            const taskCell = `<strong>${escapeHtml(task.task_name || '—')}</strong>`;
+            const taskCell = `<button type="button" class="open-task-detail" data-deal-id="${task.deal_id}" data-task-id="${task.task_id}" style="border:0; background:none; padding:0; color:#2563eb; font-weight:700; cursor:pointer; text-align:left;">${escapeHtml(task.task_name || '—')}</button>`;
 
             // 3. Товары
             let productsHtml = '—';
@@ -9469,8 +9720,9 @@ async function loadMailingNotifications() {
                 productsHtml = task.products.map(p => `${escapeHtml(p.name)} <span style="color:#64748b;">(${p.quantity})</span>`).join('<br>');
             }
 
-            // 4. Сотрудники (объединяем в одну ячейку)
+            // 4. Сотрудники и роли
             let employeesHtml = '<div style="display: flex; flex-direction: column; gap: 6px;">';
+            let statusesHtml = '<div style="display: flex; flex-direction: column; gap: 6px;">';
             
             // Сортируем: сначала основной исполнитель, потом соисполнители
             const sortedEmployees = [...task.employees].sort((a, b) => {
@@ -9478,7 +9730,6 @@ async function loadMailingNotifications() {
                 if (a.role !== 'Основной' && b.role === 'Основной') return 1;
                 return 0;
             });
-
             for (const emp of sortedEmployees) {
                 // Бейдж роли
                 const roleBadge = emp.role === 'Основной' 
@@ -9493,7 +9744,12 @@ async function loadMailingNotifications() {
                     'completed':   { icon: '✅', text: 'Завершена', color: '#22c55e' }
                 };
                 const st = statusMap[emp.execution_status] || statusMap['not_started'];
-                const statusSpan = `<span style="color:${st.color}; white-space:nowrap;">${st.icon} ${st.text}</span>`;
+                const statusSpan = `<select class="mailing-status-select" data-deal-id="${task.deal_id}" data-task-id="${task.task_id}" data-notification-id="${emp.id}" style="color:${st.color}; padding:3px; border:1px solid #cbd5e1; border-radius:8px;">
+                    <option value="not_started" ${emp.execution_status === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
+                    <option value="in_progress" ${emp.execution_status === 'in_progress' ? 'selected' : ''}>🔄 В процессе</option>
+                    <option value="on_break" ${emp.execution_status === 'on_break' ? 'selected' : ''}>⏸️ Перерыв</option>
+                    <option value="completed" ${emp.execution_status === 'completed' ? 'selected' : ''}>✅ Завершена</option>
+                </select>`;
 
                 // Время
                 let timeStr = '';
@@ -9510,12 +9766,17 @@ async function loadMailingNotifications() {
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem;">
                         <span style="font-weight: 500; color: #0f172a;">${escapeHtml(emp.employee_name)}</span>
                         ${roleBadge}
+                    </div>
+                `;
+                statusesHtml += `
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem;">
                         ${statusSpan}
                         ${timeStr ? `<span style="color: #64748b; font-size: 0.8rem;">${timeStr}</span>` : ''}
                     </div>
                 `;
             }
             employeesHtml += '</div>';
+            statusesHtml += '</div>';
 
             // 5. Действия (Удаление всей задачи целиком)
             const allIds = task.employees.map(e => e.id).join(',');
@@ -9526,11 +9787,32 @@ async function loadMailingNotifications() {
                 <td>${taskCell}</td>
                 <td>${productsHtml}</td>
                 <td>${employeesHtml}</td>
+                <td>${statusesHtml}</td>
                 <td>${actionsCell}</td>
             </tr>`;
         }
         html += '</tbody></table></div>';
         container.innerHTML = html;
+
+        container.querySelectorAll('.open-task-detail').forEach(button => {
+            button.addEventListener('click', () => viewDeal(Number(button.dataset.dealId), Number(button.dataset.taskId)));
+        });
+
+        container.querySelectorAll('.mailing-status-select').forEach(select => {
+            select.addEventListener('change', async () => {
+                try {
+                    await apiFetch(`/api/sandbox/deals/${select.dataset.dealId}/tasks/${select.dataset.taskId}/status`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ status: select.value, notification_id: Number(select.dataset.notificationId) })
+                    });
+                    showToast('Статус обновлён');
+                    loadMailingNotifications();
+                } catch (err) {
+                    showToast(err.message, true);
+                    loadMailingNotifications();
+                }
+            });
+        });
 
         // Обработчики удаления (массовое удаление всех копий задачи)
         container.querySelectorAll('.delete-task-group-btn').forEach(btn => {

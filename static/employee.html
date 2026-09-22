@@ -735,6 +735,120 @@
     </div>
 </div>
 <script>
+    const EMPLOYEE_TAB_KEY = 'employee_active_tab';
+    const EMPLOYEE_MODAL_KEY = 'employee_open_modal';
+    const EMPLOYEE_MODAL_STATE_KEY = 'employee_open_modal_state';
+    const EMPLOYEE_COMPLETION_KEY = 'employee_completion_context';
+    const EMPLOYEE_SCROLL_KEY = 'employee_scroll_position';
+    let employeeScrollSaveTimer = null;
+
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+    function saveEmployeeScrollPosition() {
+        sessionStorage.setItem(EMPLOYEE_SCROLL_KEY, String(window.scrollY));
+    }
+
+    function restoreEmployeeScrollPosition() {
+        const rawPosition = sessionStorage.getItem(EMPLOYEE_SCROLL_KEY);
+        if (rawPosition === null) return;
+        const savedPosition = Number(rawPosition);
+        if (!Number.isFinite(savedPosition)) return;
+        [0, 150, 500, 1200].forEach(delay => {
+            setTimeout(() => window.scrollTo(0, savedPosition), delay);
+        });
+    }
+
+    window.addEventListener('scroll', () => {
+        clearTimeout(employeeScrollSaveTimer);
+        employeeScrollSaveTimer = setTimeout(saveEmployeeScrollPosition, 100);
+    }, { passive: true });
+    window.addEventListener('pagehide', saveEmployeeScrollPosition);
+
+    function captureEmployeeModalState(modal) {
+        const fields = Array.from(modal.querySelectorAll('input, select, textarea')).map((field, index) => ({
+            key: field.id || field.name || String(index),
+            value: field.value,
+            checked: field.checked,
+            type: field.type
+        }));
+        const labels = Array.from(modal.querySelectorAll('[id]'))
+            .filter(element => !element.matches('input, select, textarea') && element.children.length === 0)
+            .map(element => ({ id: element.id, text: element.textContent }));
+        sessionStorage.setItem(EMPLOYEE_MODAL_STATE_KEY, JSON.stringify({ modalId: modal.id, fields, labels, dataset: { ...modal.dataset } }));
+    }
+
+    function applyEmployeeModalState(modal, preservedState = null) {
+        const rawState = sessionStorage.getItem(EMPLOYEE_MODAL_STATE_KEY);
+        if (!preservedState && !rawState) return;
+        const state = preservedState || JSON.parse(rawState);
+        if (state.modalId !== modal.id) return;
+        Object.assign(modal.dataset, state.dataset || {});
+        const fields = Array.from(modal.querySelectorAll('input, select, textarea'));
+        state.fields.forEach(saved => {
+            const field = fields.find((item, index) => (item.id || item.name || String(index)) === saved.key);
+            if (!field) return;
+            field.value = saved.value;
+            if (saved.type === 'checkbox' || saved.type === 'radio') field.checked = saved.checked;
+        });
+        state.labels.forEach(saved => {
+            const element = modal.querySelector(`#${CSS.escape(saved.id)}`);
+            if (element && element.children.length === 0) element.textContent = saved.text;
+        });
+        const entityId = Number(modal.dataset.entityId);
+        if (modal.id === 'explanationModal' && entityId) currentNotificationId = entityId;
+        if (modal.id === 'createNotificationModal' && entityId) currentNotifyEmployeeId = entityId;
+        if (modal.id === 'fixEndTimeModal' && entityId) window.currentFixNotificationId = entityId;
+        captureEmployeeModalState(modal);
+    }
+
+    function observeEmployeeModals() {
+        const updateState = modal => {
+            if (!modal.id) return;
+            if (getComputedStyle(modal).display !== 'none') {
+                sessionStorage.setItem(EMPLOYEE_MODAL_KEY, modal.id);
+                captureEmployeeModalState(modal);
+            } else if (sessionStorage.getItem(EMPLOYEE_MODAL_KEY) === modal.id) {
+                sessionStorage.removeItem(EMPLOYEE_MODAL_KEY);
+                sessionStorage.removeItem(EMPLOYEE_MODAL_STATE_KEY);
+                if (modal.id === 'completeTaskModal') sessionStorage.removeItem(EMPLOYEE_COMPLETION_KEY);
+            }
+        };
+        document.querySelectorAll('.modal[id]').forEach(modal => {
+            new MutationObserver(() => updateState(modal)).observe(modal, { attributes: true, attributeFilter: ['style', 'class'] });
+            modal.addEventListener('input', () => captureEmployeeModalState(modal));
+            modal.addEventListener('change', () => captureEmployeeModalState(modal));
+        });
+    }
+
+    window.addEventListener('pagehide', () => {
+        document.querySelectorAll('.modal[id]').forEach(modal => {
+            if (getComputedStyle(modal).display !== 'none') captureEmployeeModalState(modal);
+        });
+    });
+
+    async function restoreEmployeeModal() {
+        const modalId = sessionStorage.getItem(EMPLOYEE_MODAL_KEY);
+        if (!modalId) return;
+        const rawPreservedState = sessionStorage.getItem(EMPLOYEE_MODAL_STATE_KEY);
+        const preservedState = rawPreservedState ? JSON.parse(rawPreservedState) : null;
+        if (modalId === 'completeTaskModal') {
+            const rawContext = sessionStorage.getItem(EMPLOYEE_COMPLETION_KEY);
+            if (rawContext) {
+                const context = JSON.parse(rawContext);
+                window.isEditingCompletion = Boolean(context.isEditing);
+                await openCompletionModal(context.dealId, context.taskId, context.notificationId, context.products || [], context.generalComment || '');
+                applyEmployeeModalState(document.getElementById('completeTaskModal'), preservedState);
+                return;
+            }
+        }
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            applyEmployeeModalState(modal, preservedState);
+            modal.style.display = 'block';
+            setTimeout(() => applyEmployeeModalState(modal, preservedState), 300);
+        }
+    }
+
     let currentCompleteData = {
         notificationId: null,
         dealId: null,
@@ -1053,6 +1167,7 @@
                     window.location.href = '/mark';
                     return;
                 }
+                localStorage.setItem(EMPLOYEE_TAB_KEY, tabId);
                 // Остальные вкладки – показываем/скрываем
                 tabs.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -1125,11 +1240,11 @@
                 }
             });
         }
-        // По умолчанию открываем "Сегодня"
-        const defaultTab = document.querySelector('.tab-btn[data-tab="daily"]');
+        // Восстанавливаем последнюю открытую вкладку
+        const savedTab = localStorage.getItem(EMPLOYEE_TAB_KEY) || 'daily';
+        const defaultTab = document.querySelector(`.tab-btn[data-tab="${savedTab}"]`) || document.querySelector('.tab-btn[data-tab="daily"]');
         if (defaultTab) {
-            defaultTab.classList.add('active');
-            document.getElementById('daily-tab').style.display = 'block';
+            defaultTab.click();
         }
     }
 
@@ -1542,6 +1657,7 @@
                     document.getElementById('fixEndDate').innerText = formattedDate;
                     document.getElementById('fixEndTime').value = '17:00';
                     document.getElementById('fixEndError').innerText = '';
+                    document.getElementById('fixEndTimeModal').dataset.entityId = notifId;
                     document.getElementById('fixEndTimeModal').style.display = 'block';
                     window.currentFixNotificationId = notifId;
                 });
@@ -1650,6 +1766,7 @@
                     document.getElementById('fixEndDate').innerText = formattedDate;
                     document.getElementById('fixEndTime').value = '17:00';
                     document.getElementById('fixEndError').innerText = '';
+                    document.getElementById('fixEndTimeModal').dataset.entityId = notifId;
                     document.getElementById('fixEndTimeModal').style.display = 'block';
                     window.currentFixNotificationId = notifId;
                 });
@@ -1659,6 +1776,7 @@
 
     window.openExplanationModal = function(notificationId) {
         currentNotificationId = notificationId;
+        document.getElementById('explanationModal').dataset.entityId = notificationId;
         document.getElementById('explanationText').value = '';
         document.getElementById('explanationError').innerText = '';
         document.getElementById('explanationModal').style.display = 'block';
@@ -1701,6 +1819,7 @@
 
     function openNotificationModal(empId, empName) {
         currentNotifyEmployeeId = empId;
+        document.getElementById('createNotificationModal').dataset.entityId = empId;
         currentNotifyEmployeeName = empName;
         document.getElementById('notifyEmployeeName').innerText = empName;
         document.getElementById('notifMessage').value = '';
@@ -2424,6 +2543,10 @@
         }
 
         const modal = document.getElementById('completeTaskModal');
+        sessionStorage.setItem(EMPLOYEE_COMPLETION_KEY, JSON.stringify({
+            dealId, taskId, notificationId, products, generalComment,
+            isEditing: Boolean(window.isEditingCompletion)
+        }));
         modal.style.display = 'block';
         document.getElementById('completeError').innerText = '';
         document.getElementById('finalCompleteBtn').disabled = false;
@@ -2668,8 +2791,11 @@
     // ========== ИНИЦИАЛИЗАЦИЯ ==========
     document.addEventListener('DOMContentLoaded', async () => {
         initTabs();
+        observeEmployeeModals();
         await refreshState();
         await loadEmployeesForAllNotif();
+        await restoreEmployeeModal();
+        restoreEmployeeScrollPosition();
         setTimeout(connectEmployeeSSE, 2000);
         let resizeTimeout;
         window.addEventListener('resize', () => {
