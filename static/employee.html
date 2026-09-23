@@ -505,6 +505,21 @@
         .task-status-wrapper:hover .edit-completion-btn {
             display: inline-block;
         }
+        .task-filter-clear {
+            border: 1px solid #cbd5e1;
+            border-left: 0;
+            background: white;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 0 8px 8px 0;
+        }
+        #taskFilters select, #taskFilters input {
+            padding: 6px 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px 0 0 8px;
+            background: white;
+        }
     </style>
 </head>
 <body>
@@ -607,6 +622,18 @@
             </div>
             <div id="tasks-tab" class="tab-content" style="display: none;">
                 <h2>✅ Мои задачи</h2>
+                <div id="taskFilters" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px; padding:12px; background:#f8fafc; border-radius:12px;">
+                    <div><label style="display:block; font-size:0.8rem; color:#64748b;">Сделка</label><div style="display:flex;"><select id="taskDealFilter" style="min-width:150px;"><option value="">Все</option></select><button type="button" class="task-filter-clear" data-filter="taskDealFilter" title="Сбросить">✖</button></div></div>
+                    <div><label style="display:block; font-size:0.8rem; color:#64748b;">Товар</label><div style="display:flex;"><select id="taskProductFilter" style="min-width:150px;"><option value="">Все</option></select><button type="button" class="task-filter-clear" data-filter="taskProductFilter" title="Сбросить">✖</button></div></div>
+                    <div><label style="display:block; font-size:0.8rem; color:#64748b;">Дата</label><div style="display:flex;"><input type="date" id="taskDateFilter"><button type="button" class="task-filter-clear" data-filter="taskDateFilter" title="Сбросить">✖</button></div></div>
+                    <div><label style="display:block; font-size:0.8rem; color:#64748b;">Исполнитель</label><div style="display:flex;"><select id="taskMainAssigneeFilter" style="min-width:150px;"><option value="">Все</option></select><button type="button" class="task-filter-clear" data-filter="taskMainAssigneeFilter" title="Сбросить">✖</button></div></div>
+                    <div><label style="display:block; font-size:0.8rem; color:#64748b;">Соисполнитель</label><div style="display:flex;"><select id="taskCoAssigneeFilter" style="min-width:150px;"><option value="">Все</option></select><button type="button" class="task-filter-clear" data-filter="taskCoAssigneeFilter" title="Сбросить">✖</button></div></div>
+                    <div><label style="display:block; font-size:0.8rem; color:#64748b;">Статус</label><div style="display:flex;"><select id="taskStatusFilter">
+                        <option value="active" selected>Кроме выполненных</option><option value="">Все</option><option value="not_started">Не начата</option><option value="in_progress">В процессе</option><option value="on_break">В перерыве</option><option value="completed">Выполнена</option>
+                    </select><button type="button" class="task-filter-clear" data-filter="taskStatusFilter" data-default="active" title="Сбросить">✖</button></div></div>
+                    <button type="button" id="applyTaskFiltersBtn" class="btn">Применить</button>
+                    <button type="button" id="resetAllTaskFiltersBtn" class="btn" style="background:#94a3b8;">✖ Сбросить все</button>
+                </div>
                 <div id="tasksContainer">Загрузка...</div>
             </div>
         </div>
@@ -2204,6 +2231,91 @@
 
     // ========== ЗАДАЧИ ==========
     window.currentEmployeeId = null; // будет установлено в loadEmployeeNameAndId
+    let allTaskNotifications = [];
+
+    function fillTaskFilter(selectId, items) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        const previousValue = select.value;
+        select.innerHTML = '<option value="">Все</option>' + items
+            .map(item => `<option value="${escapeHtml(String(item.value)).replace(/"/g, '&quot;')}">${escapeHtml(item.label)}</option>`)
+            .join('');
+        if (Array.from(select.options).some(option => option.value === previousValue)) select.value = previousValue;
+    }
+
+    function populateTaskFilters(tasks) {
+        const deals = new Map();
+        const products = new Map();
+        const mainAssignees = new Map();
+        const coAssignees = new Map();
+        tasks.forEach(task => {
+            const parsed = parseTaskNotification(task);
+            const dealId = task.extra_data?.deal_id;
+            if (dealId) deals.set(String(dealId), parsed.dealTitle || `Сделка #${dealId}`);
+            parsed.products.forEach(product => products.set(product.name, product.name));
+            const assignees = task.assignees || [];
+            if (assignees[0]) mainAssignees.set(String(assignees[0].employee_id), assignees[0].employee_name);
+            assignees.slice(1).forEach(employee => coAssignees.set(String(employee.employee_id), employee.employee_name));
+        });
+        const toItems = map => Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+        fillTaskFilter('taskDealFilter', toItems(deals));
+        fillTaskFilter('taskProductFilter', toItems(products));
+        fillTaskFilter('taskMainAssigneeFilter', toItems(mainAssignees));
+        fillTaskFilter('taskCoAssigneeFilter', toItems(coAssignees));
+    }
+
+    function applyTaskFilters() {
+        const dealId = document.getElementById('taskDealFilter')?.value || '';
+        const productName = document.getElementById('taskProductFilter')?.value || '';
+        const date = document.getElementById('taskDateFilter')?.value || '';
+        const mainAssigneeId = document.getElementById('taskMainAssigneeFilter')?.value || '';
+        const coAssigneeId = document.getElementById('taskCoAssigneeFilter')?.value || '';
+        const status = document.getElementById('taskStatusFilter')?.value ?? 'active';
+
+        const filtered = allTaskNotifications.filter(task => {
+            const parsed = parseTaskNotification(task);
+            const assignees = task.assignees || [];
+            const taskStatus = task.status || 'not_started';
+            if (dealId && String(task.extra_data?.deal_id) !== dealId) return false;
+            if (productName && !parsed.products.some(product => product.name === productName)) return false;
+            if (date) {
+                const created = new Date(task.created_at);
+                const localDate = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`;
+                if (localDate !== date) return false;
+            }
+            if (mainAssigneeId && String(assignees[0]?.employee_id || '') !== mainAssigneeId) return false;
+            if (coAssigneeId && !assignees.slice(1).some(employee => String(employee.employee_id) === coAssigneeId)) return false;
+            if (status === 'active' && taskStatus === 'completed') return false;
+            if (status && status !== 'active' && taskStatus !== status) return false;
+            return true;
+        });
+        renderTaskNotifications(filtered, document.getElementById('tasksContainer'));
+    }
+
+    function initTaskFilters() {
+        document.querySelectorAll('#taskFilters select, #taskFilters input').forEach(control => {
+            control.addEventListener('change', applyTaskFilters);
+        });
+        document.querySelectorAll('.task-filter-clear').forEach(button => {
+            button.addEventListener('click', () => {
+                const control = document.getElementById(button.dataset.filter);
+                if (!control) return;
+                control.value = button.dataset.default || '';
+                applyTaskFilters();
+            });
+        });
+        document.getElementById('applyTaskFiltersBtn')?.addEventListener('click', applyTaskFilters);
+        document.getElementById('resetAllTaskFiltersBtn')?.addEventListener('click', () => {
+            ['taskDealFilter', 'taskProductFilter', 'taskDateFilter', 'taskMainAssigneeFilter', 'taskCoAssigneeFilter']
+                .forEach(id => {
+                    const control = document.getElementById(id);
+                    if (control) control.value = '';
+                });
+            const statusFilter = document.getElementById('taskStatusFilter');
+            if (statusFilter) statusFilter.value = 'active';
+            applyTaskFilters();
+        });
+    }
 
     async function loadTaskNotifications() {
         const container = document.getElementById('tasksContainer');
@@ -2214,6 +2326,8 @@
             const tasks = await resp.json();
 
             if (!tasks.length) {
+                allTaskNotifications = [];
+                populateTaskFilters([]);
                 container.innerHTML = '<p>Нет назначенных задач</p>';
                 return;
             }
@@ -2248,7 +2362,9 @@
                 return { ...task, assignees: taskInfo.assignees || [] };
             }));
 
-            renderTaskNotifications(enrichedTasks, container);
+            allTaskNotifications = enrichedTasks;
+            populateTaskFilters(enrichedTasks);
+            applyTaskFilters();
         } catch (err) {
             container.innerHTML = `<p>Ошибка: ${err.message}</p>`;
         }
@@ -2791,6 +2907,7 @@
     // ========== ИНИЦИАЛИЗАЦИЯ ==========
     document.addEventListener('DOMContentLoaded', async () => {
         initTabs();
+        initTaskFilters();
         observeEmployeeModals();
         await refreshState();
         await loadEmployeesForAllNotif();

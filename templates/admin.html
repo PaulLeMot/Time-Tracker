@@ -9500,6 +9500,7 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
 // 1. ГЕНЕРАЦИЯ ПАНЕЛИ ФИЛЬТРОВ
 // ================================================
 function renderMailingFilters(container) {
+    let suppressMailingAutoApply = false;
     let filterHtml = `
     <div id="mailingFilters" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 12px;">
         <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -9557,7 +9558,7 @@ function renderMailingFilters(container) {
         </div>
         <div style="display: flex; gap: 8px; align-items: flex-end; padding-bottom: 2px;">
             <button id="applyMailingFilters" class="btn" style="background: #3b82f6; height: 34px;">🔍 Найти</button>
-            <button id="resetMailingFilters" class="btn" style="background: #94a3b8; height: 34px;">✖️</button>
+            <button id="resetMailingFilters" class="btn" style="background: #94a3b8; height: 34px;">✖ Сбросить все</button>
         </div>
     </div>`;
 
@@ -9566,9 +9567,44 @@ function renderMailingFilters(container) {
         tableContainer.insertAdjacentHTML('beforebegin', filterHtml);
     }
 
-    // Инициализация календаря
+    const addFilterClearButton = controlId => {
+        const control = document.getElementById(controlId);
+        if (!control || control.parentElement?.classList.contains('mailing-filter-control')) return;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'mailing-filter-control';
+        wrapper.style.cssText = 'display:flex; align-items:stretch;';
+        control.parentNode.insertBefore(wrapper, control);
+        wrapper.appendChild(control);
+        control.style.borderRadius = '8px 0 0 8px';
+        const clearButton = document.createElement('button');
+        clearButton.type = 'button';
+        clearButton.textContent = '✖';
+        clearButton.title = 'Сбросить фильтр';
+        clearButton.style.cssText = 'border:1px solid #cbd5e1; border-left:0; background:white; color:#94a3b8; cursor:pointer; padding:4px 8px; border-radius:0 8px 8px 0;';
+        clearButton.addEventListener('click', () => {
+            if (controlId === 'filterDateRange' && control._flatpickr) {
+                control._flatpickr.clear();
+            } else {
+                control.value = '';
+                loadMailingNotifications();
+            }
+        });
+        wrapper.appendChild(clearButton);
+    };
+
+    ['filterDateRange', 'filterDealType', 'filterTaskType', 'filterTask', 'filterProduct', 'filterEmployee', 'filterRole', 'filterStatus']
+        .forEach(addFilterClearButton);
+
+    // Инициализация календаря с автоматическим применением
     if (typeof flatpickr !== 'undefined') {
-        flatpickr("#filterDateRange", { mode: "range", dateFormat: "Y-m-d", locale: { firstDayOfWeek: 1 } });
+        flatpickr("#filterDateRange", {
+            mode: "range",
+            dateFormat: "Y-m-d",
+            locale: { firstDayOfWeek: 1 },
+            onChange: selectedDates => {
+                if (!suppressMailingAutoApply && (selectedDates.length === 0 || selectedDates.length === 2)) loadMailingNotifications();
+            }
+        });
     }
 
     // Подгрузка типов задач
@@ -9592,9 +9628,18 @@ function renderMailingFilters(container) {
         emps.forEach(e => sel.innerHTML += `<option value="${e.id}">${escapeHtml(e.full_name)}</option>`);
     });
 
-    // Обработчики кнопок
+    // Автоматическое применение и кнопки управления
+    ['filterDealType', 'filterTaskType', 'filterTask', 'filterEmployee', 'filterRole', 'filterStatus'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', loadMailingNotifications);
+    });
+    let productFilterTimer = null;
+    document.getElementById('filterProduct')?.addEventListener('input', () => {
+        clearTimeout(productFilterTimer);
+        productFilterTimer = setTimeout(loadMailingNotifications, 300);
+    });
     document.getElementById('applyMailingFilters').addEventListener('click', loadMailingNotifications);
     document.getElementById('resetMailingFilters').addEventListener('click', () => {
+        suppressMailingAutoApply = true;
         const picker = document.getElementById('filterDateRange')._flatpickr;
         if (picker) picker.clear();
         document.getElementById('filterDealType').value = '';
@@ -9604,6 +9649,7 @@ function renderMailingFilters(container) {
         document.getElementById('filterEmployee').value = '';
         document.getElementById('filterRole').value = '';
         document.getElementById('filterStatus').value = '';
+        suppressMailingAutoApply = false;
         loadMailingNotifications();
     });
 }
@@ -9707,9 +9753,9 @@ async function loadMailingNotifications() {
         for (const task of groupedNotifications) {
             // 1. Сделка
             const dealTypeBadge = task.deal_type_name && task.deal_type_name !== '—' 
-                ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:8px; font-size:0.75rem; margin-left:4px;">${escapeHtml(task.deal_type_name)}</span>` 
+                ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:8px; font-size:0.75rem; white-space:nowrap; margin-left:auto;">${escapeHtml(task.deal_type_name)}</span>`
                 : '';
-            const dealCell = `${escapeHtml(task.deal_title || '—')} ${dealTypeBadge}`;
+            const dealCell = `<div style="display:flex; align-items:center; gap:8px; width:100%; text-align:left;"><span>${escapeHtml(task.deal_title || '—')}</span>${dealTypeBadge}</div>`;
 
             // 2. Задача
             const taskCell = `<button type="button" class="open-task-detail" data-deal-id="${task.deal_id}" data-task-id="${task.task_id}" style="border:0; background:none; padding:0; color:#2563eb; font-weight:700; cursor:pointer; text-align:left;">${escapeHtml(task.task_name || '—')}</button>`;
