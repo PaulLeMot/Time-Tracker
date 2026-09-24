@@ -342,6 +342,22 @@ async def get_my_tasks(
     output = []
     for notif in notifications:
         task_exec = await get_task_execution_by_notification(db, notif.id)
+        accounted_seconds = None
+        full_seconds = None
+        if task_exec and task_exec.completed_at:
+            full_seconds = max(0, int((task_exec.completed_at - notif.created_at).total_seconds()))
+            if task_exec.started_at:
+                breaks_result = await db.execute(
+                    select(TaskBreak).where(TaskBreak.task_execution_id == task_exec.id)
+                )
+                break_seconds = 0
+                for task_break in breaks_result.scalars().all():
+                    break_start = max(task_break.started_at, task_exec.started_at)
+                    break_end = min(task_break.ended_at or task_exec.completed_at, task_exec.completed_at)
+                    if break_end > break_start:
+                        break_seconds += (break_end - break_start).total_seconds()
+                elapsed_seconds = (task_exec.completed_at - task_exec.started_at).total_seconds()
+                accounted_seconds = max(0, int(elapsed_seconds - break_seconds))
         
         # Проверяем, является ли этот сотрудник основным исполнителем
         extra = notif.extra_data or {}
@@ -356,6 +372,8 @@ async def get_my_tasks(
             "status": task_exec.status.value if task_exec else TaskExecutionStatus.NOT_STARTED.value,
             "started_at": task_exec.started_at.isoformat() if task_exec and task_exec.started_at else None,
             "completed_at": task_exec.completed_at.isoformat() if task_exec and task_exec.completed_at else None,
+            "accounted_seconds": accounted_seconds,
+            "full_seconds": full_seconds,
             "is_main_executor": is_main_executor,
             "general_comment": task_exec.general_comment if task_exec else None
         })

@@ -621,7 +621,11 @@
                 <div id="allNotificationsContainer">Загрузка...</div>
             </div>
             <div id="tasks-tab" class="tab-content" style="display: none;">
-                <h2>✅ Мои задачи</h2>
+                <h2 style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+                    <span>✅ Мои задачи</span>
+                    <span id="activeTasksCount" style="color:#2563eb; font-size:0.9rem;">Активные задачи: 0</span>
+                    <span id="completedTasksCount" style="color:#16a34a; font-size:0.9rem;">Завершенные задачи: 0</span>
+                </h2>
                 <div id="taskFilters" style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px; padding:12px; background:#f8fafc; border-radius:12px;">
                     <div><label style="display:block; font-size:0.8rem; color:#64748b;">Сделка</label><div style="display:flex;"><select id="taskDealFilter" style="min-width:150px;"><option value="">Все</option></select><button type="button" class="task-filter-clear" data-filter="taskDealFilter" title="Сбросить">✖</button></div></div>
                     <div><label style="display:block; font-size:0.8rem; color:#64748b;">Товар</label><div style="display:flex;"><select id="taskProductFilter" style="min-width:150px;"><option value="">Все</option></select><button type="button" class="task-filter-clear" data-filter="taskProductFilter" title="Сбросить">✖</button></div></div>
@@ -917,6 +921,13 @@
         const hh = Math.floor(minutes / 60);
         const mm = minutes % 60;
         return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    }
+    function formatTaskDuration(seconds) {
+        if (seconds === undefined || seconds === null) return '';
+        const totalMinutes = Math.max(0, Math.floor(seconds / 60));
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
     }
     function escapeHtml(str) {
         if (!str) return '';
@@ -2317,8 +2328,26 @@
         });
     }
 
+    function restoreTaskListScroll(position) {
+        sessionStorage.setItem(EMPLOYEE_SCROLL_KEY, String(position));
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => window.scrollTo(0, position));
+        });
+        setTimeout(() => window.scrollTo(0, position), 150);
+    }
+
+    function updateTaskCounters(tasks) {
+        const completedCount = tasks.filter(task => (task.status || 'not_started') === 'completed').length;
+        const activeCount = tasks.length - completedCount;
+        const activeElement = document.getElementById('activeTasksCount');
+        const completedElement = document.getElementById('completedTasksCount');
+        if (activeElement) activeElement.textContent = `Активные задачи: ${activeCount}`;
+        if (completedElement) completedElement.textContent = `Завершенные задачи: ${completedCount}`;
+    }
+
     async function loadTaskNotifications() {
         const container = document.getElementById('tasksContainer');
+        const preservedScrollPosition = window.scrollY;
         container.innerHTML = 'Загрузка...';
         try {
             const resp = await fetch('/api/employee/tasks', { credentials: 'include' });
@@ -2327,8 +2356,10 @@
 
             if (!tasks.length) {
                 allTaskNotifications = [];
+                updateTaskCounters([]);
                 populateTaskFilters([]);
                 container.innerHTML = '<p>Нет назначенных задач</p>';
+                restoreTaskListScroll(preservedScrollPosition);
                 return;
             }
 
@@ -2363,10 +2394,13 @@
             }));
 
             allTaskNotifications = enrichedTasks;
+            updateTaskCounters(enrichedTasks);
             populateTaskFilters(enrichedTasks);
             applyTaskFilters();
+            restoreTaskListScroll(preservedScrollPosition);
         } catch (err) {
             container.innerHTML = `<p>Ошибка: ${err.message}</p>`;
+            restoreTaskListScroll(preservedScrollPosition);
         }
     }
 
@@ -2459,13 +2493,30 @@
             }
 
             let timeInfo = '';
+            const startedDate = n.started_at ? new Date(n.started_at) : null;
+            const completedDate = n.completed_at ? new Date(n.completed_at) : null;
+            const spansDifferentDates = startedDate && completedDate && (
+                startedDate.getFullYear() !== completedDate.getFullYear() ||
+                startedDate.getMonth() !== completedDate.getMonth() ||
+                startedDate.getDate() !== completedDate.getDate()
+            );
             if (n.started_at) {
-                const startTime = new Date(n.started_at).toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+                const startTime = startedDate.toLocaleString('ru-RU', spansDifferentDates
+                    ? { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }
+                    : { hour:'2-digit', minute:'2-digit' });
                 timeInfo += `<div><strong>Начало:</strong> ${startTime}</div>`;
             }
             if (n.completed_at) {
-                const endTime = new Date(n.completed_at).toLocaleString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+                const endTime = completedDate.toLocaleString('ru-RU', spansDifferentDates
+                    ? { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }
+                    : { hour:'2-digit', minute:'2-digit' });
                 timeInfo += `<div><strong>Завершение:</strong> ${endTime}</div>`;
+                if (n.accounted_seconds !== null && n.accounted_seconds !== undefined) {
+                    timeInfo += `<div><strong>Учетное время:</strong> ${formatTaskDuration(n.accounted_seconds)}</div>`;
+                }
+                if (n.full_seconds !== null && n.full_seconds !== undefined) {
+                    timeInfo += `<div><strong>Полное время:</strong> ${formatTaskDuration(n.full_seconds)}</div>`;
+                }
             }
 
             // ---------- ОТОБРАЖЕНИЕ ИСПОЛНИТЕЛЕЙ ----------
@@ -3061,9 +3112,9 @@ function renderDistributionTable() {
             total += (currentCompleteData.distributions[pt.id]?.[a.employee_id] || 0);
         });
         const td = document.createElement('td');
-        td.textContent = total;
+        td.dataset.productId = pt.id;
+        td.innerHTML = `<span style="color:#2563eb;">${pt.quantity}</span>${total !== pt.quantity ? ` <span style="color:#dc2626;">(${total})</span>` : ''}`;
         td.style.fontWeight = 'bold';
-        td.style.color = '#2563eb';
         footRow.appendChild(td);
     });
     tfoot.appendChild(footRow);
@@ -3126,16 +3177,14 @@ async function onDistributionChange(e) {
 
 function updateDistributionTotals() {
     const tfoot = document.getElementById('distributionTableFoot');
-    const cells = tfoot.querySelectorAll('td');
-    // cells[0] - "Итого", остальные - товары
-    currentCompleteData.productTypes.forEach((pt, idx) => {
-        const td = cells[idx+1];
+    currentCompleteData.productTypes.forEach(pt => {
+        const td = tfoot.querySelector(`td[data-product-id="${pt.id}"]`);
         if (td) {
             let total = 0;
             currentCompleteData.assignees.forEach(a => {
                 total += (currentCompleteData.distributions[pt.id]?.[a.employee_id] || 0);
             });
-            td.textContent = total;
+            td.innerHTML = `<span style="color:#2563eb;">${pt.quantity}</span>${total !== pt.quantity ? ` <span style="color:#dc2626;">(${total})</span>` : ''}`;
         }
     });
 }
@@ -3153,7 +3202,8 @@ async function saveCompletionForProduct(productTypeId) {
         // Проверяем, что сумма распределений не превышает количество товара
         const totalDist = dists.reduce((sum, d) => sum + d.quantity, 0);
         if (totalDist > pt.quantity) {
-            document.getElementById('completeError').innerText = `Сумма распределений по товару "${pt.name}" превышает количество (${pt.quantity})`;
+            document.getElementById('completeError').innerText = '';
+            updateDistributionTotals();
             isSaving = false;
             return;
         }
@@ -3195,12 +3245,12 @@ document.getElementById('finalCompleteBtn').addEventListener('click', async func
         for (const pt of currentCompleteData.productTypes) {
             const total = currentCompleteData.assignees.reduce((sum, a) => sum + (currentCompleteData.distributions[pt.id]?.[a.employee_id] || 0), 0);
             if (total !== pt.quantity) {
-                document.getElementById('completeError').innerText = `Для товара "${pt.name}" сумма распределений (${total}) не равна количеству (${pt.quantity})`;
                 allValid = false;
                 break;
             }
         }
         if (!allValid) {
+            updateDistributionTotals();
             btn.disabled = false;
             return;
         }

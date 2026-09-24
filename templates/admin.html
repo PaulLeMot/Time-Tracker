@@ -9530,7 +9530,9 @@ function renderMailingFilters(container) {
         </div>
         <div style="display: flex; flex-direction: column; gap: 4px;">
             <label style="font-size: 0.8rem; color: #64748b;">Товар</label>
-            <input type="text" id="filterProduct" placeholder="Название..." style="width: 150px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
+            <select id="filterProduct" style="min-width:150px; padding:6px 10px; border:1px solid #cbd5e1; border-radius:8px;">
+                <option value="">Все</option>
+            </select>
         </div>
         <div style="display: flex; flex-direction: column; gap: 4px;">
             <label style="font-size: 0.8rem; color: #64748b;">Сотрудник</label>
@@ -9550,6 +9552,7 @@ function renderMailingFilters(container) {
             <label style="font-size: 0.8rem; color: #64748b;">Статус</label>
             <select id="filterStatus" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
                 <option value="">Все</option>
+                <option value="active">🔵 Активна</option>
                 <option value="not_started">❌ Не начата</option>
                 <option value="in_progress">🔄 В процессе</option>
                 <option value="on_break">⏸️ Перерыв</option>
@@ -9621,6 +9624,18 @@ function renderMailingFilters(container) {
         tasks.forEach(t => sel.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`);
     });
 
+    // Подгрузка товаров
+    fetch('/api/sandbox/product-types', { credentials: 'include' }).then(res => res.json()).then(productTypes => {
+        const sel = document.getElementById('filterProduct');
+        productTypes.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        productTypes.forEach(product => {
+            const option = document.createElement('option');
+            option.value = product.name;
+            option.textContent = product.full_name || product.name;
+            sel.appendChild(option);
+        });
+    });
+
     // Подгрузка сотрудников
     fetch('/api/employees?active_only=false', { credentials: 'include' }).then(res => res.json()).then(emps => {
         const sel = document.getElementById('filterEmployee');
@@ -9629,13 +9644,8 @@ function renderMailingFilters(container) {
     });
 
     // Автоматическое применение и кнопки управления
-    ['filterDealType', 'filterTaskType', 'filterTask', 'filterEmployee', 'filterRole', 'filterStatus'].forEach(id => {
+    ['filterDealType', 'filterTaskType', 'filterTask', 'filterProduct', 'filterEmployee', 'filterRole', 'filterStatus'].forEach(id => {
         document.getElementById(id)?.addEventListener('change', loadMailingNotifications);
-    });
-    let productFilterTimer = null;
-    document.getElementById('filterProduct')?.addEventListener('input', () => {
-        clearTimeout(productFilterTimer);
-        productFilterTimer = setTimeout(loadMailingNotifications, 300);
     });
     document.getElementById('applyMailingFilters').addEventListener('click', loadMailingNotifications);
     document.getElementById('resetMailingFilters').addEventListener('click', () => {
@@ -9657,6 +9667,24 @@ function renderMailingFilters(container) {
 // ================================================
 // 2. ЗАГРУЗКА ДАННЫХ С УЧЕТОМ ФИЛЬТРОВ И ГРУППИРОВКА
 // ================================================
+function updateAdminTaskCounters(notifications) {
+    const tasks = new Map();
+    notifications.forEach(notification => {
+        const key = `${notification.deal_id}_${notification.task_id}`;
+        if (!tasks.has(key)) tasks.set(key, []);
+        tasks.get(key).push(notification.execution_status || 'not_started');
+    });
+    let completedCount = 0;
+    tasks.forEach(statuses => {
+        if (statuses.length > 0 && statuses.every(status => status === 'completed')) completedCount += 1;
+    });
+    const activeCount = tasks.size - completedCount;
+    const activeElement = document.getElementById('adminActiveTasksCount');
+    const completedElement = document.getElementById('adminCompletedTasksCount');
+    if (activeElement) activeElement.textContent = `Активные задачи: ${activeCount}`;
+    if (completedElement) completedElement.textContent = `Завершенные задачи: ${completedCount}`;
+}
+
 async function loadMailingNotifications() {
     const container = document.getElementById('mailingContainer');
     if (!container) return;
@@ -9697,6 +9725,17 @@ async function loadMailingNotifications() {
         const resp = await fetch(`/api/sandbox/mailing/notifications${queryString}`, { credentials: 'include' });
         if (!resp.ok) throw new Error('Ошибка загрузки');
         const data = await resp.json();
+
+        if (queryString) {
+            try {
+                const countResp = await fetch('/api/sandbox/mailing/notifications', { credentials: 'include' });
+                if (countResp.ok) updateAdminTaskCounters(await countResp.json());
+            } catch (countError) {
+                console.error('Ошибка загрузки счетчиков задач:', countError);
+            }
+        } else {
+            updateAdminTaskCounters(data);
+        }
 
         // --- 🚀 НОВЫЙ БЛОК: ГРУППИРОВКА ПО ЗАДАЧАМ ---
         const grouped = {};
@@ -9753,9 +9792,9 @@ async function loadMailingNotifications() {
         for (const task of groupedNotifications) {
             // 1. Сделка
             const dealTypeBadge = task.deal_type_name && task.deal_type_name !== '—' 
-                ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:8px; font-size:0.75rem; white-space:nowrap; margin-left:auto;">${escapeHtml(task.deal_type_name)}</span>`
+                ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:8px; font-size:0.75rem; white-space:nowrap;">${escapeHtml(task.deal_type_name)}</span>`
                 : '';
-            const dealCell = `<div style="display:flex; align-items:center; gap:8px; width:100%; text-align:left;"><span>${escapeHtml(task.deal_title || '—')}</span>${dealTypeBadge}</div>`;
+            const dealCell = `<div style="display:flex; align-items:center; justify-content:flex-start; gap:8px; width:100%; text-align:left;">${dealTypeBadge}<span>${escapeHtml(task.deal_title || '—')}</span></div>`;
 
             // 2. Задача
             const taskCell = `<button type="button" class="open-task-detail" data-deal-id="${task.deal_id}" data-task-id="${task.task_id}" style="border:0; background:none; padding:0; color:#2563eb; font-weight:700; cursor:pointer; text-align:left;">${escapeHtml(task.task_name || '—')}</button>`;
