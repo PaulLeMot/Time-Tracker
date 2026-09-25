@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_, or_
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -257,6 +257,8 @@ async def complete_task(
         db.add(task_exec)
         await db.flush()
 
+    completion_time = datetime.now()
+
     # 3. Если задача ещё не начата – устанавливаем started_at = время создания уведомления
     if task_exec.status == TaskExecutionStatus.NOT_STARTED:
         task_exec.started_at = notif.created_at
@@ -270,13 +272,75 @@ async def complete_task(
         break_result = await db.execute(stmt_break)
         current_break = break_result.scalar_one_or_none()
         if current_break:
-            current_break.ended_at = datetime.now()
+            current_break.ended_at = completion_time
 
     # 5. Устанавливаем статус COMPLETED и фиксируем время завершения
     task_exec.status = TaskExecutionStatus.COMPLETED
-    task_exec.completed_at = datetime.now()
+    task_exec.completed_at = completion_time
+
+    # 6. Если задачу завершил основной исполнитель, завершаем её у всех соисполнителей.
+    extra = notif.extra_data or {}
+    deal_id = extra.get("deal_id")
+    task_id = extra.get("task_id")
+    affected_employee_ids = set()
+
+    if deal_id and task_id:
+        related_stmt = select(Notification).where(
+            Notification.type == NotificationType.TASK_ASSIGNMENT,
+            Notification.status == NotificationStatus.SENT,
+            Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+            Notification.extra_data.op('->>')('task_id') == str(task_id)
+        ).order_by(Notification.id.asc())
+        related_result = await db.execute(related_stmt)
+        related_notifications = related_result.scalars().all()
+
+        is_main_executor = bool(related_notifications and related_notifications[0].id == notif.id)
+        if is_main_executor:
+            related_notification_ids = [related.id for related in related_notifications]
+            executions_result = await db.execute(
+                select(TaskExecution).where(TaskExecution.notification_id.in_(related_notification_ids))
+            )
+            executions_by_notification = {
+                execution.notification_id: execution
+                for execution in executions_result.scalars().all()
+            }
+
+            for related_notif in related_notifications:
+                if related_notif.id == notif.id:
+                    continue
+
+                related_execution = executions_by_notification.get(related_notif.id)
+                if not related_execution:
+                    related_execution = TaskExecution(
+                        notification_id=related_notif.id,
+                        employee_id=related_notif.employee_id,
+                        status=TaskExecutionStatus.COMPLETED,
+                        completed_at=completion_time
+                    )
+                    db.add(related_execution)
+                elif related_execution.status != TaskExecutionStatus.COMPLETED:
+                    if related_execution.status == TaskExecutionStatus.ON_BREAK:
+                        open_break_result = await db.execute(
+                            select(TaskBreak).where(
+                                TaskBreak.task_execution_id == related_execution.id,
+                                TaskBreak.ended_at.is_(None)
+                            ).order_by(TaskBreak.started_at.desc()).limit(1)
+                        )
+                        open_break = open_break_result.scalar_one_or_none()
+                        if open_break:
+                            open_break.ended_at = completion_time
+
+                    related_execution.status = TaskExecutionStatus.COMPLETED
+                    related_execution.completed_at = completion_time
+
+                affected_employee_ids.add(related_notif.employee_id)
 
     await db.commit()
+
+    for affected_employee_id in affected_employee_ids:
+        await notify_employee(affected_employee_id)
+    await notify_admin_clients()
+
     return {"message": "Задача завершена", "completed_at": task_exec.completed_at.isoformat()}
 
 
@@ -327,16 +391,35 @@ async def get_my_tasks(
     result = await db.execute(stmt)
     notifications = result.scalars().all()
 
-    # 1. Находим ID самого старого уведомления для каждой задачи (это и есть основной исполнитель)
-    task_oldest_notif = {}
+    # 1. Находим основного исполнителя среди ВСЕХ назначений каждой задачи.
+    # Нельзя искать только среди уведомлений текущего сотрудника: в таком случае
+    # любой соисполнитель ошибочно определяется как основной.
+    employee_task_keys = set()
     for notif in notifications:
         extra = notif.extra_data or {}
-        d_id = extra.get('deal_id')
-        t_id = extra.get('task_id')
-        if d_id and t_id:
-            key = f"{d_id}_{t_id}"
-            if key not in task_oldest_notif or notif.id < task_oldest_notif[key]:
-                task_oldest_notif[key] = notif.id
+        deal_id = extra.get('deal_id')
+        task_id = extra.get('task_id')
+        if deal_id and task_id:
+            employee_task_keys.add((str(deal_id), str(task_id)))
+
+    task_oldest_notif = {}
+    if employee_task_keys:
+        deal_expr = Notification.extra_data.op('->>')('deal_id')
+        task_expr = Notification.extra_data.op('->>')('task_id')
+        matching_tasks = [
+            and_(deal_expr == deal_id, task_expr == task_id)
+            for deal_id, task_id in employee_task_keys
+        ]
+        assignments_stmt = select(Notification.id, deal_expr, task_expr).where(
+            Notification.type == NotificationType.TASK_ASSIGNMENT,
+            Notification.status == NotificationStatus.SENT,
+            or_(*matching_tasks)
+        ).order_by(Notification.id.asc())
+        assignments_result = await db.execute(assignments_stmt)
+        for notification_id, deal_id, task_id in assignments_result.all():
+            key = f"{deal_id}_{task_id}"
+            if key not in task_oldest_notif:
+                task_oldest_notif[key] = notification_id
 
     # 2. Формируем ответ
     output = []

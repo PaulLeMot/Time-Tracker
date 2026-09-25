@@ -2233,6 +2233,7 @@
         employeeEventSource.addEventListener('update', () => {
             console.log('Обновление уведомлений');
             loadNotifications();
+            loadTaskNotifications();
         });
         employeeEventSource.onerror = () => {
             employeeEventSource.close();
@@ -2433,16 +2434,20 @@
                 productsHtml = '<p>Товары не указаны</p>';
             }
 
-            const status = n.status || 'not_started';
-            let statusText = '', statusColor = '', actionButtons = '';
-
             // ---------- ИСПОЛНИТЕЛИ ----------
             const assignees = n.assignees || [];
-            const isMainAssignee = assignees.length > 0 && assignees[0].employee_id === window.currentEmployeeId;
+            const isMainAssignee = n.is_main_executor === true;
+            const status = n.status || 'not_started';
+            const displayStatusMap = {
+                not_started: { text: 'Не начата', color: '#64748b' },
+                in_progress: { text: 'В процессе', color: '#f59e0b' },
+                on_break: { text: 'В перерыве', color: '#8b5cf6' },
+                completed: { text: 'Выполнена', color: '#22c55e' }
+            };
+            const displayStatusInfo = displayStatusMap[status] || displayStatusMap.not_started;
+            let actionButtons = '';
 
             if (status === 'not_started') {
-                statusText = 'Не начата';
-                statusColor = '#64748b';
                 const completeBtnHtml = isMainAssignee
                     ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
                     : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
@@ -2451,8 +2456,6 @@
                     ${completeBtnHtml}
                 `;
             } else if (status === 'in_progress') {
-                statusText = 'В процессе';
-                statusColor = '#f59e0b';
                 const completeBtnHtml = isMainAssignee
                     ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
                     : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
@@ -2461,8 +2464,6 @@
                     ${completeBtnHtml}
                 `;
             } else if (status === 'on_break') {
-                statusText = 'В перерыве';
-                statusColor = '#8b5cf6';
                 const completeBtnHtml = isMainAssignee
                     ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
                     : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
@@ -2471,10 +2472,7 @@
                     ${completeBtnHtml}
                 `;
             } else if (status === 'completed') {
-                statusText = 'Выполнена';
-                statusColor = '#22c55e';
-                
-                if (n.is_main_executor) {
+                if (isMainAssignee) {
                     const safeComment = (n.general_comment || '').replace(/"/g, '&quot;');
                     actionButtons = `
                         <span class="task-status-wrapper">
@@ -2488,7 +2486,7 @@
                                     title="Исправить данные завершения">✏️</button>
                         </span>`;
                 } else {
-                    actionButtons = `<span style="color:#22c55e;">✅ Выполнена</span>`;
+                    actionButtons = '';
                 }
             }
 
@@ -2500,13 +2498,13 @@
                 startedDate.getMonth() !== completedDate.getMonth() ||
                 startedDate.getDate() !== completedDate.getDate()
             );
-            if (n.started_at) {
+            if (isMainAssignee && n.started_at) {
                 const startTime = startedDate.toLocaleString('ru-RU', spansDifferentDates
                     ? { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }
                     : { hour:'2-digit', minute:'2-digit' });
                 timeInfo += `<div><strong>Начало:</strong> ${startTime}</div>`;
             }
-            if (n.completed_at) {
+            if (isMainAssignee && n.completed_at) {
                 const endTime = completedDate.toLocaleString('ru-RU', spansDifferentDates
                     ? { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }
                     : { hour:'2-digit', minute:'2-digit' });
@@ -2558,7 +2556,7 @@
                             <span style="font-weight: 600; font-size: 1rem; line-height: 1.4;">
                                 ${escapeHtml(dealTitle)} ${escapeHtml(taskName)} : ${productsString}
                             </span>
-                            <span style="color:${statusColor}; font-size:0.85rem; white-space: nowrap; margin-left: 12px;">${statusText}</span>
+                            <span style="color:${displayStatusInfo.color}; font-size:0.85rem; white-space:nowrap; margin-left:12px;">${displayStatusInfo.text}</span>
                         </div>
                     </div>
                     <div class="task-accordion-details">

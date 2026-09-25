@@ -1275,8 +1275,9 @@ async def get_mailing_notifications(
         # ВАЖНО: фильтры по employee_id и role уже учтены на этапе формирования allowed_task_keys,
         # поэтому здесь их применять НЕ НУЖНО, чтобы не отсечь соисполнителей из найденных задач.
         
+        if status == "not_completed" and exec_status == "completed": continue
         if status == "active" and exec_status not in ("in_progress", "on_break"): continue
-        if status and status != "active" and exec_status != status: continue
+        if status and status not in ("active", "not_completed") and exec_status != status: continue
 
         # Если все фильтры пройдены, добавляем в выдачу
         output.append({

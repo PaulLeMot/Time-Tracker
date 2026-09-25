@@ -6624,17 +6624,35 @@ function initProcsetsTab() {
 
     // ---- Просмотр сделки ----
     async function viewDeal(dealId, taskId = null) {
+        const expandedTaskIds = new Set();
+        const currentContextRaw = sessionStorage.getItem(ADMIN_DEAL_MODAL_CONTEXT_KEY);
+        const modalIsOpen = detailModal && detailModal.style.display === 'block';
+        if (modalIsOpen && currentContextRaw) {
+            try {
+                const currentContext = JSON.parse(currentContextRaw);
+                if (Number(currentContext.dealId) === Number(dealId)) {
+                    detailBody.querySelectorAll('.task-accordion-item').forEach(item => {
+                        const details = item.querySelector('.task-accordion-details');
+                        if (details && details.style.display !== 'none') {
+                            expandedTaskIds.add(Number(item.dataset.taskId));
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn('Не удалось восстановить состояние задач сделки', e);
+            }
+        }
         sessionStorage.setItem(ADMIN_DEAL_MODAL_CONTEXT_KEY, JSON.stringify({ dealId, taskId }));
         try {
             const resp = await apiFetch(`/api/sandbox/deals/${dealId}`);
             const deal = await resp.json();
-            showDetail(deal, taskId);
+            showDetail(deal, taskId, expandedTaskIds);
         } catch (err) {
             showToast(err.message, true);
         }
     }
     window.viewDeal = viewDeal;
-function showDetail(deal, selectedTaskId = null) {
+function showDetail(deal, selectedTaskId = null, expandedTaskIds = new Set()) {
     // ---- Заголовок с редактированием названия ----
     const titleSpan = document.createElement('span');
     const selectedTask = selectedTaskId
@@ -6749,7 +6767,7 @@ function showDetail(deal, selectedTaskId = null) {
     `;
     }
 
-    // ========== ЗАДАЧИ: АККОРДЕОН (всегда открыт) ==========
+    // ========== ЗАДАЧИ: НЕЗАВИСИМЫЕ АККОРДЕОНЫ ==========
     const tasks = selectedTask ? [selectedTask] : (deal.tasks || []);
     if (tasks.length > 0) {
         html += `<h4 style="margin-top:20px;">📋 Задачи по сделке</h4>
@@ -6768,37 +6786,59 @@ function showDetail(deal, selectedTaskId = null) {
             const taskName = task.task_name|| `Задача #${taskId}`;
             const assignees = task.assignees|| [];
             const productsArr = task.products || [];
-            const productsString = productsArr.length > 0
-                ? productsArr.map(p => `${p.name}(${p.quantity})`).join(', ')
-                : '—';
-            const displayTaskName = `${deal.title} ${taskName} : ${productsString}`;
             const firstAssignee = assignees[0] || null;
             const others = assignees.slice(1);
             const mainNotifId = firstAssignee ? firstAssignee.notification_id : null;
             const mainStatus = firstAssignee ? firstAssignee.status : 'not_started';
-
-            const overallStatus = mainStatus;
-            const statusInfo = statusMap[overallStatus] || statusMap['not_started'];
+            const isTaskOpen = Boolean(selectedTask) || expandedTaskIds.has(Number(taskId));
+            const productsSummary = productsArr.length
+                ? productsArr.map(product => `${escapeHtml(product.name)} <span style="color:#64748b;">(${product.quantity})</span>`).join('<br>')
+                : '—';
+            const employeesSummary = assignees.length
+                ? assignees.map((assignee, index) => `
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-weight:500;">${escapeHtml(assignee.employee_name)}</span>
+                        <span style="font-size:0.7rem; padding:1px 6px; border-radius:8px; background:${index === 0 ? '#dbeafe' : '#f1f5f9'}; color:${index === 0 ? '#1e40af' : '#64748b'};">${index === 0 ? 'Основной' : 'Соисполнитель'}</span>
+                    </div>`).join('')
+                : '<span style="color:#94a3b8;">Нет исполнителей</span>';
+            const statusesSummary = assignees.length
+                ? assignees.map((assignee, index) => {
+                    const assigneeStatus = assignee.status || 'not_started';
+                    const assigneeStatusInfo = statusMap[assigneeStatus] || statusMap.not_started;
+                    const started = assignee.started_at
+                        ? `🟢 ${new Date(assignee.started_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}`
+                        : '';
+                    const completed = assignee.completed_at
+                        ? `🏁 ${new Date(assignee.completed_at).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}`
+                        : '';
+                    const timeSummary = [started, completed].filter(Boolean).join(' ');
+                    const statusControl = index === 0
+                        ? `<span class="task-status-display task-status-header-display" data-notification-id="${mainNotifId}" style="color:${assigneeStatusInfo.color}; cursor:pointer;">${assigneeStatusInfo.label}</span>
+                           <select class="task-status-select task-status-header-select" data-notification-id="${mainNotifId}" data-saved-value="${mainStatus}" style="display:none; padding:3px 6px; border-radius:8px; border:1px solid #cbd5e1;">
+                               <option value="not_started" ${mainStatus === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
+                               <option value="in_progress" ${mainStatus === 'in_progress' ? 'selected' : ''}>🔄 В процессе</option>
+                               <option value="on_break" ${mainStatus === 'on_break' ? 'selected' : ''}>⏸️ В перерыве</option>
+                               <option value="completed" ${mainStatus === 'completed' ? 'selected' : ''}>✅ Завершена</option>
+                           </select>`
+                        : `<span style="color:${assigneeStatusInfo.color};">${assigneeStatusInfo.label}</span>`;
+                    return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        ${statusControl}
+                        ${timeSummary ? `<span style="color:#64748b; font-size:0.78rem;">${timeSummary}</span>` : ''}
+                    </div>`;
+                }).join('')
+                : '—';
 
             // ----------------------
-            // 1. Заголовок аккордеона (без стрелки)
+            // 1. Краткая информация и заголовок для раскрытия задачи
             // ----------------------
-            html += `<div class="task-accordion-item" data-task-id="${taskId}">
-                <div class="task-accordion-header" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:#f8fafc; border-radius:12px 12px 0 0; border-bottom:1px solid #e2e8f0;">
-                    <div style="display:flex; align-items:center; gap:12px; flex:1;">
-                        <span style="font-weight:600; font-size:1.05rem;">${escapeHtml(displayTaskName)}</span>
-                        <span class="task-header-status" style="white-space:nowrap;">
-                            <span class="task-status-display task-status-header-display" data-notification-id="${mainNotifId}" style="color:${statusInfo.color}; font-size:0.85rem; cursor:pointer;">${statusInfo.label}</span>
-                            <select class="task-status-select task-status-header-select" data-notification-id="${mainNotifId}" data-saved-value="${mainStatus}" style="display:none; padding:4px 8px; border-radius:8px; border:1px solid #cbd5e1;">
-                                <option value="not_started" ${mainStatus === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
-                                <option value="in_progress" ${mainStatus === 'in_progress' ? 'selected' : ''}>🔄 В процессе</option>
-                                <option value="on_break" ${mainStatus === 'on_break' ? 'selected' : ''}>⏸️ В перерыве</option>
-                                <option value="completed" ${mainStatus === 'completed' ? 'selected' : ''}>✅ Завершена</option>
-                            </select>
-                        </span>
-                    </div>
+            html += `<div class="task-accordion-item" data-task-id="${taskId}" style="margin-bottom:10px;">
+                <div class="task-accordion-header" style="display:flex; align-items:flex-start; gap:16px; overflow-x:auto; padding:12px 16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:${isTaskOpen ? '12px 12px 0 0' : '12px'}; font-size:0.88rem;">
+                    <button type="button" class="task-accordion-toggle" aria-expanded="${isTaskOpen}" style="flex:1 0 150px; min-width:150px; padding:0; border:0; background:none; color:#2563eb; font-weight:700; font-size:1.05rem; text-align:left; cursor:pointer;">${escapeHtml(taskName)}</button>
+                    <div style="flex:1 0 170px;"><div style="color:#64748b; font-size:0.75rem; margin-bottom:3px;">Товары</div>${productsSummary}</div>
+                    <div style="flex:1 0 180px;"><div style="color:#64748b; font-size:0.75rem; margin-bottom:3px;">Сотрудники</div>${employeesSummary}</div>
+                    <div style="flex:1.25 0 210px;"><div style="color:#64748b; font-size:0.75rem; margin-bottom:3px;">Статусы и отметки</div>${statusesSummary}</div>
                 </div>
-                <div class="task-accordion-details" style="display:block; padding:16px; background:white; border-radius:0 0 12px 12px; border:1px solid #e2e8f0; border-top:none;">`;
+                <div class="task-accordion-details" style="display:${isTaskOpen ? 'block' : 'none'}; padding:16px; background:white; border-radius:0 0 12px 12px; border:1px solid #e2e8f0; border-top:none;">`;
 
                 if (selectedTask) {
                     html += `<div class="task-products-editor" style="margin-bottom:16px;">
@@ -6956,6 +6996,25 @@ function showDetail(deal, selectedTaskId = null) {
     // ---- Вставляем в DOM ----
     detailBody.innerHTML = html;
     detailModal.style.display = 'block';
+
+    function setTaskAccordionOpen(item, isOpen) {
+        const details = item.querySelector('.task-accordion-details');
+        const header = item.querySelector('.task-accordion-header');
+        const toggle = item.querySelector('.task-accordion-toggle');
+        if (!details || !header || !toggle) return;
+        details.style.display = isOpen ? 'block' : 'none';
+        header.style.borderRadius = isOpen ? '12px 12px 0 0' : '12px';
+        toggle.setAttribute('aria-expanded', String(isOpen));
+    }
+
+    detailBody.querySelectorAll('.task-accordion-toggle').forEach(toggle => {
+        toggle.addEventListener('click', () => {
+            const item = toggle.closest('.task-accordion-item');
+            if (!item) return;
+            const isOpen = item.querySelector('.task-accordion-details')?.style.display !== 'none';
+            setTaskAccordionOpen(item, !isOpen);
+        });
+    });
 
     // ---- Заполняем select для добавления товара ----
     populateAddProductSelect();
@@ -9552,6 +9611,7 @@ function renderMailingFilters(container) {
             <label style="font-size: 0.8rem; color: #64748b;">Статус</label>
             <select id="filterStatus" style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px;">
                 <option value="">Все</option>
+                <option value="not_completed">🔵 Не завершена</option>
                 <option value="active">🔵 Активна</option>
                 <option value="not_started">❌ Не начата</option>
                 <option value="in_progress">🔄 В процессе</option>
@@ -9853,12 +9913,14 @@ async function loadMailingNotifications() {
                         ${roleBadge}
                     </div>
                 `;
-                statusesHtml += `
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem;">
-                        ${statusSpan}
-                        ${timeStr ? `<span style="color: #64748b; font-size: 0.8rem;">${timeStr}</span>` : ''}
-                    </div>
-                `;
+                if (emp.role === 'Основной') {
+                    statusesHtml += `
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem;">
+                            ${statusSpan}
+                            ${timeStr ? `<span style="color: #64748b; font-size: 0.8rem;">${timeStr}</span>` : ''}
+                        </div>
+                    `;
+                }
             }
             employeesHtml += '</div>';
             statusesHtml += '</div>';
