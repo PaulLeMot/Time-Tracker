@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
-sqlalchemy
+sqlalchemy[asyncio]
+alembic>=1.13,<2.0
 asyncpg
 python-dotenv
 pydantic

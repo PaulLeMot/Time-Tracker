@@ -6,13 +6,15 @@ from pydantic import BaseModel
 from database import get_db
 import crud
 from models import Deal, Employee, TaskType, Task, DealType, TechCard, Role, Notification, NotificationType, NotificationStatus, TaskExecution, TaskExecutionStatus, Explanation, DealProductType, TaskBreak
-from routers.auth import get_current_admin, get_current_employee
+from routers.auth import get_current_admin, get_current_employee, get_current_monitor
 import pandas as pd
 import io
 from schemas import DealProductItem
 import os
+import models
 from sse import notify_employee
 import logging
+from datetime import datetime
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
 # ==================== СХЕМЫ ====================
@@ -87,6 +89,89 @@ class ProductTypeResponse(BaseModel):
     full_name: Optional[str] = None
     tech_card_id: Optional[int]
     tech_card_name: Optional[str]
+
+
+class IndependentTaskCreate(BaseModel):
+    task_id: int
+    employee_ids: List[int]
+    main_employee_id: Optional[int] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_at: Optional[datetime] = None
+    products: List[dict] = []
+
+
+class DealTaskAssignmentCreate(BaseModel):
+    deal_id: int
+    task_id: int
+    employee_ids: List[int]
+    main_employee_id: Optional[int] = None
+    products: List[dict] = []
+
+
+class IndependentTaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    due_at: Optional[datetime] = None
+    status: Optional[str] = None
+    products: Optional[List[dict]] = None
+
+
+class IndependentTaskAssigneeCreate(BaseModel):
+    employee_id: int
+    is_main: bool = False
+
+
+class TaskProductPointUpdate(BaseModel):
+    points: int
+
+
+class TaskCompletionPercentItem(BaseModel):
+    employee_id: int
+    percent: int
+
+
+class TaskCompletionPercentUpdate(BaseModel):
+    percentages: List[TaskCompletionPercentItem]
+
+
+def serialize_independent_task(item):
+    products = []
+    if item.assignees:
+        products = (item.assignees[0].notification.extra_data or {}).get("products", [])
+    return {
+        "id": item.id,
+        "task_id": item.task_id,
+        "task_name": item.task.name,
+        "title": item.title,
+        "display_name": item.title or item.task.name,
+        "description": item.description,
+        "due_at": item.due_at.isoformat() if item.due_at else None,
+        "status": item.status,
+        "created_by_id": item.created_by_id,
+        "created_by_name": item.created_by.full_name,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        "products": products,
+        "completion_data": item.completion_data or {},
+        "assignees": [
+            {
+                "employee_id": assignee.employee_id,
+                "employee_name": assignee.employee.full_name,
+                "notification_id": assignee.notification_id,
+                "is_main": assignee.is_main,
+                "status": assignee.notification.task_execution.status.value
+                if assignee.notification.task_execution else None,
+                "started_at": assignee.notification.task_execution.started_at.isoformat()
+                if assignee.notification.task_execution
+                and assignee.notification.task_execution.started_at else None,
+                "completed_at": assignee.notification.task_execution.completed_at.isoformat()
+                if assignee.notification.task_execution
+                and assignee.notification.task_execution.completed_at else None,
+            }
+            for assignee in sorted(item.assignees, key=lambda value: (not value.is_main, value.employee_id))
+        ],
+    }
 
 class RoleTaskResponse(BaseModel):
     id: int
@@ -337,7 +422,17 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
 
         # Формируем строки (товары)
         products_table = []
-        assigned_products = {p["id"]: p for p in task_data.get("products", []) if "id" in p}
+        deal_product_by_name = {}
+        for deal_product in deal.deal_products:
+            if deal_product.product_type:
+                deal_product_by_name[deal_product.product_type.name] = deal_product.product_type.id
+                if deal_product.product_type.full_name:
+                    deal_product_by_name[deal_product.product_type.full_name] = deal_product.product_type.id
+        assigned_products = {}
+        for product in task_data.get("products", []):
+            product_id = product.get("id") or deal_product_by_name.get(product.get("name"))
+            if product_id:
+                assigned_products[int(product_id)] = {**product, "id": int(product_id)}
         
         for comp in task_completions:
             pid = comp["product_type_id"]
@@ -364,7 +459,11 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
 
         task_data["production_matrix"] = {
             "employees": employees_columns,
-            "rows": products_table
+            "rows": products_table,
+            "score_details": await crud.get_task_score_details(
+                db,
+                await db.get(Notification, task_data["assignees"][0]["notification_id"]),
+            ) if task_data.get("assignees") else {"total_points": 0, "assignees": []},
         }
     tasks_list = list(tasks_dict.values())
 
@@ -513,6 +612,214 @@ async def delete_task(
     db: AsyncSession = Depends(get_db)
 ):
     await crud.delete_task(db, task_id)
+    return None
+
+
+# ==================== НЕЗАВИСИМЫЕ ЗАДАЧИ ====================
+@router.post("/independent-tasks", status_code=201, response_model=dict)
+async def create_independent_task(
+    data: IndependentTaskCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_monitor),
+):
+    try:
+        item = await crud.create_independent_task(
+            db, data.task_id, data.employee_ids, admin.id,
+            data.main_employee_id, data.title, data.description, data.due_at, data.products,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+    return serialize_independent_task(item)
+
+
+@router.get("/task-creation-options", response_model=dict)
+async def get_task_creation_options(
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_monitor),
+):
+    employees = await crud.get_employees(db, active_only=True)
+    tasks = await crud.get_tasks(db, limit=1000)
+    deals = await crud.get_deals(db, limit=1000)
+    products = await crud.get_product_types(db, limit=1000)
+    return {
+        "employees": [{"id": item.id, "name": item.full_name} for item in employees],
+        "tasks": [{"id": item.id, "name": item.name} for item in tasks],
+        "deals": [
+            {"id": item.id, "title": item.title, "status": item.status}
+            for item in deals
+        ],
+        "products": [
+            {"id": item.id, "name": item.full_name or item.name}
+            for item in products
+        ],
+    }
+
+
+@router.post("/task-assignments", status_code=201, response_model=dict)
+async def create_deal_task_assignment(
+    data: DealTaskAssignmentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_monitor),
+):
+    try:
+        notifications = await crud.create_deal_task_assignment(
+            db, data.deal_id, data.task_id, data.employee_ids,
+            current_user.id, data.main_employee_id, data.products,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+    return {"message": "Задача создана", "notification_ids": [item.id for item in notifications]}
+
+
+@router.get("/independent-tasks", response_model=List[dict])
+async def list_independent_tasks(
+    employee_id: Optional[int] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    items = await crud.get_independent_tasks(db, employee_id, status, limit, offset)
+    return [serialize_independent_task(item) for item in items]
+
+
+@router.get("/independent-tasks/{independent_task_id}", response_model=dict)
+async def get_independent_task(
+    independent_task_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    item = await crud.get_independent_task(db, independent_task_id)
+    if not item:
+        raise HTTPException(404, detail="Independent task not found")
+    return serialize_independent_task(item)
+
+
+@router.patch("/independent-tasks/{independent_task_id}", response_model=dict)
+async def update_independent_task(
+    independent_task_id: int,
+    data: IndependentTaskUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    try:
+        item = await crud.update_independent_task(
+            db, independent_task_id, **data.dict(exclude_unset=True)
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+    return serialize_independent_task(item)
+
+
+@router.post("/independent-tasks/{independent_task_id}/assignees", response_model=dict)
+async def add_independent_task_assignee(
+    independent_task_id: int,
+    data: IndependentTaskAssigneeCreate,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    try:
+        item = await crud.add_independent_task_assignee(
+            db, independent_task_id, data.employee_id, admin.id, data.is_main
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+    return serialize_independent_task(item)
+
+
+@router.put("/independent-tasks/{independent_task_id}/main-assignee/{employee_id}", response_model=dict)
+async def set_independent_task_main_assignee(
+    independent_task_id: int,
+    employee_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    try:
+        item = await crud.set_independent_task_main_assignee(db, independent_task_id, employee_id)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+    return serialize_independent_task(item)
+
+
+@router.delete("/independent-tasks/{independent_task_id}/assignees/{employee_id}", response_model=dict)
+async def remove_independent_task_assignee(
+    independent_task_id: int,
+    employee_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    try:
+        item = await crud.remove_independent_task_assignee(db, independent_task_id, employee_id)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+    return serialize_independent_task(item)
+
+
+@router.delete("/independent-tasks/{independent_task_id}", status_code=204)
+async def delete_independent_task(
+    independent_task_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    try:
+        await crud.delete_independent_task(db, independent_task_id)
+    except ValueError as exc:
+        raise HTTPException(404, detail=str(exc))
+    return None
+
+
+# ==================== БАЛЛЫ ЗА ТОВАРЫ В ЗАДАЧАХ ====================
+@router.get("/task-product-points", response_model=dict)
+async def get_task_product_points_matrix(
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    tasks = await crud.get_tasks(db, limit=1000)
+    products = await crud.get_product_types(db, limit=1000)
+    point_rows = await crud.get_task_product_points(db)
+    return {
+        "tasks": [{"id": item.id, "name": item.name} for item in tasks],
+        "products": [
+            {"id": item.id, "name": item.full_name or item.name}
+            for item in products
+        ],
+        "points": {
+            f"{item.product_type_id}:{item.task_id}": float(item.points)
+            for item in point_rows
+        },
+    }
+
+
+@router.put("/task-product-points/{product_type_id}/{task_id}", response_model=dict)
+async def update_task_product_points(
+    product_type_id: int,
+    task_id: int,
+    data: TaskProductPointUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    try:
+        row = await crud.set_task_product_points(
+            db, task_id, product_type_id, data.points
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+    return {
+        "task_id": row.task_id,
+        "product_type_id": row.product_type_id,
+        "points": float(row.points),
+    }
+
+
+@router.delete("/task-product-points/{product_type_id}/{task_id}", status_code=204)
+async def delete_task_product_points(
+    product_type_id: int,
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    await crud.delete_task_product_points(db, task_id, product_type_id)
     return None
 
 # ==================== ЭНДПОИНТЫ ДЛЯ ТЕХКАРТ ====================
@@ -1189,14 +1496,15 @@ async def get_mailing_notifications(
             t.id AS task_id, t.name AS task_name,
             tt.id AS task_type_id, tt.name AS task_type_name,
             d.id AS deal_id, d.title AS deal_title,
-            dt.name AS deal_type_name
+            dt.name AS deal_type_name, ita.is_main AS independent_is_main
         FROM notifications n
         LEFT JOIN task_executions te ON te.notification_id = n.id
         JOIN employees e ON e.id = n.employee_id
         JOIN tasks t ON t.id = CAST(n.extra_data->>'task_id' AS INTEGER)
         LEFT JOIN task_types tt ON tt.id = t.task_type_id
-        JOIN deals d ON d.id = CAST(n.extra_data->>'deal_id' AS INTEGER)
+        LEFT JOIN deals d ON d.id = CAST(n.extra_data->>'deal_id' AS INTEGER)
         LEFT JOIN deal_types dt ON dt.id = d.deal_type_id
+        LEFT JOIN independent_task_assignees ita ON ita.notification_id = n.id
         WHERE n.type = 'task_assignment'
           AND n.status = 'sent'
         ORDER BY n.created_at DESC
@@ -1212,7 +1520,7 @@ async def get_mailing_notifications(
         row_deal_id = extra.get('deal_id')
         row_task_id = extra.get('task_id')
         if row_deal_id and row_task_id:
-            key = (row_deal_id, row_task_id)
+            key = ("deal", row_deal_id, row_task_id)
             if key not in first_notif_map or row.id < first_notif_map[key]:
                 first_notif_map[key] = row.id
 
@@ -1225,11 +1533,12 @@ async def get_mailing_notifications(
                 extra = row.extra_data or {}
                 d_id = extra.get('deal_id')
                 t_id = extra.get('task_id')
-                if d_id and t_id:
-                    key = (d_id, t_id)
+                independent_id = extra.get('independent_task_id')
+                if independent_id or (d_id and t_id):
+                    key = ("independent", independent_id) if independent_id else ("deal", d_id, t_id)
                     # Если также указан фильтр по роли, проверяем его
                     if role:
-                        is_main = (first_notif_map.get(key) == row.id)
+                        is_main = bool(row.independent_is_main) if independent_id else (first_notif_map.get(key) == row.id)
                         if role == "main" and not is_main:
                             continue
                         if role == "co" and is_main:
@@ -1242,13 +1551,15 @@ async def get_mailing_notifications(
         extra = row.extra_data or {}
         row_deal_id = extra.get('deal_id')
         row_task_id = extra.get('task_id')
-        key = (row_deal_id, row_task_id)
+        independent_id = extra.get('independent_task_id')
+        key = ("independent", independent_id) if independent_id else ("deal", row_deal_id, row_task_id)
         
         # Если включен фильтр по сотруднику, пропускаем уведомления не из целевых задач
         if allowed_task_keys is not None and key not in allowed_task_keys:
             continue
 
-        current_role = "Основной" if first_notif_map.get(key) == row.id else "Соисполнитель"
+        is_main = bool(row.independent_is_main) if independent_id else first_notif_map.get(key) == row.id
+        current_role = "Основной" if is_main else "Соисполнитель"
         exec_status = row.exec_status or "not_started"
         deal_type_name = row.deal_type_name or "—"
         task_type_name = row.task_type_name or "Без типа"
@@ -1285,10 +1596,11 @@ async def get_mailing_notifications(
             "employee_id": row.employee_id,
             "employee_name": row.employee_name,
             "task_id": row_task_id,
-            "task_name": row.task_name,
+            "task_name": extra.get("task_name") or row.task_name,
             "task_type_name": task_type_name,
             "deal_id": row_deal_id,
-            "deal_title": row.deal_title,
+            "deal_title": row.deal_title or "Независимая задача",
+            "independent_task_id": independent_id,
             "deal_type_name": deal_type_name,
             "role": current_role,
             "products": products, 
@@ -1429,6 +1741,139 @@ async def update_task_status(
     
     await db.commit()
     return {"message": "Статус обновлён"}
+
+
+@router.put("/task-assignments/{notification_id}/status")
+async def update_assignment_status(
+    notification_id: int,
+    data: UpdateTaskStatus,
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_monitor),
+):
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.type != NotificationType.TASK_ASSIGNMENT:
+        raise HTTPException(404, "Назначение не найдено")
+    execution = await crud.get_task_execution_by_notification(db, notification_id)
+    if not execution:
+        execution = TaskExecution(
+            notification_id=notification_id,
+            employee_id=notification.employee_id,
+            status=TaskExecutionStatus.NOT_STARTED,
+        )
+        db.add(execution)
+    try:
+        execution.status = TaskExecutionStatus(data.status)
+    except ValueError:
+        raise HTTPException(400, "Недопустимый статус")
+    now = datetime.now()
+    if execution.status == TaskExecutionStatus.IN_PROGRESS and not execution.started_at:
+        execution.started_at = now
+    if execution.status == TaskExecutionStatus.COMPLETED:
+        execution.completed_at = execution.completed_at or now
+    elif execution.completed_at:
+        execution.completed_at = None
+    assignment_result = await db.execute(
+        select(models.IndependentTaskAssignee).where(
+            models.IndependentTaskAssignee.notification_id == notification_id
+        )
+    )
+    assignment = assignment_result.scalar_one_or_none()
+    if assignment and assignment.is_main and execution.status == TaskExecutionStatus.COMPLETED:
+        related_result = await db.execute(
+            select(models.IndependentTaskAssignee.notification_id).where(
+                models.IndependentTaskAssignee.independent_task_id == assignment.independent_task_id
+            )
+        )
+        related_ids = list(related_result.scalars().all())
+        related_executions = await db.execute(
+            select(TaskExecution).where(TaskExecution.notification_id.in_(related_ids))
+        )
+        for related_execution in related_executions.scalars().all():
+            related_execution.status = TaskExecutionStatus.COMPLETED
+            related_execution.completed_at = related_execution.completed_at or now
+        independent_task = await db.get(models.IndependentTask, assignment.independent_task_id)
+        if independent_task:
+            independent_task.status = "completed"
+            independent_task.updated_at = now
+    await db.commit()
+    return {"message": "Статус обновлён"}
+
+
+@router.get("/task-assignments/{notification_id}/score-details", response_model=dict)
+async def get_admin_task_score_details(
+    notification_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.type != NotificationType.TASK_ASSIGNMENT:
+        raise HTTPException(404, "Назначение не найдено")
+    return await crud.get_task_score_details(db, notification)
+
+
+@router.put("/task-assignments/{notification_id}/completion-percentages", response_model=dict)
+async def update_admin_task_percentages(
+    notification_id: int,
+    data: TaskCompletionPercentUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.type != NotificationType.TASK_ASSIGNMENT:
+        raise HTTPException(404, "Назначение не найдено")
+    details = await crud.get_task_score_details(db, notification)
+    try:
+        return await crud.set_task_completion_percentages(
+            db, details, [item.dict() for item in data.percentages]
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.put("/task-assignments/{notification_id}/completion", response_model=dict)
+async def update_admin_task_completion(
+    notification_id: int,
+    data: TaskCompletionRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(get_current_admin),
+):
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.type != NotificationType.TASK_ASSIGNMENT:
+        raise HTTPException(404, "Назначение не найдено")
+    extra = notification.extra_data or {}
+    distributions = [
+        {"employee_id": item.employee_id, "quantity": item.quantity}
+        for item in data.distributions
+    ]
+    independent_task_id = extra.get("independent_task_id")
+    if independent_task_id:
+        independent_task = await db.get(models.IndependentTask, int(independent_task_id))
+        if not independent_task:
+            raise HTTPException(404, "Независимая задача не найдена")
+        completion_data = dict(independent_task.completion_data or {})
+        completion_data[str(data.product_type_id)] = {
+            "product_type_id": data.product_type_id,
+            "defect_quantity": data.defect_quantity,
+            "defect_comment": data.defect_comment,
+            "distributions": distributions,
+        }
+        independent_task.completion_data = completion_data
+        await db.commit()
+        return {"message": "Распределение сохранено"}
+    deal_id = extra.get("deal_id")
+    task_id = extra.get("task_id")
+    if not deal_id or not task_id:
+        raise HTTPException(400, "Не удалось определить задачу")
+    await crud.create_or_update_task_completion(
+        db,
+        deal_id=int(deal_id),
+        task_id=int(task_id),
+        product_type_id=data.product_type_id,
+        defect_quantity=data.defect_quantity,
+        defect_comment=data.defect_comment,
+        distributions=distributions,
+    )
+    return {"message": "Распределение сохранено"}
 
 class UpdateTaskTime(BaseModel):
     started_at: Optional[datetime] = None

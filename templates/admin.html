@@ -1293,6 +1293,23 @@
         <div id="roleModalError" style="color:red; margin-top:8px;"></div>
     </div>
 </div>
+<div id="taskCreationModal" class="modal">
+    <div class="modal-content" style="max-width:720px; max-height:90vh; overflow-y:auto;">
+        <span id="closeTaskCreationModal" style="float:right; cursor:pointer; font-size:1.7rem; color:#94a3b8;">&times;</span>
+        <h3>Добавить задачу</h3>
+        <div style="display:grid; gap:14px;">
+            <label>Тип задачи<select id="newTaskBinding" style="width:100%; margin-top:5px;"><option value="independent">Независимая</option><option value="deal">Привязана к сделке</option></select></label>
+            <label id="newTaskDealRow" style="display:none;">Сделка<select id="newTaskDeal" style="width:100%; margin-top:5px;"></select></label>
+            <label>Задача<select id="newTaskTemplate" style="width:100%; margin-top:5px;"></select></label>
+            <label id="newTaskTitleRow">Название независимой задачи<input id="newTaskTitle" type="text" placeholder="Новое название или оставьте пустым для выбранной задачи"><small style="display:block; color:#64748b; margin-top:3px;">Новое название будет добавлено в общую базу задач.</small></label>
+            <label id="newTaskDescriptionRow">Описание<textarea id="newTaskDescription" rows="3" style="width:100%; box-sizing:border-box; margin-top:5px;"></textarea></label>
+            <div><strong>Сотрудники</strong><div id="newTaskEmployees" style="display:grid; gap:7px; margin-top:7px;"></div></div>
+            <div><strong>Товары</strong><div id="newTaskProducts" style="display:grid; gap:7px; margin-top:7px;"></div></div>
+            <div id="newTaskCreationError" style="color:#dc2626;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;"><button type="button" id="cancelTaskCreationBtn" class="btn" style="background:#94a3b8;">Отмена</button><button type="button" id="saveTaskCreationBtn" class="btn" style="background:#16a34a;">Создать</button></div>
+        </div>
+    </div>
+</div>
 <script>
     let eventSource = null;
     let startDate = '';
@@ -2480,7 +2497,7 @@ document.getElementById('addEmployeeForm').addEventListener('submit', async (e) 
                     procsetsTab.style.display = 'block';
                     if (!procsetsTab.dataset.loaded) {
                         try {
-                            const resp = await fetch('/static/procsets.html');
+                            const resp = await fetch('/static/procsets.html?v=task-points-2', { cache: 'no-store' });
                             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                             const html = await resp.text();
                             procsetsTab.innerHTML = html;
@@ -7490,6 +7507,36 @@ function showDetail(deal, selectedTaskId = null, expandedTaskIds = new Set()) {
             return; // Выходим, логика для товаров ниже
         }
 
+        if (target.classList.contains('matrix-percent-input')) {
+            const block = target.closest('.task-score-distribution');
+            const totalPoints = Number(block.dataset.totalPoints || 0);
+            const percentages = [...block.querySelectorAll('.matrix-percent-input')].map(input => ({
+                employee_id: Number(input.dataset.employeeId),
+                percent: Math.max(0, Math.min(100, parseInt(input.value) || 0))
+            }));
+            percentages.forEach(item => {
+                const pointsCell = block.querySelector(`.matrix-employee-points[data-employee-id="${item.employee_id}"]`);
+                if (pointsCell) pointsCell.textContent = Math.round(totalPoints * item.percent / 100);
+            });
+            const totalPercent = percentages.reduce((sum, item) => sum + item.percent, 0);
+            const totalCell = block.querySelector('.matrix-total-percent');
+            if (totalCell) {
+                totalCell.textContent = `${totalPercent}%`;
+                totalCell.style.color = totalPercent === 100 ? '#16a34a' : '#dc2626';
+            }
+            try {
+                const response = await fetch(`/api/sandbox/task-assignments/${block.dataset.notificationId}/completion-percentages`, {
+                    method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({percentages})
+                });
+                if (!response.ok) throw new Error((await response.json()).detail || 'Ошибка сохранения процентов');
+                showToast('Проценты и баллы обновлены');
+            } catch (error) {
+                showToast(error.message, true);
+            }
+            return;
+        }
+
         // 2. Обработка ячеек матрицы (товары, брак, распределение)
         if (!target.matches('.matrix-defect-qty, .matrix-defect-comment, .matrix-dist-qty')) return;
 
@@ -9496,6 +9543,8 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
                 loadRoles();
             } else if (target === 'products') {
                 loadProducts();
+            } else if (target === 'points') {
+                loadPointsMatrix();
             } else if (target === 'roles') {
                 if (!allEmployees.length) loadAllEmployees();
                 loadRoles();
@@ -9622,6 +9671,7 @@ function renderMailingFilters(container) {
         <div style="display: flex; gap: 8px; align-items: flex-end; padding-bottom: 2px;">
             <button id="applyMailingFilters" class="btn" style="background: #3b82f6; height: 34px;">🔍 Найти</button>
             <button id="resetMailingFilters" class="btn" style="background: #94a3b8; height: 34px;">✖ Сбросить все</button>
+            <button id="openTaskCreationBtn" class="btn" style="background:#16a34a; height:34px;">＋ Добавить задачу</button>
         </div>
     </div>`;
 
@@ -9629,6 +9679,7 @@ function renderMailingFilters(container) {
     if (tableContainer) {
         tableContainer.insertAdjacentHTML('beforebegin', filterHtml);
     }
+    initTaskCreationModal();
 
     const addFilterClearButton = controlId => {
         const control = document.getElementById(controlId);
@@ -9800,10 +9851,11 @@ async function loadMailingNotifications() {
         // --- 🚀 НОВЫЙ БЛОК: ГРУППИРОВКА ПО ЗАДАЧАМ ---
         const grouped = {};
         for (const n of data) {
-            const key = `${n.deal_id}_${n.task_id}`;
+            const key = n.independent_task_id ? `independent_${n.independent_task_id}` : `deal_${n.deal_id}_${n.task_id}`;
             if (!grouped[key]) {
                 grouped[key] = {
                     deal_id: n.deal_id,
+                    independent_task_id: n.independent_task_id,
                     deal_title: n.deal_title,
                     deal_type_name: n.deal_type_name,
                     task_id: n.task_id,
@@ -9857,7 +9909,9 @@ async function loadMailingNotifications() {
             const dealCell = `<div style="display:flex; align-items:center; justify-content:flex-start; gap:8px; width:100%; text-align:left;">${dealTypeBadge}<span>${escapeHtml(task.deal_title || '—')}</span></div>`;
 
             // 2. Задача
-            const taskCell = `<button type="button" class="open-task-detail" data-deal-id="${task.deal_id}" data-task-id="${task.task_id}" style="border:0; background:none; padding:0; color:#2563eb; font-weight:700; cursor:pointer; text-align:left;">${escapeHtml(task.task_name || '—')}</button>`;
+            const taskCell = task.deal_id
+                ? `<button type="button" class="open-task-detail" data-deal-id="${task.deal_id}" data-task-id="${task.task_id}" style="border:0; background:none; padding:0; color:#2563eb; font-weight:700; cursor:pointer; text-align:left;">${escapeHtml(task.task_name || '—')}</button>`
+                : `<button type="button" class="open-independent-task-detail" data-independent-task-id="${task.independent_task_id}" style="border:0; background:none; padding:0; color:#2563eb; font-weight:700; cursor:pointer; text-align:left;">${escapeHtml(task.task_name || '—')}</button>`;
 
             // 3. Товары
             let productsHtml = '—';
@@ -9889,7 +9943,7 @@ async function loadMailingNotifications() {
                     'completed':   { icon: '✅', text: 'Завершена', color: '#22c55e' }
                 };
                 const st = statusMap[emp.execution_status] || statusMap['not_started'];
-                const statusSpan = `<select class="mailing-status-select" data-deal-id="${task.deal_id}" data-task-id="${task.task_id}" data-notification-id="${emp.id}" style="color:${st.color}; padding:3px; border:1px solid #cbd5e1; border-radius:8px;">
+                const statusSpan = `<select class="mailing-status-select" data-deal-id="${task.deal_id || ''}" data-task-id="${task.task_id}" data-notification-id="${emp.id}" style="color:${st.color}; padding:3px; border:1px solid #cbd5e1; border-radius:8px;">
                     <option value="not_started" ${emp.execution_status === 'not_started' ? 'selected' : ''}>❌ Не начата</option>
                     <option value="in_progress" ${emp.execution_status === 'in_progress' ? 'selected' : ''}>🔄 В процессе</option>
                     <option value="on_break" ${emp.execution_status === 'on_break' ? 'selected' : ''}>⏸️ Перерыв</option>
@@ -9927,7 +9981,7 @@ async function loadMailingNotifications() {
 
             // 5. Действия (Удаление всей задачи целиком)
             const allIds = task.employees.map(e => e.id).join(',');
-            const actionsCell = `<button class="btn-sm btn-danger delete-task-group-btn" data-ids="${allIds}" title="Удалить задачу у всех">🗑️</button>`;
+            const actionsCell = `<button class="btn-sm btn-danger delete-task-group-btn" data-ids="${allIds}" data-independent-task-id="${task.independent_task_id || ''}" title="Удалить задачу у всех">🗑️</button>`;
 
             html += `<tr>
                 <td>${dealCell}</td>
@@ -9944,11 +9998,17 @@ async function loadMailingNotifications() {
         container.querySelectorAll('.open-task-detail').forEach(button => {
             button.addEventListener('click', () => viewDeal(Number(button.dataset.dealId), Number(button.dataset.taskId)));
         });
+        container.querySelectorAll('.open-independent-task-detail').forEach(button => {
+            button.addEventListener('click', () => openIndependentTaskEditor(Number(button.dataset.independentTaskId)));
+        });
 
         container.querySelectorAll('.mailing-status-select').forEach(select => {
             select.addEventListener('change', async () => {
                 try {
-                    await apiFetch(`/api/sandbox/deals/${select.dataset.dealId}/tasks/${select.dataset.taskId}/status`, {
+                    const statusUrl = select.dataset.dealId
+                        ? `/api/sandbox/deals/${select.dataset.dealId}/tasks/${select.dataset.taskId}/status`
+                        : `/api/sandbox/task-assignments/${select.dataset.notificationId}/status`;
+                    await apiFetch(statusUrl, {
                         method: 'PUT',
                         body: JSON.stringify({ status: select.value, notification_id: Number(select.dataset.notificationId) })
                     });
@@ -9967,13 +10027,12 @@ async function loadMailingNotifications() {
                 if (!confirm('Удалить эту задачу у всех назначенных сотрудников?')) return;
                 const ids = this.dataset.ids.split(',').map(Number);
                 try {
-                    // Удаляем все уведомления параллельно
-                    await Promise.all(ids.map(id => 
-                        fetch(`/api/sandbox/mailing/notifications/${id}`, {
-                            method: 'DELETE',
-                            credentials: 'include'
-                        })
-                    ));
+                    if (this.dataset.independentTaskId) {
+                        const response = await fetch(`/api/sandbox/independent-tasks/${this.dataset.independentTaskId}`, {method:'DELETE', credentials:'include'});
+                        if (!response.ok) throw new Error((await response.json()).detail || 'Ошибка удаления');
+                    } else {
+                        await Promise.all(ids.map(id => fetch(`/api/sandbox/mailing/notifications/${id}`, {method:'DELETE', credentials:'include'})));
+                    }
                     showToast('✅ Задача удалена');
                     loadMailingNotifications(); 
                 } catch (err) {
@@ -10114,13 +10173,91 @@ async function loadMailingNotifications() {
     initDealTypeSettings();
     setInterval(loadDeals, 30000);
 }
+async function loadPointsMatrix() {
+    const container = document.getElementById('pointsMatrixContainer');
+    const status = document.getElementById('pointsMatrixStatus');
+    const refreshButton = document.getElementById('refreshPointsMatrixBtn');
+    if (!container) return;
+    if (refreshButton && !refreshButton.dataset.initialized) {
+        refreshButton.dataset.initialized = '1';
+        refreshButton.addEventListener('click', loadPointsMatrix);
+    }
+    container.innerHTML = 'Загрузка...';
+    if (status) status.textContent = '';
+    try {
+        const response = await fetch('/api/sandbox/task-product-points', {credentials:'include'});
+        if (!response.ok) throw new Error((await response.json()).detail || 'Не удалось загрузить таблицу баллов');
+        const data = await response.json();
+        if (!data.tasks.length || !data.products.length) {
+            container.innerHTML = '<p style="color:#64748b;">Для таблицы нужны хотя бы одна задача и один товар.</p>';
+            return;
+        }
+        let html = `<div style="overflow:auto; max-height:70vh; border:1px solid #e2e8f0; border-radius:12px;"><table style="border-collapse:separate; border-spacing:0; min-width:100%; width:max-content;"><thead><tr><th style="position:sticky; top:0; left:0; z-index:4; min-width:240px; background:#e2e8f0; padding:10px; text-align:left; border-right:1px solid #cbd5e1; border-bottom:1px solid #cbd5e1;">Задача</th>`;
+        data.products.forEach(product => {
+            html += `<th style="position:sticky; top:0; z-index:3; min-width:150px; max-width:220px; background:#e2e8f0; padding:10px; border-right:1px solid #cbd5e1; border-bottom:1px solid #cbd5e1; white-space:normal;">${escapeHtml(product.name)}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+        data.tasks.forEach((task, rowIndex) => {
+            const background = rowIndex % 2 ? '#f8fafc' : '#fff';
+            html += `<tr><th style="position:sticky; left:0; z-index:2; background:${background}; padding:9px 10px; text-align:left; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;">${escapeHtml(task.name)}</th>`;
+            data.products.forEach(product => {
+                const key = `${product.id}:${task.id}`;
+                const value = Object.prototype.hasOwnProperty.call(data.points, key) ? data.points[key] : '';
+                html += `<td style="background:${background}; padding:6px; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;"><div style="display:flex; align-items:center; gap:4px;"><input class="points-matrix-input" type="number" min="0" step="1" value="${value}" data-product-id="${product.id}" data-task-id="${task.id}" style="width:95px; margin:0; padding:6px 8px; border:1px solid #cbd5e1; border-radius:7px; text-align:right;"><button type="button" class="points-matrix-clear" data-product-id="${product.id}" data-task-id="${task.id}" title="Удалить баллы" style="border:0; background:none; color:#94a3b8; cursor:pointer; font-size:0.9rem;">✖</button></div></td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+
+        const setStatus = (message, error = false) => {
+            if (!status) return;
+            status.textContent = message;
+            status.style.color = error ? '#dc2626' : '#16a34a';
+        };
+        const saveInput = async input => {
+            const rawValue = input.value.trim();
+            const productId = input.dataset.productId;
+            const taskId = input.dataset.taskId;
+            input.disabled = true;
+            try {
+                const response = rawValue === ''
+                    ? await fetch(`/api/sandbox/task-product-points/${productId}/${taskId}`, {method:'DELETE', credentials:'include'})
+                    : await fetch(`/api/sandbox/task-product-points/${productId}/${taskId}`, {method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({points:parseInt(rawValue)})});
+                if (!response.ok) throw new Error((await response.json()).detail || 'Ошибка сохранения');
+                setStatus(rawValue === '' ? 'Баллы удалены' : 'Баллы сохранены');
+            } catch (error) {
+                setStatus(error.message, true);
+            } finally {
+                input.disabled = false;
+            }
+        };
+        container.querySelectorAll('.points-matrix-input').forEach(input => {
+            input.addEventListener('change', () => saveInput(input));
+            input.addEventListener('keydown', event => {
+                if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+            });
+        });
+        container.querySelectorAll('.points-matrix-clear').forEach(button => {
+            button.addEventListener('click', () => {
+                const input = container.querySelector(`.points-matrix-input[data-product-id="${button.dataset.productId}"][data-task-id="${button.dataset.taskId}"]`);
+                if (input) { input.value = ''; saveInput(input); }
+            });
+        });
+    } catch (error) {
+        container.innerHTML = `<p style="color:#dc2626;">${escapeHtml(error.message)}</p>`;
+    }
+}
+
 function renderProductionMatrix(task, dealId) {
     const matrix = task.production_matrix;
-    if (!matrix || !matrix.rows || matrix.rows.length === 0) {
-        return `<p class="text-muted small mt-2 mb-0">Товары не назначены или данные еще не заполнены</p>`;
-    }
+    if (!matrix) return `<p class="text-muted small mt-2 mb-0">Данные распределения еще не заполнены</p>`;
 
-    let html = '<div class="table-responsive mt-2"><table class="table table-sm table-bordered align-middle text-center">';
+    let html = '';
+    if (!matrix.rows || matrix.rows.length === 0) {
+        html = `<p class="text-muted small mt-2 mb-0">Товары не назначены или данные еще не заполнены</p>`;
+    } else {
+        html = '<div class="table-responsive mt-2"><table class="table table-sm table-bordered align-middle text-center">';
     
     // 1. Шапка
     html += '<thead class="table-light"><tr>';
@@ -10156,8 +10293,210 @@ function renderProductionMatrix(task, dealId) {
         
         html += '</tr>';
     });
-    html += '</tbody></table></div>';
+        html += '</tbody></table></div>';
+    }
+    const score = matrix.score_details || {total_points:0, assignees:[]};
+    const totalPercent = (score.assignees || []).reduce((sum, item) => sum + Number(item.percent || 0), 0);
+    const mainNotificationId = (score.assignees || []).find(item => item.is_main)?.notification_id || task.assignees?.[0]?.notification_id || '';
+    html += `<div class="task-score-distribution" data-notification-id="${mainNotificationId}" data-total-points="${score.total_points || 0}" style="margin-top:14px; border:1px solid #bfdbfe; border-radius:12px; overflow:hidden;">
+        <div style="padding:10px 12px; background:linear-gradient(90deg,#eff6ff,#f0fdf4); display:flex; justify-content:space-between; gap:12px;"><strong>Распределение выполнения и баллов</strong><span>Всего баллов за задачу: <strong style="color:#15803d;">${score.total_points || 0}</strong></span></div>
+        <table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:8px; text-align:left;">Сотрудник</th><th style="padding:8px; text-align:center;">Выполнение, %</th><th style="padding:8px; text-align:center;">Баллы</th></tr></thead><tbody>`;
+    (score.assignees || []).forEach(item => {
+        html += `<tr><td style="padding:8px; border-top:1px solid #e2e8f0;">${escapeHtml(item.employee_name)}${item.is_main ? ' <span style="color:#2563eb; font-size:.8rem;">Основной</span>' : ''}</td><td style="padding:8px; text-align:center; border-top:1px solid #e2e8f0;"><input type="number" class="matrix-percent-input" data-employee-id="${item.employee_id}" min="0" max="100" step="1" value="${item.percent || 0}" style="width:75px; text-align:center; border:1px solid #93c5fd; border-radius:7px; padding:5px;"></td><td class="matrix-employee-points" data-employee-id="${item.employee_id}" style="padding:8px; text-align:center; border-top:1px solid #e2e8f0; color:#15803d; font-weight:700;">${Math.round((score.total_points || 0) * Number(item.percent || 0) / 100)}</td></tr>`;
+    });
+    html += `</tbody><tfoot><tr style="background:#f8fafc; font-weight:700;"><td style="padding:8px;">Итого (%)</td><td class="matrix-total-percent" style="padding:8px; text-align:center; color:${totalPercent === 100 ? '#16a34a' : '#dc2626'};">${totalPercent}%</td><td style="padding:8px; text-align:center; color:#15803d;">${score.total_points || 0}</td></tr></tfoot></table></div>`;
     return html;
+}
+
+function initTaskCreationModal() {
+    const modal = document.getElementById('taskCreationModal');
+    const openButton = document.getElementById('openTaskCreationBtn');
+    const binding = document.getElementById('newTaskBinding');
+    if (!modal || !openButton || openButton.dataset.initialized) return;
+    openButton.dataset.initialized = '1';
+    const close = () => { modal.style.display = 'none'; };
+    const updateFields = () => {
+        const dealMode = binding.value === 'deal';
+        document.getElementById('newTaskDealRow').style.display = dealMode ? 'block' : 'none';
+        document.getElementById('newTaskTitleRow').style.display = dealMode ? 'none' : 'block';
+        document.getElementById('newTaskDescriptionRow').style.display = dealMode ? 'none' : 'block';
+    };
+    const options = (items, key, label) => items.map(item => `<option value="${item[key]}">${escapeHtml(item[label] || '')}</option>`).join('');
+    openButton.addEventListener('click', async () => {
+        const error = document.getElementById('newTaskCreationError');
+        error.textContent = '';
+        modal.style.display = 'block';
+        try {
+            const response = await fetch('/api/sandbox/task-creation-options', {credentials:'include'});
+            if (!response.ok) throw new Error((await response.json()).detail || 'Не удалось загрузить данные');
+            const data = await response.json();
+            document.getElementById('newTaskDeal').innerHTML = options(data.deals.filter(item => item.status !== 'completed'), 'id', 'title');
+            document.getElementById('newTaskTemplate').innerHTML = options(data.tasks, 'id', 'name');
+            document.getElementById('newTaskEmployees').innerHTML = data.employees.map(item => `<div style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="new-task-employee" value="${item.id}" id="newTaskEmployee${item.id}"><label for="newTaskEmployee${item.id}" style="flex:1;">${escapeHtml(item.name)}</label><label><input type="radio" name="newTaskMainEmployee" value="${item.id}"> основной</label></div>`).join('');
+            document.getElementById('newTaskProducts').innerHTML = data.products.map(item => `<div style="display:grid; grid-template-columns:auto 1fr 90px; gap:8px; align-items:center;"><input type="checkbox" class="new-task-product" value="${item.id}" data-name="${escapeHtml(item.name)}"><span>${escapeHtml(item.name)}</span><input type="number" class="new-task-product-quantity" data-product-id="${item.id}" min="1" value="1" title="Количество"></div>`).join('') || '<span style="color:#64748b;">Нет товаров</span>';
+        } catch (value) { error.textContent = value.message; }
+        updateFields();
+    });
+    binding.addEventListener('change', updateFields);
+    document.getElementById('closeTaskCreationModal').addEventListener('click', close);
+    document.getElementById('cancelTaskCreationBtn').addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    document.getElementById('newTaskEmployees').addEventListener('change', event => {
+        if (event.target.name === 'newTaskMainEmployee') {
+            const checkbox = modal.querySelector(`.new-task-employee[value="${event.target.value}"]`);
+            if (checkbox) checkbox.checked = true;
+        }
+    });
+    document.getElementById('saveTaskCreationBtn').addEventListener('click', async () => {
+        const button = document.getElementById('saveTaskCreationBtn');
+        const error = document.getElementById('newTaskCreationError');
+        const employeeIds = [...modal.querySelectorAll('.new-task-employee:checked')].map(item => Number(item.value));
+        const main = modal.querySelector('input[name="newTaskMainEmployee"]:checked');
+        const products = [...modal.querySelectorAll('.new-task-product:checked')].map(item => ({id:Number(item.value), name:item.dataset.name, quantity:Math.max(1, Number(modal.querySelector(`.new-task-product-quantity[data-product-id="${item.value}"]`)?.value || 1))}));
+        const taskId = Number(document.getElementById('newTaskTemplate').value);
+        if (!employeeIds.length) { error.textContent = 'Выберите хотя бы одного сотрудника'; return; }
+        if (!main || !employeeIds.includes(Number(main.value))) { error.textContent = 'Выберите основного исполнителя'; return; }
+        if (!taskId) { error.textContent = 'Выберите задачу'; return; }
+        const dealMode = binding.value === 'deal';
+        const payload = dealMode
+            ? {deal_id:Number(document.getElementById('newTaskDeal').value), task_id:taskId, employee_ids:employeeIds, main_employee_id:Number(main.value), products}
+            : {task_id:taskId, employee_ids:employeeIds, main_employee_id:Number(main.value), products, title:document.getElementById('newTaskTitle').value.trim() || null, description:document.getElementById('newTaskDescription').value.trim() || null};
+        if (dealMode && !payload.deal_id) { error.textContent = 'Выберите сделку'; return; }
+        button.disabled = true;
+        error.textContent = '';
+        try {
+            const response = await fetch(dealMode ? '/api/sandbox/task-assignments' : '/api/sandbox/independent-tasks', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+            if (!response.ok) throw new Error((await response.json()).detail || 'Не удалось создать задачу');
+            close();
+            showToast('Задача создана');
+            sessionStorage.removeItem(ADMIN_MODAL_KEY);
+            sessionStorage.removeItem(ADMIN_MODAL_STATE_KEY);
+            window.location.reload();
+        } catch (value) { error.textContent = value.message; }
+        finally { button.disabled = false; }
+    });
+}
+initTaskCreationModal();
+
+async function openIndependentTaskEditor(independentTaskId) {
+    const procsetsContainer = document.getElementById('procsets-tab');
+    const modal = procsetsContainer?.querySelector('#detailModal');
+    const title = modal?.querySelector('#detailTitle');
+    const body = modal?.querySelector('#detailBody');
+    if (!modal || !title || !body) return;
+    title.textContent = 'Редактирование независимой задачи';
+    body.innerHTML = '<p>Загрузка...</p>';
+    modal.style.display = 'block';
+    try {
+        const [taskResponse, optionsResponse] = await Promise.all([
+            fetch(`/api/sandbox/independent-tasks/${independentTaskId}`, {credentials:'include'}),
+            fetch('/api/sandbox/task-creation-options', {credentials:'include'})
+        ]);
+        if (!taskResponse.ok) throw new Error((await taskResponse.json()).detail || 'Не удалось загрузить задачу');
+        if (!optionsResponse.ok) throw new Error((await optionsResponse.json()).detail || 'Не удалось загрузить справочники');
+        const task = await taskResponse.json();
+        const options = await optionsResponse.json();
+        const assignedIds = new Set(task.assignees.map(item => Number(item.employee_id)));
+        const mainAssignee = task.assignees.find(item => item.is_main);
+        let score = {total_points:0, assignees:[]};
+        if (mainAssignee) {
+            const scoreResponse = await fetch(`/api/sandbox/task-assignments/${mainAssignee.notification_id}/score-details`, {credentials:'include'});
+            if (scoreResponse.ok) score = await scoreResponse.json();
+        }
+        const scorePercentTotal = score.assignees.reduce((sum, item) => sum + Number(item.percent || 0), 0);
+        const productMap = new Map((task.products || []).map(item => [Number(item.id), item]));
+        const completionMap = task.completion_data || {};
+        const productionMatrixHtml = (task.products || []).length ? `
+            <div style="overflow:auto; margin-top:10px;"><table style="width:100%; border-collapse:collapse; min-width:650px;">
+                <thead><tr style="background:#f8fafc;"><th style="padding:8px; text-align:left;">Товар</th><th style="padding:8px; text-align:center;">Всего</th>${task.assignees.map(item => `<th style="padding:8px; text-align:center;">${escapeHtml(item.employee_name)}</th>`).join('')}</tr></thead>
+                <tbody>${task.products.map(product => { const completion = completionMap[String(product.id)] || {}; const distributionMap = new Map((completion.distributions || []).map(item => [Number(item.employee_id), Number(item.quantity || 0)])); return `<tr class="independent-product-row" data-product-id="${product.id}" data-quantity="${product.quantity}"><td style="padding:8px; border-top:1px solid #e2e8f0;">${escapeHtml(product.name)}</td><td style="padding:8px; text-align:center; border-top:1px solid #e2e8f0; color:#2563eb; font-weight:700;">${product.quantity}</td>${task.assignees.map(employee => `<td style="padding:8px; text-align:center; border-top:1px solid #e2e8f0;"><input type="number" class="independent-product-distribution" data-employee-id="${employee.employee_id}" min="0" value="${distributionMap.get(Number(employee.employee_id)) || 0}" style="width:75px; text-align:center; padding:5px; border:1px solid #cbd5e1; border-radius:7px;"></td>`).join('')}</tr>`; }).join('')}</tbody>
+            </table></div>` : '<p style="color:#64748b; margin:8px 0 0;">Товары не назначены.</p>';
+        const scoreHtml = `<div id="independentScoreBlock" data-notification-id="${mainAssignee?.notification_id || ''}" data-total-points="${score.total_points}" style="border:1px solid #bfdbfe; border-radius:12px; overflow:hidden;"><div style="padding:10px 12px; background:linear-gradient(90deg,#eff6ff,#f0fdf4); display:flex; justify-content:space-between; gap:12px;"><strong>Распределение выполнения и баллов</strong><span>Всего баллов за задачу: <strong style="color:#15803d;">${score.total_points}</strong></span></div><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f8fafc;"><th style="padding:8px; text-align:left;">Сотрудник</th><th style="padding:8px; text-align:center;">Выполнение, %</th><th style="padding:8px; text-align:center;">Баллы</th></tr></thead><tbody>${score.assignees.map(item => `<tr><td style="padding:8px; border-top:1px solid #e2e8f0;">${escapeHtml(item.employee_name)}${item.is_main ? ' <span style="color:#2563eb; font-size:.8rem;">Основной</span>' : ''}</td><td style="padding:8px; text-align:center; border-top:1px solid #e2e8f0;"><input type="number" class="independent-score-percent" data-employee-id="${item.employee_id}" min="0" max="100" step="1" value="${item.percent}" style="width:75px; text-align:center; border:1px solid #93c5fd; border-radius:7px; padding:5px;"></td><td class="independent-score-points" data-employee-id="${item.employee_id}" style="padding:8px; text-align:center; border-top:1px solid #e2e8f0; color:#15803d; font-weight:700;">${Math.round(score.total_points * item.percent / 100)}</td></tr>`).join('')}</tbody><tfoot><tr style="background:#f8fafc; font-weight:700;"><td style="padding:8px;">Итого (%)</td><td id="independentScorePercentTotal" style="padding:8px; text-align:center; color:${scorePercentTotal === 100 ? '#16a34a' : '#dc2626'};">${scorePercentTotal}%</td><td style="padding:8px; text-align:center; color:#15803d;">${score.total_points}</td></tr></tfoot></table></div>`;
+        body.innerHTML = `
+            <div style="display:grid; gap:16px;">
+                <div style="padding:14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px;"><div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px;"><strong>Основные данные</strong><span style="color:#64748b;">Тип: ${escapeHtml(task.task_name)}</span></div><label style="display:block; margin-bottom:10px;">Название<input id="independentEditTitle" type="text" value="${escapeHtml(task.title || '')}" placeholder="Стандартное название: ${escapeHtml(task.task_name)}" style="width:100%; box-sizing:border-box;"></label><label style="display:block; margin-bottom:10px;">Описание<textarea id="independentEditDescription" rows="3" style="width:100%; box-sizing:border-box;">${escapeHtml(task.description || '')}</textarea></label><label style="display:block;">Статус<select id="independentEditStatus" style="width:100%;"><option value="active" ${task.status === 'active' ? 'selected' : ''}>Активна</option><option value="completed" ${task.status === 'completed' ? 'selected' : ''}>Завершена</option><option value="cancelled" ${task.status === 'cancelled' ? 'selected' : ''}>Отменена</option></select></label></div>
+                <div style="padding:14px; border:1px solid #e2e8f0; border-radius:12px;"><strong>Исполнители</strong><div id="independentEditEmployees" style="display:grid; gap:7px; margin-top:10px;">${options.employees.map(employee => `<div style="display:flex; gap:8px; align-items:center; padding:7px 9px; background:#f8fafc; border-radius:8px;"><input type="checkbox" class="independent-edit-employee" value="${employee.id}" ${assignedIds.has(Number(employee.id)) ? 'checked' : ''}><span style="flex:1; text-align:left;">${escapeHtml(employee.name)}</span><label style="display:flex; align-items:center; gap:4px;"><input type="radio" name="independentEditMain" value="${employee.id}" ${Number(mainAssignee?.employee_id) === Number(employee.id) ? 'checked' : ''}> основной</label></div>`).join('')}</div></div>
+                <div style="padding:14px; border:1px solid #e2e8f0; border-radius:12px;"><strong>Назначенные товары</strong><div style="display:grid; gap:7px; margin-top:10px;">${options.products.map(product => { const selected = productMap.get(Number(product.id)); return `<div style="display:grid; grid-template-columns:auto 1fr 90px; gap:8px; align-items:center; padding:6px 8px; background:#f8fafc; border-radius:8px;"><input type="checkbox" class="independent-edit-product" value="${product.id}" data-name="${escapeHtml(product.name)}" ${selected ? 'checked' : ''}><span>${escapeHtml(product.name)}</span><input type="number" class="independent-edit-product-quantity" data-product-id="${product.id}" min="1" value="${selected?.quantity || 1}"></div>`; }).join('')}</div></div>
+                <div style="padding:14px; border:1px solid #e2e8f0; border-radius:12px;"><strong>Распределение товаров по сотрудникам</strong>${productionMatrixHtml}</div>
+                ${scoreHtml}
+                <div id="independentEditError" style="color:#dc2626;"></div>
+                <div style="display:flex; justify-content:flex-end;"><button id="saveIndependentTaskEdit" class="btn" style="background:#16a34a;">Сохранить</button></div>
+            </div>`;
+        body.querySelector('#independentEditEmployees').addEventListener('change', event => {
+            if (event.target.name === 'independentEditMain') {
+                const checkbox = body.querySelector(`.independent-edit-employee[value="${event.target.value}"]`);
+                if (checkbox) checkbox.checked = true;
+            }
+        });
+        body.querySelectorAll('.independent-product-distribution').forEach(input => {
+            input.addEventListener('change', async () => {
+                const row = input.closest('.independent-product-row');
+                const distributions = [...row.querySelectorAll('.independent-product-distribution')].map(item => ({employee_id:Number(item.dataset.employeeId), quantity:Math.max(0, parseInt(item.value) || 0)}));
+                const response = await fetch(`/api/sandbox/task-assignments/${mainAssignee.notification_id}/completion`, {
+                    method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({product_type_id:Number(row.dataset.productId), defect_quantity:Number(completionMap[row.dataset.productId]?.defect_quantity || 0), defect_comment:completionMap[row.dataset.productId]?.defect_comment || null, distributions})
+                });
+                if (!response.ok) showToast((await response.json()).detail || 'Ошибка сохранения распределения', true);
+                else showToast('Распределение товаров сохранено');
+            });
+        });
+        body.querySelectorAll('.independent-score-percent').forEach(input => {
+            input.addEventListener('change', async () => {
+                const scoreBlock = body.querySelector('#independentScoreBlock');
+                const percentages = [...scoreBlock.querySelectorAll('.independent-score-percent')].map(item => ({employee_id:Number(item.dataset.employeeId), percent:Math.max(0, Math.min(100, parseInt(item.value) || 0))}));
+                const total = percentages.reduce((sum, item) => sum + item.percent, 0);
+                const totalCell = body.querySelector('#independentScorePercentTotal');
+                totalCell.textContent = `${total}%`;
+                totalCell.style.color = total === 100 ? '#16a34a' : '#dc2626';
+                percentages.forEach(item => {
+                    const cell = scoreBlock.querySelector(`.independent-score-points[data-employee-id="${item.employee_id}"]`);
+                    if (cell) cell.textContent = Math.round(Number(scoreBlock.dataset.totalPoints) * item.percent / 100);
+                });
+                const response = await fetch(`/api/sandbox/task-assignments/${scoreBlock.dataset.notificationId}/completion-percentages`, {method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({percentages})});
+                if (!response.ok) showToast((await response.json()).detail || 'Ошибка сохранения процентов', true);
+            });
+        });
+        body.querySelector('#saveIndependentTaskEdit').addEventListener('click', async event => {
+            const button = event.currentTarget;
+            const error = body.querySelector('#independentEditError');
+            const selectedIds = [...body.querySelectorAll('.independent-edit-employee:checked')].map(item => Number(item.value));
+            const selectedMain = body.querySelector('input[name="independentEditMain"]:checked');
+            if (!selectedIds.length) { error.textContent = 'Выберите хотя бы одного сотрудника'; return; }
+            if (!selectedMain || !selectedIds.includes(Number(selectedMain.value))) { error.textContent = 'Выберите основного исполнителя'; return; }
+            const newMainId = Number(selectedMain.value);
+            const products = [...body.querySelectorAll('.independent-edit-product:checked')].map(item => ({id:Number(item.value), name:item.dataset.name, quantity:Math.max(1, Number(body.querySelector(`.independent-edit-product-quantity[data-product-id="${item.value}"]`)?.value || 1))}));
+            button.disabled = true;
+            error.textContent = '';
+            try {
+                const currentIds = task.assignees.map(item => Number(item.employee_id));
+                for (const employeeId of selectedIds.filter(id => !currentIds.includes(id))) {
+                    const response = await fetch(`/api/sandbox/independent-tasks/${independentTaskId}/assignees`, {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({employee_id:employeeId, is_main:false})});
+                    if (!response.ok) throw new Error((await response.json()).detail || 'Не удалось добавить сотрудника');
+                }
+                const mainResponse = await fetch(`/api/sandbox/independent-tasks/${independentTaskId}/main-assignee/${newMainId}`, {method:'PUT', credentials:'include'});
+                if (!mainResponse.ok) throw new Error((await mainResponse.json()).detail || 'Не удалось изменить основного исполнителя');
+                for (const employeeId of currentIds.filter(id => !selectedIds.includes(id))) {
+                    const response = await fetch(`/api/sandbox/independent-tasks/${independentTaskId}/assignees/${employeeId}`, {method:'DELETE', credentials:'include'});
+                    if (!response.ok) throw new Error((await response.json()).detail || 'Не удалось удалить сотрудника');
+                }
+                const payload = {title:body.querySelector('#independentEditTitle').value.trim() || null, description:body.querySelector('#independentEditDescription').value.trim() || null, status:body.querySelector('#independentEditStatus').value, products};
+                const updateResponse = await fetch(`/api/sandbox/independent-tasks/${independentTaskId}`, {method:'PATCH', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+                if (!updateResponse.ok) throw new Error((await updateResponse.json()).detail || 'Не удалось сохранить задачу');
+                const updatedTask = await updateResponse.json();
+                const updatedMain = updatedTask.assignees.find(item => item.is_main);
+                if (updatedMain) {
+                    const executionStatus = payload.status === 'completed' ? 'completed' : (updatedMain.status === 'completed' ? 'not_started' : updatedMain.status);
+                    await fetch(`/api/sandbox/task-assignments/${updatedMain.notification_id}/status`, {method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:executionStatus})});
+                }
+                modal.style.display = 'none';
+                showToast('Задача обновлена');
+                loadMailingNotifications();
+            } catch (value) { error.textContent = value.message; }
+            finally { button.disabled = false; }
+        });
+    } catch (value) {
+        body.innerHTML = `<p style="color:#dc2626;">${escapeHtml(value.message)}</p>`;
+    }
 }
 </script>
 </body>

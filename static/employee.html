@@ -126,6 +126,28 @@
             border-radius: 20px; width: 90%; max-width: 400px;
         }
         .modal-content input { width: 100%; margin: 8px 0; padding: 8px; }
+        #taskCreationModal input[type="checkbox"],
+        #taskCreationModal input[type="radio"] {
+            width: auto;
+            margin: 0;
+            padding: 0;
+            flex: 0 0 auto;
+        }
+        #newTaskEmployees > div {
+            width: 100%;
+            text-align: left;
+        }
+        #newTaskEmployees > div > label:first-of-type {
+            text-align: left;
+            margin: 0;
+        }
+        #newTaskEmployees > div > label:last-of-type {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin: 0;
+            white-space: nowrap;
+        }
         .close, .close-explanation, .close-create-notif,
         .close-explanation-view, .close-edit-notif, .close-fix-end {
             color: #aaa; float: right; font-size: 28px; font-weight: bold;
@@ -637,6 +659,7 @@
                     </select><button type="button" class="task-filter-clear" data-filter="taskStatusFilter" data-default="active" title="Сбросить">✖</button></div></div>
                     <button type="button" id="applyTaskFiltersBtn" class="btn">Применить</button>
                     <button type="button" id="resetAllTaskFiltersBtn" class="btn" style="background:#94a3b8;">✖ Сбросить все</button>
+                    <button type="button" id="openTaskCreationBtn" class="btn" style="display:none; background:#16a34a;">＋ Добавить задачу</button>
                 </div>
                 <div id="tasksContainer">Загрузка...</div>
             </div>
@@ -765,6 +788,34 @@
         <div id="completeError" style="color:red; margin-top:12px;"></div>
     </div>
 </div>
+<div id="taskCreationModal" class="modal">
+    <div class="modal-content" style="max-width:720px; max-height:90vh; overflow-y:auto;">
+        <span id="closeTaskCreationModal" style="float:right; cursor:pointer; font-size:1.7rem; color:#94a3b8;">&times;</span>
+        <h3>Добавить задачу</h3>
+        <div style="display:grid; gap:14px;">
+            <label>Тип задачи
+                <select id="newTaskBinding" style="width:100%; margin-top:5px;"><option value="independent">Независимая</option><option value="deal">Привязана к сделке</option></select>
+            </label>
+            <label id="newTaskDealRow" style="display:none;">Сделка
+                <select id="newTaskDeal" style="width:100%; margin-top:5px;"></select>
+            </label>
+            <label>Задача
+                <select id="newTaskTemplate" style="width:100%; margin-top:5px;"></select>
+            </label>
+            <label id="newTaskTitleRow">Название независимой задачи
+                <input id="newTaskTitle" type="text" placeholder="Новое название или оставьте пустым для выбранной задачи">
+                <small style="display:block; color:#64748b; margin-top:3px;">Новое название будет добавлено в общую базу задач.</small>
+            </label>
+            <label id="newTaskDescriptionRow">Описание
+                <textarea id="newTaskDescription" rows="3" style="width:100%; box-sizing:border-box; margin-top:5px;"></textarea>
+            </label>
+            <div><strong>Сотрудники</strong><div id="newTaskEmployees" style="display:grid; gap:7px; margin-top:7px;"></div></div>
+            <div><strong>Товары</strong><div id="newTaskProducts" style="display:grid; gap:7px; margin-top:7px;"></div></div>
+            <div id="newTaskCreationError" style="color:#dc2626;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;"><button type="button" id="cancelTaskCreationBtn" class="btn" style="background:#94a3b8;">Отмена</button><button type="button" id="saveTaskCreationBtn" class="btn" style="background:#16a34a;">Создать</button></div>
+        </div>
+    </div>
+</div>
 <script>
     const EMPLOYEE_TAB_KEY = 'employee_active_tab';
     const EMPLOYEE_MODAL_KEY = 'employee_open_modal';
@@ -867,7 +918,7 @@
             if (rawContext) {
                 const context = JSON.parse(rawContext);
                 window.isEditingCompletion = Boolean(context.isEditing);
-                await openCompletionModal(context.dealId, context.taskId, context.notificationId, context.products || [], context.generalComment || '');
+                await openCompletionModal(context.dealId, context.taskId, context.notificationId, context.products || [], context.generalComment || '', context.independentTaskId || null);
                 applyEmployeeModalState(document.getElementById('completeTaskModal'), preservedState);
                 return;
             }
@@ -884,9 +935,12 @@
         notificationId: null,
         dealId: null,
         taskId: null,
+        independentTaskId: null,
         productTypes: [],
         assignees: [],
         distributions: {},
+        percentages: {},
+        totalPoints: 0,
         generalComment: ''
     };
     let isSaving = false;
@@ -964,7 +1018,10 @@
             const resp = await fetchWithAuth('/api/auth/profile');
             const data = await resp.json();
             window.isAdmin = data.is_admin === 1;
+            window.canCreateTasks = Boolean(data.is_admin || data.is_monitor);
             window.currentEmployeeId = data.id;
+            const createTaskButton = document.getElementById('openTaskCreationBtn');
+            if (createTaskButton) createTaskButton.style.display = window.canCreateTasks ? 'inline-block' : 'none';
             if (data.is_admin || data.is_monitor) {
                 const monitorTabBtn = document.getElementById('monitorTab');
                 if (monitorTabBtn) monitorTabBtn.style.display = 'inline-block';
@@ -2370,7 +2427,7 @@
                 const dealId = task.extra_data?.deal_id;
                 const taskId = task.extra_data?.task_id;
                 if (!dealId || !taskId) {
-                    return { ...task, assignees: [] };
+                    return { ...task, assignees: task.assignees || [] };
                 }
 
                 if (!dealCache.has(dealId)) {
@@ -2417,6 +2474,7 @@
             const { taskName, dealTitle, products } = parseTaskNotification(n);
             const dealId = n.extra_data?.deal_id;
             const taskId = n.extra_data?.task_id;
+            const independentTaskId = n.extra_data?.independent_task_id;
             const createdDate = new Date(n.created_at).toLocaleString('ru-RU', {
                 day: '2-digit', month: '2-digit', year: 'numeric',
                 hour: '2-digit', minute: '2-digit'
@@ -2449,7 +2507,7 @@
 
             if (status === 'not_started') {
                 const completeBtnHtml = isMainAssignee
-                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
+                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId || ''}" data-task-id="${taskId}" data-independent-task-id="${independentTaskId || ''}" data-products='${productsJson}'>⏹️ Завершить</button>`
                     : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
                 actionButtons = `
                     <button class="btn btn-sm task-start" data-id="${notifId}">▶️ Начать</button>
@@ -2457,7 +2515,7 @@
                 `;
             } else if (status === 'in_progress') {
                 const completeBtnHtml = isMainAssignee
-                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
+                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId || ''}" data-task-id="${taskId}" data-independent-task-id="${independentTaskId || ''}" data-products='${productsJson}'>⏹️ Завершить</button>`
                     : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
                 actionButtons = `
                     <button class="btn btn-sm task-break" data-id="${notifId}">⏸️ Перерыв</button>
@@ -2465,7 +2523,7 @@
                 `;
             } else if (status === 'on_break') {
                 const completeBtnHtml = isMainAssignee
-                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId}" data-task-id="${taskId}" data-products='${productsJson}'>⏹️ Завершить</button>`
+                    ? `<button class="btn btn-sm btn-warning task-complete" data-id="${notifId}" data-deal-id="${dealId || ''}" data-task-id="${taskId}" data-independent-task-id="${independentTaskId || ''}" data-products='${productsJson}'>⏹️ Завершить</button>`
                     : `<button class="btn btn-sm btn-warning task-complete-simple" data-id="${notifId}">⏹️ Завершить</button>`;
                 actionButtons = `
                     <button class="btn btn-sm task-resume" data-id="${notifId}">▶️ Продолжить</button>
@@ -2480,6 +2538,7 @@
                             <button class="edit-completion-btn"
                                     data-deal="${dealId}"
                                     data-task="${taskId}"
+                                    data-independent-task-id="${independentTaskId || ''}"
                                     data-notif="${notifId}"
                                     data-products='${productsJson}'
                                     data-general-comment="${safeComment}" 
@@ -2613,6 +2672,7 @@
                 const notifId = parseInt(this.dataset.notif);
                 const dealId = parseInt(this.dataset.deal);
                 const taskId = parseInt(this.dataset.task);
+                const independentTaskId = parseInt(this.dataset.independentTaskId) || null;
                 
                 // Читаем комментарий из data-атрибута (если он там есть)
                 const generalComment = this.dataset.generalComment || ''; 
@@ -2626,7 +2686,7 @@
                 window.isEditingCompletion = true;
                 
                 // Передаем generalComment пятым аргументом
-                await openCompletionModal(dealId, taskId, notifId, products, generalComment);
+                await openCompletionModal(dealId, taskId, notifId, products, generalComment, independentTaskId);
             });
         });
         // Новый обработчик для простого завершения (только для соисполнителей)
@@ -2701,15 +2761,15 @@
     }
 
         // Унифицированная функция открытия модалки (для завершения и редактирования)
-    async function openCompletionModal(dealId, taskId, notificationId, products, generalComment = '') {
-        if (!dealId || !taskId || !notificationId) {
+    async function openCompletionModal(dealId, taskId, notificationId, products, generalComment = '', independentTaskId = null) {
+        if ((!dealId && !independentTaskId) || !taskId || !notificationId) {
             showToast('Ошибка: не удалось определить задачу', true);
             return;
         }
 
         const modal = document.getElementById('completeTaskModal');
         sessionStorage.setItem(EMPLOYEE_COMPLETION_KEY, JSON.stringify({
-            dealId, taskId, notificationId, products, generalComment,
+            dealId, taskId, notificationId, products, generalComment, independentTaskId,
             isEditing: Boolean(window.isEditingCompletion)
         }));
         modal.style.display = 'block';
@@ -2730,43 +2790,61 @@
             currentCompleteData.notificationId = notificationId;
             currentCompleteData.dealId = dealId;
             currentCompleteData.taskId = taskId;
+            currentCompleteData.independentTaskId = independentTaskId;
 
-            const dealResp = await fetch(`/api/sandbox/deals/${dealId}`, { credentials: 'include' });
-            if (!dealResp.ok) throw new Error('Ошибка загрузки сделки');
-            const deal = await dealResp.json();
-
-            const taskInfo = deal.tasks?.find(t => t.task_id === taskId);
-            if (!taskInfo) throw new Error('Задача не найдена в сделке');
-            const assignees = taskInfo.assignees || [];
-
-            const productTypesFromDeal = deal.products || [];
-            const productTypeMap = {};
-            productTypesFromDeal.forEach(p => productTypeMap[p.name] = p.id);
-
-            const productTypes = products.map(p => {
-                const id = productTypeMap[p.name] || null;
-                return {
-                    id: id,
-                    name: p.name,
-                    quantity: p.quantity,
+            let deal = null;
+            let taskInfo = null;
+            let assignees = [];
+            let productTypes = [];
+            let completions = [];
+            if (independentTaskId) {
+                const detailsResp = await fetch(`/api/employee/tasks/${notificationId}/independent-details`, {credentials:'include'});
+                if (!detailsResp.ok) throw new Error((await detailsResp.json()).detail || 'Ошибка загрузки независимой задачи');
+                const details = await detailsResp.json();
+                taskInfo = {task_name: details.task_name};
+                assignees = details.assignees || [];
+                productTypes = (details.products || []).map(product => ({
+                    id: product.id,
+                    name: product.name,
+                    quantity: product.quantity,
                     defect_quantity: 0,
                     defect_comment: ''
-                };
-            }).filter(p => p.id !== null);
-
-            if (!productTypes.length) {
-                throw new Error('Для задачи не найдены товары');
+                })).filter(product => product.id !== null && product.id !== undefined);
+                completions = details.completions || [];
+            } else {
+                const dealResp = await fetch(`/api/sandbox/deals/${dealId}`, { credentials: 'include' });
+                if (!dealResp.ok) throw new Error('Ошибка загрузки сделки');
+                deal = await dealResp.json();
+                taskInfo = deal.tasks?.find(t => t.task_id === taskId);
+                if (!taskInfo) throw new Error('Задача не найдена в сделке');
+                assignees = taskInfo.assignees || [];
+                const productTypeMap = {};
+                (deal.products || []).forEach(product => productTypeMap[product.name] = product.id);
+                productTypes = products.map(product => ({
+                    id: productTypeMap[product.name] || null,
+                    name: product.name,
+                    quantity: product.quantity,
+                    defect_quantity: 0,
+                    defect_comment: ''
+                })).filter(product => product.id !== null);
+                const completionsResp = await fetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/completions`, { credentials: 'include' });
+                if (completionsResp.ok) completions = await completionsResp.json();
             }
 
-            // Загружаем существующие данные (для редактирования они уже будут, для нового завершения - пустые)
-            const completionsResp = await fetch(`/api/sandbox/deals/${dealId}/tasks/${taskId}/completions`, { credentials: 'include' });
-            let completions = [];
-            if (completionsResp.ok) {
-                completions = await completionsResp.json();
+            if (!productTypes.length && !independentTaskId) {
+                throw new Error('Для задачи не найдены товары');
             }
 
             const compMap = {};
             completions.forEach(c => compMap[c.product_type_id] = c);
+
+            const scoreResponse = await fetch(`/api/employee/tasks/${notificationId}/score-details`, {credentials:'include'});
+            const scoreDetails = scoreResponse.ok ? await scoreResponse.json() : {total_points:0, assignees:[]};
+            currentCompleteData.totalPoints = Number(scoreDetails.total_points || 0);
+            currentCompleteData.percentages = {};
+            (scoreDetails.assignees || []).forEach(item => {
+                currentCompleteData.percentages[item.employee_id] = Number(item.percent || 0);
+            });
 
             productTypes.forEach(pt => {
                 const comp = compMap[pt.id];
@@ -2821,6 +2899,13 @@
                     // Отправляем на бэкенд через первый продукт
                     if (currentCompleteData.productTypes.length > 0) {
                         saveCompletionForProduct(currentCompleteData.productTypes[0].id);
+                    } else {
+                        fetch(`/api/employee/tasks/${currentCompleteData.notificationId}/comment`, {
+                            method: 'PUT',
+                            credentials: 'include',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ general_comment: val })
+                        });
                     }
                 };
             }
@@ -2828,7 +2913,7 @@
             const modeText = window.isEditingCompletion ? 'Редактирование' : 'Завершение';
             document.getElementById('completeTaskTitle').innerText = `✅ ${modeText} задачи: ${taskInfo.task_name || 'Задача'}`;
             document.getElementById('completeTaskInfo').innerHTML = `
-                <strong>Сделка:</strong> ${deal.title || '—'} &nbsp;|&nbsp;
+                <strong>${independentTaskId ? 'Тип' : 'Сделка'}:</strong> ${independentTaskId ? 'Независимая задача' : (deal.title || '—')} &nbsp;|&nbsp;
                 <strong>Задача:</strong> ${taskInfo.task_name || '—'}
             `;
 
@@ -2849,11 +2934,12 @@
         }
         const dealId = parseInt(btn.dataset.dealId);
         const taskId = parseInt(btn.dataset.taskId);
+        const independentTaskId = parseInt(btn.dataset.independentTaskId) || null;
         let products = [];
         try { products = JSON.parse(btn.dataset.products || '[]'); } catch (e) {}
         
         window.isEditingCompletion = false;
-        await openCompletionModal(dealId, taskId, notificationId, products);
+        await openCompletionModal(dealId, taskId, notificationId, products, '', independentTaskId);
     }
     // ===== ДОБАВЛЕНИЕ / УДАЛЕНИЕ СОИСПОЛНИТЕЛЕЙ =====
     function openAddAssigneeModal(dealId, taskId) {
@@ -3077,6 +3163,7 @@ function renderDistributionTable() {
         th.style.textAlign = 'left';
         headerRow.appendChild(th);
     });
+    headerRow.insertAdjacentHTML('beforeend', '<th style="padding:8px; text-align:center; min-width:120px; background:#eff6ff;">Выполнение, %</th><th style="padding:8px; text-align:center; min-width:110px; background:#f0fdf4;">Баллы</th>');
     thead.innerHTML = '';
     thead.appendChild(headerRow);
 
@@ -3098,6 +3185,17 @@ function renderDistributionTable() {
             td.appendChild(input);
             tr.appendChild(td);
         });
+        const percent = currentCompleteData.percentages[assignee.employee_id] || 0;
+        const percentCell = document.createElement('td');
+        percentCell.style.background = '#eff6ff';
+        percentCell.innerHTML = `<input type="number" class="completion-percent-input" data-employee-id="${assignee.employee_id}" min="0" max="100" step="1" value="${percent}" style="width:75px; text-align:center; border:1px solid #93c5fd; border-radius:7px; padding:6px;">`;
+        tr.appendChild(percentCell);
+        const pointsCell = document.createElement('td');
+        pointsCell.className = 'employee-points-cell';
+        pointsCell.dataset.employeeId = assignee.employee_id;
+        pointsCell.style.cssText = 'background:#f0fdf4; color:#15803d; font-weight:700; text-align:center;';
+        pointsCell.textContent = Math.round(currentCompleteData.totalPoints * percent / 100);
+        tr.appendChild(pointsCell);
         tbody.appendChild(tr);
     });
 
@@ -3115,7 +3213,13 @@ function renderDistributionTable() {
         td.style.fontWeight = 'bold';
         footRow.appendChild(td);
     });
+    footRow.insertAdjacentHTML('beforeend', `<td style="background:#eff6ff;"></td><td style="background:#f0fdf4; color:#15803d; text-align:center;"><strong>${currentCompleteData.totalPoints}</strong></td>`);
     tfoot.appendChild(footRow);
+    const totalPercent = Object.values(currentCompleteData.percentages).reduce((sum, value) => sum + Number(value || 0), 0);
+    const percentRow = document.createElement('tr');
+    percentRow.id = 'completionPercentTotalRow';
+    percentRow.innerHTML = `<td><strong>Итого (%)</strong></td><td colspan="${Math.max(1, currentCompleteData.productTypes.length)}" style="color:#64748b;">Всего баллов за задачу: <strong style="color:#15803d;">${currentCompleteData.totalPoints}</strong></td><td id="completionPercentTotal" style="text-align:center; font-weight:700; color:${totalPercent === 100 ? '#16a34a' : '#dc2626'}; background:#eff6ff;">${totalPercent}%</td><td style="text-align:center; font-weight:700; color:#15803d; background:#f0fdf4;">${currentCompleteData.totalPoints}</td>`;
+    tfoot.appendChild(percentRow);
 }
 function attachDefectHandlers() {
     // Изменение брака
@@ -3156,6 +3260,42 @@ function attachDistributionHandlers() {
         inp.removeEventListener('input', onDistributionChange);
         inp.addEventListener('input', onDistributionChange);
     });
+    document.querySelectorAll('.completion-percent-input').forEach(inp => {
+        inp.addEventListener('input', onCompletionPercentChange);
+        inp.addEventListener('change', saveCompletionPercentages);
+    });
+}
+
+function onCompletionPercentChange(event) {
+    const employeeId = Number(event.target.dataset.employeeId);
+    const value = Math.max(0, Math.min(100, parseInt(event.target.value) || 0));
+    event.target.value = value;
+    currentCompleteData.percentages[employeeId] = value;
+    const pointsCell = document.querySelector(`.employee-points-cell[data-employee-id="${employeeId}"]`);
+    if (pointsCell) pointsCell.textContent = Math.round(currentCompleteData.totalPoints * value / 100);
+    const total = Object.values(currentCompleteData.percentages).reduce((sum, item) => sum + Number(item || 0), 0);
+    const totalCell = document.getElementById('completionPercentTotal');
+    if (totalCell) {
+        totalCell.textContent = `${total}%`;
+        totalCell.style.color = total === 100 ? '#16a34a' : '#dc2626';
+    }
+}
+
+async function saveCompletionPercentages() {
+    const percentages = currentCompleteData.assignees.map(item => ({
+        employee_id: item.employee_id,
+        percent: currentCompleteData.percentages[item.employee_id] || 0
+    }));
+    try {
+        const response = await fetch(`/api/employee/tasks/${currentCompleteData.notificationId}/completion-percentages`, {
+            method:'PUT', credentials:'include', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({percentages})
+        });
+        if (!response.ok) throw new Error((await response.json()).detail || 'Ошибка сохранения процентов');
+        document.getElementById('completeError').innerText = '';
+    } catch (error) {
+        document.getElementById('completeError').innerText = error.message;
+    }
 }
 
 async function onDistributionChange(e) {
@@ -3238,6 +3378,15 @@ document.getElementById('finalCompleteBtn').addEventListener('click', async func
     btn.disabled = true;
     document.getElementById('completeError').innerText = '';
     try {
+        const percentTotal = currentCompleteData.assignees.reduce(
+            (sum, assignee) => sum + Number(currentCompleteData.percentages[assignee.employee_id] || 0), 0
+        );
+        if (percentTotal !== 100) {
+            document.getElementById('completeError').innerText = `Распределение выполнения должно составлять 100%. Сейчас: ${percentTotal}%.`;
+            btn.disabled = false;
+            return;
+        }
+        await saveCompletionPercentages();
         // Проверим, что все распределения заполнены корректно (сумма равна количеству для каждого товара)
         let allValid = true;
         for (const pt of currentCompleteData.productTypes) {
@@ -3323,6 +3472,107 @@ async function completeTaskSimple(notificationId) {
         showToast('Ошибка сети', true);
     }
 }
+
+function initTaskCreationModal() {
+    const modal = document.getElementById('taskCreationModal');
+    const openButton = document.getElementById('openTaskCreationBtn');
+    const binding = document.getElementById('newTaskBinding');
+    if (!modal || !openButton || openButton.dataset.initialized) return;
+    openButton.dataset.initialized = '1';
+
+    const close = () => { modal.style.display = 'none'; };
+    const updateBindingFields = () => {
+        const dealMode = binding.value === 'deal';
+        document.getElementById('newTaskDealRow').style.display = dealMode ? 'block' : 'none';
+        document.getElementById('newTaskTitleRow').style.display = dealMode ? 'none' : 'block';
+        document.getElementById('newTaskDescriptionRow').style.display = dealMode ? 'none' : 'block';
+    };
+    const optionHtml = (items, valueKey, labelKey) => items.map(item =>
+        `<option value="${item[valueKey]}">${escapeHtml(item[labelKey] || '')}</option>`
+    ).join('');
+
+    openButton.addEventListener('click', async () => {
+        if (!window.canCreateTasks) return;
+        const error = document.getElementById('newTaskCreationError');
+        error.textContent = '';
+        modal.style.display = 'block';
+        try {
+            const response = await fetchWithAuth('/api/sandbox/task-creation-options');
+            if (!response.ok) throw new Error((await response.json()).detail || 'Не удалось загрузить данные');
+            const data = await response.json();
+            document.getElementById('newTaskDeal').innerHTML = optionHtml(data.deals.filter(item => item.status !== 'completed'), 'id', 'title');
+            document.getElementById('newTaskTemplate').innerHTML = optionHtml(data.tasks, 'id', 'name');
+            document.getElementById('newTaskEmployees').innerHTML = data.employees.map((item, index) => `
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" class="new-task-employee" value="${item.id}" id="newTaskEmployee${item.id}">
+                    <label for="newTaskEmployee${item.id}" style="flex:1;">${escapeHtml(item.name)}</label>
+                    <label title="Основной исполнитель"><input type="radio" name="newTaskMainEmployee" value="${item.id}"> основной</label>
+                </div>`).join('');
+            document.getElementById('newTaskProducts').innerHTML = data.products.map(item => `
+                <div style="display:grid; grid-template-columns:auto 1fr 90px; gap:8px; align-items:center;">
+                    <input type="checkbox" class="new-task-product" value="${item.id}" data-name="${escapeHtml(item.name)}">
+                    <span>${escapeHtml(item.name)}</span>
+                    <input type="number" class="new-task-product-quantity" data-product-id="${item.id}" min="1" value="1" title="Количество">
+                </div>`).join('') || '<span style="color:#64748b;">Нет товаров</span>';
+        } catch (errorValue) {
+            error.textContent = errorValue.message;
+        }
+        updateBindingFields();
+    });
+    binding.addEventListener('change', updateBindingFields);
+    document.getElementById('closeTaskCreationModal').addEventListener('click', close);
+    document.getElementById('cancelTaskCreationBtn').addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    document.getElementById('newTaskEmployees').addEventListener('change', event => {
+        if (event.target.name === 'newTaskMainEmployee') {
+            const checkbox = modal.querySelector(`.new-task-employee[value="${event.target.value}"]`);
+            if (checkbox) checkbox.checked = true;
+        }
+    });
+    document.getElementById('saveTaskCreationBtn').addEventListener('click', async () => {
+        const saveButton = document.getElementById('saveTaskCreationBtn');
+        const error = document.getElementById('newTaskCreationError');
+        const employeeIds = [...modal.querySelectorAll('.new-task-employee:checked')].map(item => Number(item.value));
+        const mainEmployee = modal.querySelector('input[name="newTaskMainEmployee"]:checked');
+        const products = [...modal.querySelectorAll('.new-task-product:checked')].map(item => ({
+            id: Number(item.value),
+            name: item.dataset.name,
+            quantity: Math.max(1, Number(modal.querySelector(`.new-task-product-quantity[data-product-id="${item.value}"]`)?.value || 1))
+        }));
+        if (!employeeIds.length) { error.textContent = 'Выберите хотя бы одного сотрудника'; return; }
+        if (!mainEmployee || !employeeIds.includes(Number(mainEmployee.value))) { error.textContent = 'Выберите основного исполнителя'; return; }
+        const taskId = Number(document.getElementById('newTaskTemplate').value);
+        if (!taskId) { error.textContent = 'Выберите задачу'; return; }
+        const dealMode = binding.value === 'deal';
+        const payload = dealMode ? {
+            deal_id: Number(document.getElementById('newTaskDeal').value), task_id: taskId,
+            employee_ids: employeeIds, main_employee_id: Number(mainEmployee.value), products
+        } : {
+            task_id: taskId, employee_ids: employeeIds, main_employee_id: Number(mainEmployee.value), products,
+            title: document.getElementById('newTaskTitle').value.trim() || null,
+            description: document.getElementById('newTaskDescription').value.trim() || null
+        };
+        if (dealMode && !payload.deal_id) { error.textContent = 'Выберите сделку'; return; }
+        saveButton.disabled = true;
+        error.textContent = '';
+        try {
+            const response = await fetchWithAuth(dealMode ? '/api/sandbox/task-assignments' : '/api/sandbox/independent-tasks', {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+            });
+            if (!response.ok) throw new Error((await response.json()).detail || 'Не удалось создать задачу');
+            close();
+            showToast('Задача создана');
+            sessionStorage.removeItem(EMPLOYEE_MODAL_KEY);
+            sessionStorage.removeItem(EMPLOYEE_MODAL_STATE_KEY);
+            window.location.reload();
+        } catch (errorValue) {
+            error.textContent = errorValue.message;
+        } finally {
+            saveButton.disabled = false;
+        }
+    });
+}
+initTaskCreationModal();
 </script>
 </body>
 </html>

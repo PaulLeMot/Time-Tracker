@@ -666,6 +666,7 @@
             <button class="nav-btn" data-target="counterparties"><span class="icon">🏢</span> ИП/МП</button>
             <button class="nav-btn" data-target="products"><span class="icon">📦</span> Товары</button>
             <button class="nav-btn" data-target="tasks"><span class="icon">⚙️</span> База задач</button>
+            <button class="nav-btn" data-target="points" id="pointsSettingsTab"><span class="icon">⭐</span> Баллы</button>
             <button class="nav-btn" data-target="mailing"><span class="icon">📋</span> Задачи</button>
             <!-- Кнопка "Должности" скрыта, но панель доступна, если добавить кнопку вручную -->
             <!-- <button class="nav-btn" data-target="roles"><span class="icon">👥</span>Должности</button> -->
@@ -803,6 +804,18 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <div class="sandbox-panel" id="panel-points">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+                    <div>
+                        <h3 style="margin:0 0 4px;">⭐ Баллы за выполнение задач</h3>
+                        <div style="color:#64748b;">Строки — задачи, столбцы — товары. Пустая ячейка означает, что баллы не заданы.</div>
+                    </div>
+                    <button id="refreshPointsMatrixBtn" class="btn">Обновить</button>
+                </div>
+                <div id="pointsMatrixStatus" style="min-height:20px; margin-bottom:8px;"></div>
+                <div id="pointsMatrixContainer">Загрузка...</div>
             </div>
 
             <!-- ==================== ПАНЕЛЬ: ДОЛЖНОСТИ (скрыта, но оставлена) ==================== -->

@@ -84,6 +84,48 @@ MONITOR_PASSWORD=your_secure_monitor_password
 docker-compose up -d
 ```
 
+При запуске контейнера Alembic автоматически применяет все новые миграции базы
+данных до запуска приложения. Для обновления удалённого сервера достаточно:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+При первом запуске после добавления Alembic существующая база автоматически
+получает накопленные ручные миграции и регистрируется на базовой ревизии.
+Пустая база создаётся начальной миграцией.
+
+### Миграции базы данных
+
+После изменения моделей создайте миграцию:
+
+```bash
+docker compose run --rm app alembic revision --autogenerate -m "описание изменения"
+```
+
+Проверьте созданный файл в `alembic/versions`, затем примените его:
+
+```bash
+docker compose run --rm app alembic upgrade head
+```
+
+Полезные команды:
+
+```bash
+# Текущая ревизия базы
+docker compose run --rm app alembic current
+
+# История миграций
+docker compose run --rm app alembic history
+
+# Проверка расхождений между моделями и базой
+docker compose run --rm app alembic check
+
+# Откат одной миграции
+docker compose run --rm app alembic downgrade -1
+```
+
 Приложение будет доступно по адресу: [http://localhost:8000](http://localhost:8000)
 
 ### 4. Войдите в систему

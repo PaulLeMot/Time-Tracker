@@ -1,18 +1,45 @@
+# Environment
 .env
 .env.*
+!.env.example
+
+# Virtual environment
 venv/
+.venv/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Python tools/tests
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# Logs
 *.log
 logs/
-.DS_Store
+
+# Local databases
 *.sqlite
 *.db
+
+# Backups
 backups/
-backups/*
+
+# OS
+.DS_Store
+
+# Cursor
 .cursorignore

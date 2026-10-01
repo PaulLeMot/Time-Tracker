@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
-from database import engine, Base, AsyncSessionLocal
+from database import AsyncSessionLocal
 from routers import timelog, admin, auth, employee_notifications, products, mark, sandbox
 from starlette.middleware.sessions import SessionMiddleware
 import os
@@ -15,8 +15,6 @@ from sse import employee_events_endpoint
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     async with AsyncSessionLocal() as db:
         admins = await get_employees(db, active_only=False)
         admin_exists = any(e.is_admin == 1 for e in admins)

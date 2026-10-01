@@ -19,6 +19,48 @@ import crud
 
 router = APIRouter(prefix="/api/employee", tags=["employee"])
 
+
+def calculate_task_duration_seconds(assigned_at, started_at, completed_at, task_breaks):
+    """Рассчитать полное и учётное время с защитой от некорректных интервалов."""
+    if not completed_at:
+        return None, None
+
+    effective_assigned_at = assigned_at or started_at or completed_at
+    full_seconds = max(0, int((completed_at - effective_assigned_at).total_seconds()))
+    if not started_at:
+        return full_seconds, None
+
+    # Работа над задачей не может учитываться раньше момента её постановки.
+    effective_start = max(started_at, effective_assigned_at)
+    elapsed_seconds = max(0, int((completed_at - effective_start).total_seconds()))
+
+    # Обрезаем перерывы границами работы и объединяем пересечения, чтобы
+    # один и тот же промежуток не вычитался несколько раз.
+    break_intervals = []
+    for task_break in task_breaks:
+        break_start = max(task_break.started_at, effective_start)
+        break_end = min(task_break.ended_at or completed_at, completed_at)
+        if break_end > break_start:
+            break_intervals.append((break_start, break_end))
+
+    break_intervals.sort(key=lambda interval: interval[0])
+    merged_intervals = []
+    for break_start, break_end in break_intervals:
+        if not merged_intervals or break_start > merged_intervals[-1][1]:
+            merged_intervals.append([break_start, break_end])
+        elif break_end > merged_intervals[-1][1]:
+            merged_intervals[-1][1] = break_end
+
+    break_seconds = sum(
+        (break_end - break_start).total_seconds()
+        for break_start, break_end in merged_intervals
+    )
+    accounted_seconds = max(0, int(elapsed_seconds - break_seconds))
+
+    # Защитный инвариант для старых или вручную исправленных данных.
+    accounted_seconds = min(accounted_seconds, full_seconds)
+    return full_seconds, accounted_seconds
+
 class NotificationResponse(BaseModel):
     id: int
     type: str
@@ -282,9 +324,64 @@ async def complete_task(
     extra = notif.extra_data or {}
     deal_id = extra.get("deal_id")
     task_id = extra.get("task_id")
+    independent_task_id = extra.get("independent_task_id")
     affected_employee_ids = set()
 
-    if deal_id and task_id:
+    if independent_task_id:
+        assignments_result = await db.execute(
+            select(models.IndependentTaskAssignee).where(
+                models.IndependentTaskAssignee.independent_task_id == int(independent_task_id)
+            )
+        )
+        assignments = assignments_result.scalars().all()
+        current_assignment = next(
+            (item for item in assignments if item.notification_id == notif.id), None
+        )
+        if current_assignment and current_assignment.is_main:
+            related_notification_ids = [item.notification_id for item in assignments]
+            related_result = await db.execute(
+                select(Notification).where(Notification.id.in_(related_notification_ids))
+            )
+            related_notifications = related_result.scalars().all()
+            executions_result = await db.execute(
+                select(TaskExecution).where(TaskExecution.notification_id.in_(related_notification_ids))
+            )
+            executions_by_notification = {
+                execution.notification_id: execution
+                for execution in executions_result.scalars().all()
+            }
+            for related_notif in related_notifications:
+                if related_notif.id == notif.id:
+                    continue
+                related_execution = executions_by_notification.get(related_notif.id)
+                if not related_execution:
+                    related_execution = TaskExecution(
+                        notification_id=related_notif.id,
+                        employee_id=related_notif.employee_id,
+                        status=TaskExecutionStatus.COMPLETED,
+                        completed_at=completion_time,
+                    )
+                    db.add(related_execution)
+                elif related_execution.status != TaskExecutionStatus.COMPLETED:
+                    if related_execution.status == TaskExecutionStatus.ON_BREAK:
+                        open_break_result = await db.execute(
+                            select(TaskBreak).where(
+                                TaskBreak.task_execution_id == related_execution.id,
+                                TaskBreak.ended_at.is_(None),
+                            ).order_by(TaskBreak.started_at.desc()).limit(1)
+                        )
+                        open_break = open_break_result.scalar_one_or_none()
+                        if open_break:
+                            open_break.ended_at = completion_time
+                    related_execution.status = TaskExecutionStatus.COMPLETED
+                    related_execution.completed_at = completion_time
+                affected_employee_ids.add(related_notif.employee_id)
+
+            independent_task = await db.get(models.IndependentTask, int(independent_task_id))
+            if independent_task:
+                independent_task.status = "completed"
+                independent_task.updated_at = completion_time
+    elif deal_id and task_id:
         related_stmt = select(Notification).where(
             Notification.type == NotificationType.TASK_ASSIGNMENT,
             Notification.status == NotificationStatus.SENT,
@@ -421,6 +518,44 @@ async def get_my_tasks(
             if key not in task_oldest_notif:
                 task_oldest_notif[key] = notification_id
 
+    independent_main_result = await db.execute(
+        select(models.IndependentTaskAssignee.notification_id).where(
+            models.IndependentTaskAssignee.notification_id.in_([item.id for item in notifications]),
+            models.IndependentTaskAssignee.is_main.is_(True),
+        )
+    ) if notifications else None
+    independent_main_notifications = (
+        set(independent_main_result.scalars().all()) if independent_main_result else set()
+    )
+    independent_ids = {
+        int((item.extra_data or {}).get('independent_task_id'))
+        for item in notifications
+        if (item.extra_data or {}).get('independent_task_id')
+    }
+    independent_assignees = {}
+    if independent_ids:
+        assignees_result = await db.execute(
+            select(
+                models.IndependentTaskAssignee.independent_task_id,
+                models.IndependentTaskAssignee.employee_id,
+                models.Employee.full_name,
+                models.IndependentTaskAssignee.is_main,
+            ).join(
+                models.Employee,
+                models.Employee.id == models.IndependentTaskAssignee.employee_id,
+            ).where(
+                models.IndependentTaskAssignee.independent_task_id.in_(independent_ids)
+            )
+        )
+        for independent_id, employee_id, employee_name, is_main in assignees_result.all():
+            independent_assignees.setdefault(independent_id, []).append({
+                "employee_id": employee_id,
+                "employee_name": employee_name,
+                "is_main": is_main,
+            })
+        for values in independent_assignees.values():
+            values.sort(key=lambda value: (not value["is_main"], value["employee_name"]))
+
     # 2. Формируем ответ
     output = []
     for notif in notifications:
@@ -428,24 +563,27 @@ async def get_my_tasks(
         accounted_seconds = None
         full_seconds = None
         if task_exec and task_exec.completed_at:
-            full_seconds = max(0, int((task_exec.completed_at - notif.created_at).total_seconds()))
+            task_breaks = []
             if task_exec.started_at:
                 breaks_result = await db.execute(
                     select(TaskBreak).where(TaskBreak.task_execution_id == task_exec.id)
                 )
-                break_seconds = 0
-                for task_break in breaks_result.scalars().all():
-                    break_start = max(task_break.started_at, task_exec.started_at)
-                    break_end = min(task_break.ended_at or task_exec.completed_at, task_exec.completed_at)
-                    if break_end > break_start:
-                        break_seconds += (break_end - break_start).total_seconds()
-                elapsed_seconds = (task_exec.completed_at - task_exec.started_at).total_seconds()
-                accounted_seconds = max(0, int(elapsed_seconds - break_seconds))
+                task_breaks = breaks_result.scalars().all()
+            full_seconds, accounted_seconds = calculate_task_duration_seconds(
+                notif.created_at,
+                task_exec.started_at,
+                task_exec.completed_at,
+                task_breaks
+            )
         
         # Проверяем, является ли этот сотрудник основным исполнителем
         extra = notif.extra_data or {}
         key = f"{extra.get('deal_id')}_{extra.get('task_id')}" if extra.get('deal_id') and extra.get('task_id') else None
-        is_main_executor = (task_oldest_notif.get(key) == notif.id) if key else False
+        is_main_executor = (
+            notif.id in independent_main_notifications
+            if extra.get('independent_task_id')
+            else (task_oldest_notif.get(key) == notif.id) if key else False
+        )
 
         output.append({
             "id": notif.id,
@@ -458,7 +596,9 @@ async def get_my_tasks(
             "accounted_seconds": accounted_seconds,
             "full_seconds": full_seconds,
             "is_main_executor": is_main_executor,
-            "general_comment": task_exec.general_comment if task_exec else None
+            "general_comment": task_exec.general_comment if task_exec else None,
+            "assignees": independent_assignees.get(int(extra['independent_task_id']), [])
+            if extra.get('independent_task_id') else []
         })
     return output
 
@@ -782,6 +922,130 @@ class EmployeeTaskCompletionRequest(BaseModel):
     distributions: List[EmployeeCompletionDist]
     general_comment: Optional[str] = None
 
+
+class EmployeeTaskCommentRequest(BaseModel):
+    general_comment: Optional[str] = None
+
+
+class EmployeeTaskPercentItem(BaseModel):
+    employee_id: int
+    percent: int
+
+
+class EmployeeTaskPercentRequest(BaseModel):
+    percentages: List[EmployeeTaskPercentItem]
+
+
+@router.get("/tasks/{notification_id}/score-details")
+async def get_employee_task_score_details(
+    notification_id: int,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.employee_id != employee.id:
+        raise HTTPException(403, "Это не ваше уведомление")
+    return await crud.get_task_score_details(db, notification)
+
+
+@router.put("/tasks/{notification_id}/completion-percentages")
+async def update_employee_task_percentages(
+    notification_id: int,
+    data: EmployeeTaskPercentRequest,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.employee_id != employee.id:
+        raise HTTPException(403, "Это не ваше уведомление")
+    details = await crud.get_task_score_details(db, notification)
+    current = next(
+        (item for item in details["assignees"] if item["notification_id"] == notification_id),
+        None,
+    )
+    if not current or not current["is_main"]:
+        raise HTTPException(403, "Только основной исполнитель может распределять проценты")
+    try:
+        return await crud.set_task_completion_percentages(
+            db,
+            details,
+            [item.dict() for item in data.percentages],
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.put("/tasks/{notification_id}/comment")
+async def update_employee_task_comment(
+    notification_id: int,
+    data: EmployeeTaskCommentRequest,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.employee_id != employee.id:
+        raise HTTPException(403, "Это не ваше уведомление")
+    execution = await crud.get_task_execution_by_notification(db, notification_id)
+    if not execution:
+        raise HTTPException(404, "Данные выполнения задачи не найдены")
+    execution.general_comment = data.general_comment
+    await db.commit()
+    return {"message": "Комментарий сохранён"}
+
+
+@router.get("/tasks/{notification_id}/independent-details")
+async def get_independent_task_details(
+    notification_id: int,
+    employee: models.Employee = Depends(get_current_employee),
+    db: AsyncSession = Depends(get_db),
+):
+    notification = await db.get(Notification, notification_id)
+    if not notification or notification.employee_id != employee.id:
+        raise HTTPException(403, "Это не ваше уведомление")
+    independent_task_id = (notification.extra_data or {}).get("independent_task_id")
+    if not independent_task_id:
+        raise HTTPException(400, "Задача не является независимой")
+    independent_task = await crud.get_independent_task(db, int(independent_task_id))
+    if not independent_task:
+        raise HTTPException(404, "Независимая задача не найдена")
+
+    products = list((notification.extra_data or {}).get("products", []))
+    missing_names = [item.get("name") for item in products if not item.get("id") and item.get("name")]
+    product_ids_by_name = {}
+    if missing_names:
+        products_result = await db.execute(
+            select(models.ProductType).where(or_(
+                models.ProductType.name.in_(missing_names),
+                models.ProductType.full_name.in_(missing_names),
+            ))
+        )
+        for product in products_result.scalars().all():
+            product_ids_by_name[product.name] = product.id
+            if product.full_name:
+                product_ids_by_name[product.full_name] = product.id
+    normalized_products = [
+        {
+            "id": item.get("id") or product_ids_by_name.get(item.get("name")),
+            "name": item.get("name"),
+            "quantity": item.get("quantity", 1),
+        }
+        for item in products
+    ]
+    return {
+        "id": independent_task.id,
+        "task_name": independent_task.title or independent_task.task.name,
+        "products": normalized_products,
+        "assignees": [
+            {
+                "employee_id": item.employee_id,
+                "employee_name": item.employee.full_name,
+                "is_main": item.is_main,
+            }
+            for item in sorted(independent_task.assignees, key=lambda value: (not value.is_main, value.employee_id))
+        ],
+        "completions": list((independent_task.completion_data or {}).values()),
+    }
+
 @router.post("/tasks/{notification_id}/completion")
 async def save_or_update_task_completion(
     notification_id: int,
@@ -799,6 +1063,37 @@ async def save_or_update_task_completion(
     extra = notif.extra_data or {}
     deal_id = extra.get('deal_id')
     task_id = extra.get('task_id')
+    independent_task_id = extra.get('independent_task_id')
+    if independent_task_id:
+        assignment_result = await db.execute(
+            select(models.IndependentTaskAssignee).where(
+                models.IndependentTaskAssignee.notification_id == notification_id
+            )
+        )
+        assignment = assignment_result.scalar_one_or_none()
+        if not assignment or not assignment.is_main:
+            raise HTTPException(403, "Только основной исполнитель может редактировать данные завершения")
+        independent_task = await db.get(models.IndependentTask, int(independent_task_id))
+        if not independent_task:
+            raise HTTPException(404, "Независимая задача не найдена")
+        completion_data = dict(independent_task.completion_data or {})
+        completion_data[str(data.product_type_id)] = {
+            "product_type_id": data.product_type_id,
+            "defect_quantity": data.defect_quantity,
+            "defect_comment": data.defect_comment,
+            "distributions": [
+                {"employee_id": item.employee_id, "quantity": item.quantity}
+                for item in data.distributions
+            ],
+        }
+        independent_task.completion_data = completion_data
+        if data.general_comment is not None:
+            task_exec = await crud.get_task_execution_by_notification(db, notification_id)
+            if task_exec:
+                task_exec.general_comment = data.general_comment
+        await db.commit()
+        return {"message": "Данные успешно обновлены"}
+
     if not deal_id or not task_id:
         raise HTTPException(400, "Неверные данные уведомления")
 

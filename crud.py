@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import select, update, delete, desc
+from sqlalchemy import select, update, delete, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 from datetime import datetime, time, timedelta, date
@@ -31,6 +31,10 @@ from models import (
     DealTypeTask,
     TaskExecution,
     TaskExecutionStatus,
+    TaskBreak,
+    IndependentTask,
+    IndependentTaskAssignee,
+    TaskProductPoint,
 )
 import secrets
 import string
@@ -972,6 +976,590 @@ async def update_task(
     result = await db.execute(stmt)
     await db.commit()
     return result.scalar_one()
+
+
+# ========== Баллы за товары в задачах ==========
+
+async def get_task_product_points(db: AsyncSession) -> list[TaskProductPoint]:
+    result = await db.execute(
+        select(TaskProductPoint).order_by(
+            TaskProductPoint.product_type_id,
+            TaskProductPoint.task_id,
+        )
+    )
+    return result.scalars().all()
+
+
+async def set_task_product_points(
+    db: AsyncSession,
+    task_id: int,
+    product_type_id: int,
+    points: int,
+) -> TaskProductPoint:
+    if points < 0:
+        raise ValueError("Points cannot be negative")
+    if not await get_task(db, task_id):
+        raise ValueError("Task not found")
+    if not await get_product_type(db, product_type_id):
+        raise ValueError("Product type not found")
+    result = await db.execute(select(TaskProductPoint).where(
+        TaskProductPoint.task_id == task_id,
+        TaskProductPoint.product_type_id == product_type_id,
+    ))
+    row = result.scalar_one_or_none()
+    if row:
+        row.points = points
+        row.updated_at = datetime.now()
+    else:
+        row = TaskProductPoint(
+            task_id=task_id,
+            product_type_id=product_type_id,
+            points=points,
+        )
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def delete_task_product_points(
+    db: AsyncSession,
+    task_id: int,
+    product_type_id: int,
+) -> None:
+    await db.execute(delete(TaskProductPoint).where(
+        TaskProductPoint.task_id == task_id,
+        TaskProductPoint.product_type_id == product_type_id,
+    ))
+    await db.commit()
+
+
+async def get_task_score_details(
+    db: AsyncSession,
+    notification: Notification,
+) -> dict:
+    extra = notification.extra_data or {}
+    task_id = extra.get("task_id")
+    products = list(extra.get("products") or [])
+    if not task_id:
+        return {"total_points": 0, "assignees": [], "products": []}
+
+    missing_names = [item.get("name") for item in products if not item.get("id") and item.get("name")]
+    product_ids_by_name = {}
+    if missing_names:
+        product_result = await db.execute(select(ProductType).where(
+            (ProductType.name.in_(missing_names)) | (ProductType.full_name.in_(missing_names))
+        ))
+        for product in product_result.scalars().all():
+            product_ids_by_name[product.name] = product.id
+            if product.full_name:
+                product_ids_by_name[product.full_name] = product.id
+
+    normalized_products = []
+    product_ids = []
+    for item in products:
+        product_id = item.get("id") or product_ids_by_name.get(item.get("name"))
+        if product_id:
+            product_ids.append(int(product_id))
+        normalized_products.append({
+            "id": int(product_id) if product_id else None,
+            "name": item.get("name"),
+            "quantity": int(item.get("quantity") or 0),
+        })
+    point_result = await db.execute(select(TaskProductPoint).where(
+        TaskProductPoint.task_id == int(task_id),
+        TaskProductPoint.product_type_id.in_(product_ids),
+    )) if product_ids else None
+    point_map = {
+        item.product_type_id: float(item.points)
+        for item in (point_result.scalars().all() if point_result else [])
+    }
+    total_points_raw = 0.0
+    for product in normalized_products:
+        product["points_per_unit"] = point_map.get(product["id"], 0)
+        product["total_points"] = round(product["quantity"] * product["points_per_unit"])
+        total_points_raw += product["quantity"] * product["points_per_unit"]
+
+    independent_task_id = extra.get("independent_task_id")
+    if independent_task_id:
+        assignment_result = await db.execute(
+            select(IndependentTaskAssignee).where(
+                IndependentTaskAssignee.independent_task_id == int(independent_task_id)
+            ).order_by(IndependentTaskAssignee.is_main.desc(), IndependentTaskAssignee.assigned_at)
+        )
+        assignments = assignment_result.scalars().all()
+        notification_ids = [item.notification_id for item in assignments]
+        main_notification_id = next((item.notification_id for item in assignments if item.is_main), None)
+    else:
+        related_result = await db.execute(select(Notification.id).where(
+            Notification.type == NotificationType.TASK_ASSIGNMENT,
+            Notification.status == NotificationStatus.SENT,
+            Notification.extra_data.op('->>')('deal_id') == str(extra.get("deal_id")),
+            Notification.extra_data.op('->>')('task_id') == str(task_id),
+        ).order_by(Notification.id))
+        notification_ids = list(related_result.scalars().all())
+        main_notification_id = notification_ids[0] if notification_ids else None
+
+    rows = []
+    if notification_ids:
+        assignee_result = await db.execute(
+            select(Notification.id, Notification.employee_id, Employee.full_name, TaskExecution.completion_percent)
+            .join(Employee, Employee.id == Notification.employee_id)
+            .outerjoin(TaskExecution, TaskExecution.notification_id == Notification.id)
+            .where(Notification.id.in_(notification_ids))
+        )
+        values = assignee_result.all()
+        values.sort(key=lambda value: (value[0] != main_notification_id, value[0]))
+        for notification_id, employee_id, full_name, completion_percent in values:
+            percent = completion_percent
+            if percent is None:
+                percent = 100 if notification_id == main_notification_id else 0
+            rows.append({
+                "notification_id": notification_id,
+                "employee_id": employee_id,
+                "employee_name": full_name,
+                "is_main": notification_id == main_notification_id,
+                "percent": percent,
+            })
+    return {
+        "total_points": round(total_points_raw),
+        "products": normalized_products,
+        "assignees": rows,
+    }
+
+
+async def set_task_completion_percentages(
+    db: AsyncSession,
+    score_details: dict,
+    percentages: list[dict],
+) -> dict:
+    allowed = {item["employee_id"]: item for item in score_details["assignees"]}
+    received = {int(item["employee_id"]): int(item["percent"]) for item in percentages}
+    if set(received) != set(allowed):
+        raise ValueError("Percentages must be provided for every assignee")
+    if any(value < 0 or value > 100 for value in received.values()):
+        raise ValueError("Percent must be between 0 and 100")
+    for employee_id, percent in received.items():
+        notification_id = allowed[employee_id]["notification_id"]
+        execution = await get_task_execution_by_notification(db, notification_id)
+        if execution:
+            execution.completion_percent = percent
+    await db.commit()
+    return await get_task_score_details(
+        db,
+        await db.get(Notification, score_details["assignees"][0]["notification_id"]),
+    )
+
+
+# ========== Независимые задачи ==========
+
+def _independent_task_options():
+    return (
+        joinedload(IndependentTask.task),
+        joinedload(IndependentTask.created_by),
+        selectinload(IndependentTask.assignees).joinedload(IndependentTaskAssignee.employee),
+        selectinload(IndependentTask.assignees)
+        .joinedload(IndependentTaskAssignee.notification)
+        .joinedload(Notification.task_execution),
+    )
+
+
+async def get_independent_task(
+    db: AsyncSession,
+    independent_task_id: int,
+) -> IndependentTask | None:
+    stmt = (
+        select(IndependentTask)
+        .where(IndependentTask.id == independent_task_id)
+        .options(*_independent_task_options())
+    )
+    result = await db.execute(stmt)
+    return result.unique().scalar_one_or_none()
+
+
+async def get_independent_tasks(
+    db: AsyncSession,
+    employee_id: int | None = None,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[IndependentTask]:
+    stmt = select(IndependentTask).options(*_independent_task_options())
+    if employee_id is not None:
+        stmt = stmt.where(
+            IndependentTask.assignees.any(
+                IndependentTaskAssignee.employee_id == employee_id
+            )
+        )
+    if status is not None:
+        stmt = stmt.where(IndependentTask.status == status)
+    stmt = stmt.order_by(IndependentTask.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(stmt)
+    return result.unique().scalars().all()
+
+
+async def _create_independent_assignee(
+    db: AsyncSession,
+    independent_task: IndependentTask,
+    employee: Employee,
+    admin_id: int,
+    is_main: bool,
+    products: list[dict] | None = None,
+) -> IndependentTaskAssignee:
+    display_name = independent_task.title or independent_task.task.name
+    message = f"📋 Независимая задача: {display_name}"
+    products = products or []
+    if products:
+        message += "\nТовары: " + ", ".join(
+            f"{item['name']} — {item.get('quantity', 1)} шт." for item in products
+        )
+    if independent_task.description:
+        message += f"\n{independent_task.description}"
+
+    notification = Notification(
+        employee_id=employee.id,
+        admin_id=admin_id,
+        type=NotificationType.TASK_ASSIGNMENT,
+        message=message,
+        status=NotificationStatus.SENT,
+        source="admin",
+        extra_data={
+            "independent_task_id": independent_task.id,
+            "is_independent": True,
+            "task_id": independent_task.task_id,
+            "task_name": display_name,
+            "deal_title": "Независимая задача",
+            "products": products,
+        },
+    )
+    db.add(notification)
+    await db.flush()
+    db.add(TaskExecution(
+        notification_id=notification.id,
+        employee_id=employee.id,
+        status=TaskExecutionStatus.NOT_STARTED,
+    ))
+    assignment = IndependentTaskAssignee(
+        independent_task_id=independent_task.id,
+        employee_id=employee.id,
+        notification_id=notification.id,
+        is_main=is_main,
+    )
+    db.add(assignment)
+    return assignment
+
+
+async def create_independent_task(
+    db: AsyncSession,
+    task_id: int,
+    employee_ids: list[int],
+    created_by_id: int,
+    main_employee_id: int | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    due_at: datetime | None = None,
+    products: list[dict] | None = None,
+) -> IndependentTask:
+    task = await get_task(db, task_id)
+    if not task:
+        raise ValueError("Task not found")
+    creator = await get_employee_by_id(db, created_by_id)
+    if not creator:
+        raise ValueError("Creator not found")
+
+    unique_employee_ids = list(dict.fromkeys(employee_ids))
+    if not unique_employee_ids:
+        raise ValueError("At least one assignee is required")
+    if main_employee_id is None:
+        main_employee_id = unique_employee_ids[0]
+    if main_employee_id not in unique_employee_ids:
+        raise ValueError("Main assignee must be included in employee_ids")
+
+    result = await db.execute(select(Employee).where(Employee.id.in_(unique_employee_ids)))
+    employees = {employee.id: employee for employee in result.scalars().all()}
+    missing_ids = [employee_id for employee_id in unique_employee_ids if employee_id not in employees]
+    if missing_ids:
+        raise ValueError(f"Employees not found: {missing_ids}")
+
+    normalized_title = title.strip() if title and title.strip() else None
+    if normalized_title and normalized_title.casefold() != task.name.strip().casefold():
+        existing_task_result = await db.execute(
+            select(Task).where(func.lower(Task.name) == normalized_title.lower()).limit(1)
+        )
+        catalog_task = existing_task_result.scalar_one_or_none()
+        if not catalog_task:
+            catalog_task = Task(
+                name=normalized_title,
+                task_type_id=task.task_type_id,
+            )
+            db.add(catalog_task)
+            await db.flush()
+        task = catalog_task
+        task_id = catalog_task.id
+
+    independent_task = IndependentTask(
+        task_id=task_id,
+        title=normalized_title,
+        description=description,
+        due_at=due_at,
+        created_by_id=created_by_id,
+        status="active",
+    )
+    independent_task.task = task
+    db.add(independent_task)
+    await db.flush()
+
+    try:
+        for employee_id in unique_employee_ids:
+            await _create_independent_assignee(
+                db,
+                independent_task,
+                employees[employee_id],
+                created_by_id,
+                employee_id == main_employee_id,
+                products,
+            )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    from sse import notify_employee
+    for employee_id in unique_employee_ids:
+        await notify_employee(employee_id)
+    return await get_independent_task(db, independent_task.id)
+
+
+_UNSET = object()
+
+
+async def update_independent_task(
+    db: AsyncSession,
+    independent_task_id: int,
+    *,
+    title=_UNSET,
+    description=_UNSET,
+    due_at=_UNSET,
+    status=_UNSET,
+    products=_UNSET,
+) -> IndependentTask:
+    independent_task = await get_independent_task(db, independent_task_id)
+    if not independent_task:
+        raise ValueError("Independent task not found")
+    if title is not _UNSET:
+        independent_task.title = title.strip() if title and title.strip() else None
+    if description is not _UNSET:
+        independent_task.description = description
+    if due_at is not _UNSET:
+        independent_task.due_at = due_at
+    if status is not _UNSET:
+        if status not in {"active", "completed", "cancelled"}:
+            raise ValueError("Invalid independent task status")
+        independent_task.status = status
+    if products is not _UNSET:
+        display_name = independent_task.title or independent_task.task.name
+        product_text = ", ".join(
+            f"{item['name']} — {item.get('quantity', 1)} шт." for item in products
+        )
+        for assignment in independent_task.assignees:
+            extra_data = dict(assignment.notification.extra_data or {})
+            extra_data["products"] = products
+            extra_data["task_name"] = display_name
+            assignment.notification.extra_data = extra_data
+            message = f"📋 Независимая задача: {display_name}"
+            if product_text:
+                message += f"\nТовары: {product_text}"
+            if independent_task.description:
+                message += f"\n{independent_task.description}"
+            assignment.notification.message = message
+    independent_task.updated_at = datetime.now()
+    await db.commit()
+    return await get_independent_task(db, independent_task_id)
+
+
+async def add_independent_task_assignee(
+    db: AsyncSession,
+    independent_task_id: int,
+    employee_id: int,
+    admin_id: int,
+    is_main: bool = False,
+) -> IndependentTask:
+    independent_task = await get_independent_task(db, independent_task_id)
+    if not independent_task:
+        raise ValueError("Independent task not found")
+    if any(item.employee_id == employee_id for item in independent_task.assignees):
+        raise ValueError("Employee already assigned")
+    employee = await get_employee_by_id(db, employee_id)
+    if not employee:
+        raise ValueError("Employee not found")
+    if is_main:
+        for item in independent_task.assignees:
+            item.is_main = False
+    existing_products = (
+        independent_task.assignees[0].notification.extra_data.get("products", [])
+        if independent_task.assignees else []
+    )
+    await _create_independent_assignee(
+        db, independent_task, employee, admin_id, is_main, existing_products
+    )
+    independent_task.updated_at = datetime.now()
+    await db.commit()
+    from sse import notify_employee
+    await notify_employee(employee_id)
+    return await get_independent_task(db, independent_task_id)
+
+
+async def set_independent_task_main_assignee(
+    db: AsyncSession,
+    independent_task_id: int,
+    employee_id: int,
+) -> IndependentTask:
+    independent_task = await get_independent_task(db, independent_task_id)
+    if not independent_task:
+        raise ValueError("Independent task not found")
+    if not any(item.employee_id == employee_id for item in independent_task.assignees):
+        raise ValueError("Employee is not assigned to this task")
+    await db.execute(
+        update(IndependentTaskAssignee)
+        .where(IndependentTaskAssignee.independent_task_id == independent_task_id)
+        .values(is_main=False)
+    )
+    await db.flush()
+    await db.execute(
+        update(IndependentTaskAssignee)
+        .where(
+            IndependentTaskAssignee.independent_task_id == independent_task_id,
+            IndependentTaskAssignee.employee_id == employee_id,
+        )
+        .values(is_main=True)
+    )
+    independent_task.updated_at = datetime.now()
+    await db.commit()
+    return await get_independent_task(db, independent_task_id)
+
+
+async def remove_independent_task_assignee(
+    db: AsyncSession,
+    independent_task_id: int,
+    employee_id: int,
+) -> IndependentTask:
+    independent_task = await get_independent_task(db, independent_task_id)
+    if not independent_task:
+        raise ValueError("Independent task not found")
+    assignment = next(
+        (item for item in independent_task.assignees if item.employee_id == employee_id),
+        None,
+    )
+    if not assignment:
+        raise ValueError("Employee is not assigned to this task")
+    if assignment.is_main:
+        raise ValueError("Assign another main employee before removing this one")
+    execution = assignment.notification.task_execution
+    if execution:
+        await db.execute(delete(TaskBreak).where(TaskBreak.task_execution_id == execution.id))
+        await db.delete(execution)
+    await db.delete(assignment)
+    await db.delete(assignment.notification)
+    independent_task.updated_at = datetime.now()
+    await db.commit()
+    return await get_independent_task(db, independent_task_id)
+
+
+async def delete_independent_task(db: AsyncSession, independent_task_id: int) -> None:
+    independent_task = await get_independent_task(db, independent_task_id)
+    if not independent_task:
+        raise ValueError("Independent task not found")
+    for assignment in independent_task.assignees:
+        execution = assignment.notification.task_execution
+        if execution:
+            await db.execute(delete(TaskBreak).where(TaskBreak.task_execution_id == execution.id))
+            await db.delete(execution)
+        await db.delete(assignment.notification)
+    await db.delete(independent_task)
+    await db.commit()
+
+
+async def create_deal_task_assignment(
+    db: AsyncSession,
+    deal_id: int,
+    task_id: int,
+    employee_ids: list[int],
+    admin_id: int,
+    main_employee_id: int | None = None,
+    products: list[dict] | None = None,
+) -> list[Notification]:
+    deal = await get_deal_by_id(db, deal_id)
+    task = await get_task(db, task_id)
+    if not deal:
+        raise ValueError("Deal not found")
+    if not task:
+        raise ValueError("Task not found")
+    employee_ids = list(dict.fromkeys(employee_ids))
+    if not employee_ids:
+        raise ValueError("At least one assignee is required")
+    if main_employee_id is None:
+        main_employee_id = employee_ids[0]
+    if main_employee_id not in employee_ids:
+        raise ValueError("Main assignee must be included in employee_ids")
+
+    duplicate_result = await db.execute(select(Notification.id).where(
+        Notification.type == NotificationType.TASK_ASSIGNMENT,
+        Notification.status == NotificationStatus.SENT,
+        Notification.extra_data.op('->>')('deal_id') == str(deal_id),
+        Notification.extra_data.op('->>')('task_id') == str(task_id),
+    ).limit(1))
+    if duplicate_result.scalar_one_or_none():
+        raise ValueError("This task is already assigned for the selected deal")
+
+    employees_result = await db.execute(select(Employee).where(Employee.id.in_(employee_ids)))
+    employees = {item.id: item for item in employees_result.scalars().all()}
+    missing_ids = [item for item in employee_ids if item not in employees]
+    if missing_ids:
+        raise ValueError(f"Employees not found: {missing_ids}")
+
+    ordered_ids = [main_employee_id] + [item for item in employee_ids if item != main_employee_id]
+    products = products or []
+    product_text = ", ".join(
+        f"{item['name']} — {item.get('quantity', 1)} шт." for item in products
+    )
+    message = f"📋 Задача: {task.name}"
+    if product_text:
+        message += f"\nТовары: {product_text}"
+    notifications = []
+    try:
+        for employee_id in ordered_ids:
+            notification = Notification(
+                employee_id=employee_id,
+                admin_id=admin_id,
+                type=NotificationType.TASK_ASSIGNMENT,
+                message=message,
+                status=NotificationStatus.SENT,
+                source="admin",
+                extra_data={
+                    "deal_id": deal_id,
+                    "task_id": task_id,
+                    "deal_title": deal.title,
+                    "task_name": task.name,
+                    "products": products,
+                },
+            )
+            db.add(notification)
+            await db.flush()
+            db.add(TaskExecution(
+                notification_id=notification.id,
+                employee_id=employee_id,
+                status=TaskExecutionStatus.NOT_STARTED,
+            ))
+            notifications.append(notification)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    from sse import notify_employee
+    for employee_id in ordered_ids:
+        await notify_employee(employee_id)
+    return notifications
 
 # ---------- Получение всех IP ----------
 async def get_all_ips(db: AsyncSession) -> list[IP]:

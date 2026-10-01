@@ -1,7 +1,22 @@
 import enum
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Text, UniqueConstraint, Date, Boolean
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from enum import Enum
 from database import Base
@@ -44,7 +59,7 @@ class Employee(Base):
     password = Column(String, nullable=True)
     is_admin = Column(Integer, default=0)
     is_monitor = Column(Integer, default=0)
-    schedule_data = Column(JSON, nullable=True)
+    schedule_data = Column(JSONB, nullable=True)
 
     employee_roles = relationship("EmployeeRole", back_populates="employee", cascade="all, delete-orphan")
     notifications = relationship("Notification", foreign_keys="Notification.employee_id", back_populates="employee")
@@ -107,7 +122,7 @@ class Notification(Base):
 class Explanation(Base):
     __tablename__ = "explanations"
     id = Column(Integer, primary_key=True)
-    notification_id = Column(Integer, ForeignKey("notifications.id"), unique=True)
+    notification_id = Column(Integer, ForeignKey("notifications.id"), unique=True, nullable=False)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     explanation_text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
@@ -155,8 +170,8 @@ class Deal(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String(200), nullable=False)
     deal_type_id = Column(Integer, ForeignKey("deal_types.id"))
-    ip_id = Column(Integer, ForeignKey("ip_list.id"), nullable=True)
-    mp_id = Column(Integer, ForeignKey("mp_list.id"), nullable=True)
+    ip_id = Column(Integer, ForeignKey("ip_list.id", ondelete="SET NULL"), nullable=True)
+    mp_id = Column(Integer, ForeignKey("mp_list.id", ondelete="SET NULL"), nullable=True)
     status = Column(String, default="in_progress")
 
     deal_type = relationship("DealType", back_populates="deals")
@@ -168,7 +183,7 @@ class Deal(Base):
 class DealProductType(Base):
     __tablename__ = "deal_products"
     id = Column(Integer, primary_key=True)
-    deal_id = Column(Integer, ForeignKey("deals.id"), nullable = True)
+    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"), nullable = True)
     product_id = Column(Integer, ForeignKey("product_types.id"), nullable = True)
     quantity = Column(Integer, nullable = True)
 
@@ -182,12 +197,16 @@ class DealTypeTask(Base):
     is_enabled = Column(Boolean, default=True)
     deal_type = relationship("DealType", back_populates="deal_type_tasks")
     task = relationship("Task", back_populates="deal_type_tasks")
+    __table_args__ = (
+        Index("idx_deal_type_tasks_deal_type_id", "deal_type_id"),
+        Index("idx_deal_type_tasks_task_id", "task_id"),
+    )
 
 class ProductType(Base):
     __tablename__ = "product_types"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    full_name = Column(String, nullable=True)
+    full_name = Column(Text, nullable=True)
     tech_card_id = Column(Integer, ForeignKey("tech_cards.id"), nullable=True)
     tech_card = relationship("TechCard", back_populates="products")
     deal_products = relationship("DealProductType", back_populates="product_type")
@@ -203,7 +222,7 @@ class TechCard(Base):
 class TaskType(Base):
     __tablename__ = "task_types"
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
+    name = Column(String, nullable=False, unique=True)
     tasks = relationship("Task", back_populates="task_type")
 
 class Task(Base):
@@ -217,11 +236,90 @@ class Task(Base):
     role_tasks = relationship("RoleTask", back_populates="task", cascade="all, delete-orphan")
     deal_type_tasks = relationship("DealTypeTask", back_populates="task", cascade="all, delete-orphan")
     task_completion_data = relationship("TaskCompletionData", back_populates="task", cascade="all, delete-orphan")
+    independent_tasks = relationship("IndependentTask", back_populates="task")
+    product_points = relationship("TaskProductPoint", back_populates="task", cascade="all, delete-orphan")
+    __table_args__ = (Index("idx_tasks_type_id", "task_type_id"),)
+
+
+class IndependentTask(Base):
+    """Отдельный экземпляр задачи, который не относится к сделке."""
+    __tablename__ = "independent_tasks"
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="RESTRICT"), nullable=False, index=True)
+    title = Column(String(200), nullable=True)
+    description = Column(Text, nullable=True)
+    due_at = Column(DateTime, nullable=True)
+    status = Column(String(20), nullable=False, default="active", index=True)
+    created_by_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
+    completion_data = Column(JSONB, nullable=True)
+
+    task = relationship("Task", back_populates="independent_tasks")
+    created_by = relationship("Employee", foreign_keys=[created_by_id])
+    assignees = relationship(
+        "IndependentTaskAssignee",
+        back_populates="independent_task",
+        cascade="all, delete-orphan",
+    )
+
+
+class IndependentTaskAssignee(Base):
+    __tablename__ = "independent_task_assignees"
+
+    independent_task_id = Column(
+        Integer,
+        ForeignKey("independent_tasks.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="RESTRICT"), primary_key=True)
+    notification_id = Column(
+        Integer,
+        ForeignKey("notifications.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    is_main = Column(Boolean, nullable=False, default=False)
+    assigned_at = Column(DateTime, nullable=False, default=datetime.now)
+
+    independent_task = relationship("IndependentTask", back_populates="assignees")
+    employee = relationship("Employee")
+    notification = relationship("Notification")
+    __table_args__ = (
+        Index("ix_independent_task_assignees_employee_id", "employee_id"),
+        Index(
+            "uq_independent_task_main_assignee",
+            "independent_task_id",
+            unique=True,
+            postgresql_where=text("is_main"),
+        ),
+    )
+
+
+class TaskProductPoint(Base):
+    __tablename__ = "task_product_points"
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    product_type_id = Column(Integer, ForeignKey("product_types.id", ondelete="CASCADE"), nullable=False)
+    points = Column(Integer, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
+
+    task = relationship("Task", back_populates="product_points")
+    product_type = relationship("ProductType")
+    __table_args__ = (
+        UniqueConstraint("task_id", "product_type_id", name="uq_task_product_points"),
+        CheckConstraint("points >= 0", name="task_product_points_points_check"),
+        Index("ix_task_product_points_task_id", "task_id"),
+        Index("ix_task_product_points_product_type_id", "product_type_id"),
+    )
 
 class TechCardTask(Base):
     __tablename__="tech_card_tasks"
     id = Column(Integer, primary_key=True)
-    tech_card_id=Column(Integer, ForeignKey("tech_cards.id"), nullable=True)
+    tech_card_id=Column(Integer, ForeignKey("tech_cards.id"), nullable=False)
     task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
     sequence = Column(Integer, nullable = False)
     task = relationship("Task", back_populates="tech_card_tasks")
@@ -267,13 +365,15 @@ class MP(Base):
 class TaskExecution(Base):
     __tablename__ = "task_executions"
     id = Column(Integer, primary_key=True)
-    notification_id = Column(Integer, ForeignKey("notifications.id"), unique=True, nullable=False)
+    notification_id = Column(Integer, ForeignKey("notifications.id"), nullable=False)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
     status = Column(
         SAEnum(
             TaskExecutionStatus,
             name="taskexecutionstatus",
             values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            native_enum=False,
+            length=20,
         ),
         default=TaskExecutionStatus.NOT_STARTED,
         nullable=False,
@@ -281,11 +381,20 @@ class TaskExecution(Base):
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     general_comment = Column(Text, nullable=True)
+    completion_percent = Column(Integer, nullable=True)
 
     notification = relationship("Notification", back_populates="task_execution")
     employee = relationship("Employee", back_populates="task_executions")
     breaks = relationship("TaskBreak", back_populates="task_execution", cascade="all, delete-orphan")
-    __table_args__ = (UniqueConstraint('notification_id', name='uq_notification_task'),)
+    __table_args__ = (
+        UniqueConstraint('notification_id', name='uq_notification_task'),
+        CheckConstraint(
+            "completion_percent IS NULL OR completion_percent BETWEEN 0 AND 100",
+            name="ck_task_execution_completion_percent",
+        ),
+        Index("idx_task_executions_employee_id", "employee_id"),
+        Index("idx_task_executions_notification_id", "notification_id"),
+    )
 
 class TaskBreak(Base):
     __tablename__ = "task_breaks"
@@ -300,8 +409,8 @@ class TaskBreak(Base):
 class TaskCompletionData(Base):
     __tablename__ = "task_completion_data"
     id = Column(Integer, primary_key=True)
-    deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
+    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
     product_type_id = Column(Integer, ForeignKey("product_types.id"), nullable=False)   # НОВОЕ поле
     defect_quantity = Column(Integer, default=0, nullable=False)
     defect_comment = Column(String(300), nullable=True)
@@ -313,15 +422,23 @@ class TaskCompletionData(Base):
     distributions = relationship("TaskProductionDistribution", back_populates="task_completion", cascade="all, delete-orphan")
 
     # Уникальность: одна запись на (договор, задача, тип товара)
-    __table_args__ = (UniqueConstraint('deal_id', 'task_id', 'product_type_id', name='uq_deal_task_product'),)
+    __table_args__ = (
+        UniqueConstraint('deal_id', 'task_id', 'product_type_id', name='uq_deal_task_product'),
+        Index("idx_task_completion_data_deal_id", "deal_id"),
+        Index("idx_task_completion_data_task_id", "task_id"),
+    )
 
 
 class TaskProductionDistribution(Base):
     __tablename__ = "task_production_distribution"
     id = Column(Integer, primary_key=True)
-    task_completion_id = Column(Integer, ForeignKey("task_completion_data.id"), nullable=False)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    task_completion_id = Column(Integer, ForeignKey("task_completion_data.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
     quantity = Column(Integer, nullable=False, default=0)
 
     task_completion = relationship("TaskCompletionData", back_populates="distributions")
     employee = relationship("Employee", back_populates="task_production_distributions")
+    __table_args__ = (
+        Index("idx_task_production_distribution_employee_id", "employee_id"),
+        Index("idx_task_production_distribution_task_completion_id", "task_completion_id"),
+    )
