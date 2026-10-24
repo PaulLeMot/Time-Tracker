@@ -4404,6 +4404,9 @@ async function loadWeeklyTraffic(employeeId) {
 
     // --- Обработчик клика по ячейке (для редактирования/добавления) ---
     container.addEventListener('click', function(e) {
+        // Клики по полям и кнопкам уже открытого редактора не должны повторно
+        // запускать редактирование ячейки с исходными данными.
+        if (e.target.closest('.edit-controls')) return;
         const td = e.target.closest('td');
         if (!td) return;
         if (td.closest('.add-entry-row')) return;
@@ -4686,7 +4689,8 @@ function makeCellEditable(td, entryId, timestamp, action, employeeId) {
     });
     
     // Переключение цвета
-    colorBtn.addEventListener('click', function() {
+    colorBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
         colorIndex = (colorIndex + 1) % colorCycleLocal.length;
         const newColor = colorCycleLocal[colorIndex];
         currentEditColor = newColor;
@@ -4942,7 +4946,8 @@ function makeCellAddable(td, dayIndex, dateStr, employeeId) {
     });
 
     // Переключение цвета
-    colorBtn.addEventListener('click', function() {
+    colorBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
         colorIndex = (colorIndex + 1) % colorCycle.length;
         currentColor = colorCycle[colorIndex];
         this.className = `edit-color-btn ${colorClassMap[currentColor]}`;
