@@ -32,6 +32,24 @@ async def availability(request:Request):
     except OSError:raise HTTPException(503,'Image folder is unavailable') from None
     return {'version':VERSION,'codes':codes}
 
+
+@router.post('/inventory')
+async def inventory(request:Request,db:AsyncSession=Depends(get_db)):
+    """Signed metadata/presence comparison; no image decoding or hashing."""
+    from operkontur_images_sync import parse_inventory
+    body=await authenticated_body(request)
+    try:codes=parse_inventory(body)
+    except SyncError:raise HTTPException(422,'Invalid inventory request') from None
+    from starlette.concurrency import run_in_threadpool
+    from operkontur_images_sync import available_codes
+    try:available=set(await run_in_threadpool(available_codes,os.getenv('OPERKONTUR_IMAGES_ROOT','/app/static/img')))
+    except OSError:raise HTTPException(503,'Image folder is unavailable') from None
+    products=[]
+    for start in range(0,len(codes),1000):
+        rows=await db.execute(select(Product).where(Product.code.in_(codes[start:start+1000])))
+        products.extend({'code':p.code,'product_type':p.product_type,'fandom':p.fandom,'name':p.name,'has_image':p.code in available} for p in rows.scalars())
+    return {'version':VERSION,'products':products}
+
 @router.post('/sync')
 async def synchronize(request:Request,db:AsyncSession=Depends(get_db)):
     body=await authenticated_body(request)
