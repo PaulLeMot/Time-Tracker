@@ -4,4 +4,4 @@ Adds signed POST `/api/integrations/operkontur/images/inventory`: body `{"codes"
 
 The client compares metadata/presence first, then prepares only missing/changed entries and sends existing `/sync` requests in batches of100. This avoids full image reads before discovering an unavailable server. Existing sync semantics, manual Excel import, schema, credentials and image files are unchanged.
 
-Validation: seven isolated unit tests, including inventory validation, authentication, additive update and image eligibility. Deploy by fast-forwarding the integration branch and rebuilding/restarting only the application container with existing configuration. No database migration.
+Validation: seven isolated unit tests, including inventory validation, authentication, additive update and image eligibility. Publish tested changes directly to origin/main; only then update the clean server checkout from origin/main with --ff-only. Preserve existing container configuration. No database migration.
