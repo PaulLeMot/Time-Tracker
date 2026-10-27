@@ -1,0 +1,67 @@
+/* Стили статической разметки admin.html */
+.admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.admin-heading { margin:0; }
+.admin-header-actions { display: flex; align-items: center; gap: 15px; }
+.button-import { background: #10b981; }
+.admin-profile-link { color: #3b82f6; font-size: 1.1rem; cursor: pointer; text-decoration: underline; }
+.button-logout { background: #ef4444; }
+.notification-count-badge { background:#ef4444; color:white; border-radius:20px; padding:2px 6px; font-size:0.7rem; margin-left:5px; display:none; }
+.is-hidden { display: none; }
+.toolbar-icon { cursor:pointer; font-size:1.2rem; margin-left: 8px; }
+.weekly-traffic-panel { display: none; margin-top: 0px; }
+.compact-toolbar { display: flex; gap: 0px; align-items: center; margin-bottom: 0px; }
+.field-label { font-weight: 500; }
+.employee-picker { width: 300px; padding: 8px; border-radius: 20px; border: 1px solid #cbd5e1; }
+.traffic-summary-panel { display: none; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 12px; }
+.text-muted { color: #94a3b8; }
+.filter-toolbar { margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.date-range-control { width: 240px; }
+.actions-column { width: 40px; }
+.modal-inline-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.form-error-spaced { color:red; margin-top:8px; }
+.form-error { color:red; }
+.modal-size-xs { max-width: 300px; }
+.modal-size-md { max-width: 500px; }
+.form-field { margin-bottom: 12px; }
+.control-full-width { width:100%; }
+.preformatted-message { background:#f8fafc; padding: 12px; border-radius: 8px; white-space: pre-wrap; }
+.employee-info-panel { margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px; font-weight: 500; color: #0f172a; }
+.grade-panel { display: none; margin-bottom: 12px; }
+.grade-options { display: flex; gap: 12px; margin-top: 4px; flex-wrap: nowrap; overflow-x: auto; }
+.radio-option { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.grade-control-danger { accent-color: #ef4444; }
+.grade-control-warning { accent-color: #f59e0b; }
+.grade-control-primary { accent-color: #3b82f6; }
+.grade-control-success { accent-color: #22c55e; }
+.modal-size-sm { max-width: 400px; }
+.full-width { width: 100%; }
+.spaced-top { margin-top: 12px; }
+.modal-size-role { max-width: 450px; }
+.modal-close-role { float:right; cursor:pointer; font-size:1.5rem; }
+.role-employee-name { font-weight: 500; color: #0f172a; margin-bottom: 16px; }
+.form-section { margin-bottom: 16px; }
+.role-list { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+.role-select { width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1; margin-top:4px; }
+.form-section-separated { margin-bottom: 16px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+.inline-form-row { display: flex; gap: 8px; margin-top: 4px; }
+.flex-input { flex:1; padding:8px; border-radius:20px; border:1px solid #cbd5e1; }
+.button-create-role { padding:8px 16px; border:none; border-radius:20px; background:#22c55e; color:white; cursor:pointer; }
+.modal-actions { display:flex; gap:12px; justify-content:flex-end; }
+.button-cancel { background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer; }
+.button-primary-action { background:#3b82f6; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer; }
+.modal-size-task { max-width:720px; max-height:90vh; overflow-y:auto; }
+.modal-close-task { float:right; cursor:pointer; font-size:1.7rem; color:#94a3b8; }
+.task-form-grid { display:grid; gap:14px; }
+.task-form-control { width:100%; margin-top:5px; }
+.task-deal-field { display:none; }
+.field-hint { display:block; color:#64748b; margin-top:3px; }
+.task-description { width:100%; box-sizing:border-box; margin-top:5px; }
+.task-choice-list { display:grid; gap:7px; margin-top:7px; }
+.task-form-error { color:#dc2626; }
+.task-form-actions { display:flex; justify-content:flex-end; gap:8px; }
+.button-secondary { background:#94a3b8; }
+.button-success { background:#16a34a; }
+.task-choice-row { display:flex; align-items:center; gap:8px; }
+.task-choice-name { flex:1; text-align:left; }
+.task-main-choice { display:flex; align-items:center; gap:4px; }
+.task-product-choice { display:grid; grid-template-columns:auto 1fr 90px; gap:8px; align-items:center; }

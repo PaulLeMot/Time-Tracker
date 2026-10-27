@@ -1,663 +1,3 @@
-<style>
-        /* Стили для песочницы (уже были, дополним немного) */
-        .sandbox-container {
-            display: flex;
-            gap: 24px;
-            min-height: 500px;
-            padding: 16px 0;
-        }
-        .sandbox-sidebar {
-            flex: 0 0 180px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            border-right: 1px solid #e2e8f0;
-            padding-right: 16px;
-        }
-        .sandbox-sidebar .nav-btn {
-            padding: 10px 16px;
-            border: none;
-            background: transparent;
-            border-radius: 12px;
-            font-size: 0.95rem;
-            text-align: left;
-            cursor: pointer;
-            transition: all 0.2s;
-            color: #475569;
-            font-weight: 500;
-        }
-        .sandbox-sidebar .nav-btn:hover {
-            background: #f1f5f9;
-            color: #0f172a;
-        }
-        .sandbox-sidebar .nav-btn.active {
-            background: #3b82f6;
-            color: white;
-        }
-        .sandbox-sidebar .nav-btn .icon {
-            margin-right: 10px;
-        }
-
-        .sandbox-content {
-            flex: 1;
-            min-width: 0;
-        }
-        .sandbox-panel {
-            display: none;
-        }
-        .sandbox-panel.active {
-            display: block;
-        }
-
-        /* Стили для inline-форм */
-        .inline-form {
-            background: #f8fafc;
-            padding: 16px;
-            border-radius: 12px;
-            margin-bottom: 16px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            align-items: end;
-        }
-        .inline-form .form-group {
-            flex: 1 1 200px;
-            min-width: 150px;
-        }
-        .inline-form .form-group label {
-            display: block;
-            font-weight: 500;
-            font-size: 0.85rem;
-            margin-bottom: 4px;
-            color: #475569;
-        }
-        .inline-form .form-group input,
-        .inline-form .form-group select {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 20px;
-            font-size: 0.95rem;
-        }
-        .inline-form button {
-            padding: 8px 20px;
-            border: none;
-            border-radius: 20px;
-            background: #3b82f6;
-            color: white;
-            cursor: pointer;
-            font-size: 0.95rem;
-            height: 38px;
-        }
-        .inline-form button.success {
-            background: #22c55e;
-        }
-        .inline-form button.danger {
-            background: #ef4444;
-        }
-
-        .task-type-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
-        .task-type-item {
-            background: #e2e8f0;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .task-type-item .remove-type {
-            cursor: pointer;
-            color: #ef4444;
-            font-weight: bold;
-        }
-
-        .task-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 8px 0;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        .task-item .task-name {
-            font-weight: 500;
-            flex: 1;
-        }
-        .task-item .task-type {
-            color: #64748b;
-            font-size: 0.85rem;
-        }
-        .task-item .task-actions button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 1.1rem;
-            margin-left: 6px;
-        }
-
-        .product-item {
-            border-bottom: 1px solid #e2e8f0;
-            padding: 12px 0;
-        }
-        .product-item .product-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            cursor: pointer;
-        }
-        .product-item .product-header .product-name {
-            font-weight: 500;
-            flex: 1;
-        }
-        .product-item .product-header .product-code {
-            color: #64748b;
-            font-size: 0.85rem;
-        }
-        .product-item .tech-card {
-            margin-top: 8px;
-            padding: 8px 16px;
-            background: #f8fafc;
-            border-radius: 8px;
-            display: none;
-        }
-        .product-item .tech-card.open {
-            display: block;
-        }
-        .tech-card .stage-list {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            margin: 8px 0;
-        }
-        .tech-card .stage-list .stage-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 4px 8px;
-            background: white;
-            border-radius: 6px;
-            border: 1px solid #e2e8f0;
-        }
-        .tech-card .stage-list .stage-row .drag-handle {
-            cursor: grab;
-            color: #94a3b8;
-            font-size: 1.2rem;
-            user-select: none;
-        }
-        .tech-card .stage-list .stage-row .stage-order {
-            font-weight: 500;
-            color: #475569;
-            min-width: 24px;
-        }
-        .tech-card .stage-list .stage-row .stage-name {
-            flex: 1;
-        }
-        .tech-card .stage-list .stage-row .remove-stage {
-            cursor: pointer;
-            color: #ef4444;
-            font-weight: bold;
-        }
-        .tech-card .add-stage-form {
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-            align-items: center;
-        }
-        .tech-card .add-stage-form select {
-            flex: 1;
-            padding: 6px 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 20px;
-        }
-        .tech-card .add-stage-form button {
-            background: #3b82f6;
-            border: none;
-            color: white;
-            padding: 6px 16px;
-            border-radius: 20px;
-            cursor: pointer;
-        }
-        .tech-card .save-tech-card {
-            margin-top: 8px;
-            background: #22c55e;
-            border: none;
-            color: white;
-            padding: 6px 16px;
-            border-radius: 20px;
-            cursor: pointer;
-        }
-        /* ----- Вкладка "Задачи" ----- */
-        .tasks-layout {
-            display: flex;
-            gap: 24px;
-            min-height: 500px;
-        }
-        .tasks-left {
-            flex: 2;
-            min-width: 0;
-            max-height: 600px;
-            overflow-y: auto;
-        }
-        .tasks-right {
-            flex: 1;
-            min-width: 250px;
-            background: #f8fafc;
-            border-radius: 12px;
-            padding: 16px;
-            position: sticky;
-            top: 0;
-            height: fit-content;
-        }
-
-        .task-groups-container {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .task-group {
-            background: white;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-            overflow: hidden;
-        }
-        .task-group-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 16px;
-            background: #f1f5f9;
-            cursor: default;
-            font-weight: 600;
-        }
-        .task-group-header .task-group-actions button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 0.9rem;
-            margin-left: 6px;
-            color: #475569;
-        }
-        .task-group-header .task-group-actions button:hover {
-            color: #0f172a;
-        }
-        .task-group-body {
-            padding: 8px 16px;
-        }
-        .task-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 6px 0;
-            border-bottom: 1px solid #f1f5f9;
-        }
-        .task-item:last-child {
-            border-bottom: none;
-        }
-        .task-item .task-name {
-            font-weight: 500;
-        }
-        .task-item .task-actions button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 0.85rem;
-            margin-left: 4px;
-            color: #94a3b8;
-        }
-        .task-item .task-actions button:hover {
-            color: #0f172a;
-        }
-        .add-task-area {
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-            padding: 8px 0;
-        }
-        .add-task-area input {
-            flex: 1;
-            padding: 4px 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 20px;
-            font-size: 0.9rem;
-        }
-        .add-task-area button {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 28px;
-            height: 28px;
-            cursor: pointer;
-            font-size: 1.2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-        }
-        .toggle-constructor-btn {
-            background: #3b82f6;
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            cursor: pointer;
-        }
-        .save-constructor-btn {
-            background: #22c55e;
-            border: none;
-            color: white;
-            padding: 8px 20px;
-            border-radius: 20px;
-            cursor: pointer;
-        }
-
-        .product-groups-container {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .product-group {
-            background: white;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-            overflow: hidden;
-        }
-        .product-group-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 16px;
-            background: #f1f5f9;
-            font-weight: 600;
-        }
-        .product-group-actions button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 0.9rem;
-            margin-left: 6px;
-            color: #475569;
-        }
-        .product-group-actions button:hover {
-            color: #0f172a;
-        }
-        .product-group-body {
-            padding: 8px 16px;
-        }
-        .product-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 6px 0;
-            border-bottom: 1px solid #f1f5f9;
-        }
-        .product-item:last-child {
-            border-bottom: none;
-        }
-        .product-item .product-name {
-            font-weight: 500;
-        }
-        .product-item .product-actions button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 0.85rem;
-            margin-left: 4px;
-            color: #94a3b8;
-        }
-        .product-item .product-actions button:hover {
-            color: #0f172a;
-        }
-
-        .constructor-task-item {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 6px 12px;
-            margin-bottom: 4px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            cursor: grab;
-        }
-        .constructor-task-item:hover {
-            background: #f8fafc;
-        }
-        .constructor-task-item .remove-constructor-task {
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #ef4444;
-        }
-        .constructor-task-item .remove-constructor-task:hover {
-            color: #b91c1c;
-        }
-        /* ----- Вкладка "Должности" (скрыта, но оставлена для совместимости) ----- */
-        .roles-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-        }
-        .role-card {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-            transition: box-shadow 0.2s;
-            position: relative;
-        }
-        .role-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
-        .role-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 8px;
-        }
-        .role-title {
-            font-weight: 600;
-            font-size: 1.1rem;
-            color: #0f172a;
-        }
-        .role-actions {
-            display: flex;
-            gap: 6px;
-        }
-        .role-actions button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0 4px;
-            color: #3b82f6;
-        }
-        .role-actions button:hover {
-            color: #2563eb;
-        }
-        .role-description {
-            color: #475569;
-            font-size: 0.9rem;
-            margin-bottom: 8px;
-        }
-        .role-tasks {
-            font-size: 0.9rem;
-            color: #1e293b;
-            margin-bottom: 6px;
-        }
-        .role-employees {
-            font-size: 0.9rem;
-            color: #1e293b;
-        }
-        .employee-list {
-            display: inline-flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 4px;
-        }
-        .employee-tag {
-            background: #f1f5f9;
-            border-radius: 16px;
-            padding: 2px 10px 2px 14px;
-            font-size: 0.85rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .employee-tag .remove-employee-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #94a3b8;
-            font-size: 0.8rem;
-            padding: 0;
-            line-height: 1;
-        }
-        .employee-tag .remove-employee-btn:hover {
-            color: #ef4444;
-        }
-        .task-item .task-info {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-        }
-        .task-item .assigned-employees {
-            font-size: 0.8rem;
-            color: #475569;
-            margin-top: 2px;
-        }
-        .task-item .assigned-employees span {
-            background: #f1f5f9;
-            padding: 0 6px;
-            border-radius: 12px;
-            display: inline-block;
-            margin: 2px 4px 2px 0;
-        }
-        .employee-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 4px 0;
-            border-bottom: 1px solid #f1f5f9;
-        }
-        .employee-item .remove-employee-from-task {
-            background: #ef4444;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            padding: 2px 8px;
-            cursor: pointer;
-        }
-        .employee-item .remove-employee-from-task:hover {
-            background: #dc2626;
-        }
-
-        /* Стили для списка должностей на панели задач */
-        .role-simple-item {
-            background: #f1f5f9;
-            border-radius: 16px;
-            padding: 4px 14px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .role-simple-item:hover {
-            background: #e2e8f0;
-        }
-        .role-simple-item .remove-role-simple-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #94a3b8;
-            padding: 0;
-            font-size: 0.8rem;
-        }
-        .role-simple-item .remove-role-simple-btn:hover {
-            color: #ef4444;
-        }
-        #detailModal .modal-content {
-            max-width: 1200px;
-            width: 95%;
-        }        
-        .modal-close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            line-height: 1;
-            transition: color 0.2s;
-        }
-        .modal-close:hover {
-            color: black;
-        }
-        /* Аккордеон для задач (админка) */
-        .task-accordion-item {
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            margin-bottom: 12px;
-            background: white;
-            overflow: hidden;
-        }
-        .task-accordion-header {
-            background: #f8fafc;
-            padding: 12px 16px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 1rem;
-        }
-        .task-accordion-header:hover {
-            background: #f1f5f9;
-        }
-        .task-accordion-details {
-            display: none;
-            padding: 16px;
-            border-top: 1px solid #e2e8f0;
-            background: white;
-        }
-        .assignee-tag {
-            display: inline-block;
-            padding: 2px 12px;
-            border-radius: 16px;
-            margin-right: 4px;
-            font-size: 0.9rem;
-        }
-        .main-assignee {
-            background: #dbeafe;
-            font-weight: bold;
-        }
-        .co-assignee {
-            background: #f1f5f9;
-        }
-        .remove-assignee-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #ef4444;
-            font-size: 1.1rem;
-            margin-left: 4px;
-        }
-        .add-assignee-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #3b82f6;
-            font-size: 1.2rem;
-            margin-left: 8px;
-        }
-    </style>
-
     <div class="sandbox-container">
 
         <!-- Боковая панель -->
@@ -678,11 +18,11 @@
             <!-- ==================== ПАНЕЛЬ: СДЕЛКИ ==================== -->
             <div class="sandbox-panel active" id="panel-deals">
                 <div class="toolbar">
-                    <button id="dealTypeSettingsBtn" class="btn" style="background: #3b82f6; margin-left: 8px;" title="Настройки типа сделки">⚙️</button>
+                    <button id="dealTypeSettingsBtn" class="btn button-settings-offset" title="Настройки типа сделки">⚙️</button>
                     <button id="createDealBtn" class="success">➕ Создать сделку</button>
-                    <span style="margin-left:auto; color:#64748b; font-size:0.9rem;" id="dealsCount">Загрузка...</span>
+                    <span class="list-count" id="dealsCount">Загрузка...</span>
                 </div>
-                <div id="dealsList"><p style="color:#94a3b8;">Загрузка сделок...</p></div>
+                <div id="dealsList"><p class="text-placeholder">Загрузка сделок...</p></div>
             </div>
 
             <!-- ==================== ПАНЕЛЬ: ИП/МП ==================== -->
@@ -692,129 +32,129 @@
                 </div>
 
                 <!-- ===== ТИПЫ СДЕЛОК ===== -->
-                <div style="margin-bottom: 24px;">
-                    <h4 style="margin:0 0 8px 0;">📋 Типы сделок</h4>
-                    <div class="inline-form" id="addDealTypeForm" style="margin-bottom:8px;">
-                        <div class="form-group" style="flex:1;">
+                <div class="settings-section">
+                    <h4 class="settings-subheading">📋 Типы сделок</h4>
+                    <div class="inline-form form-row-compact" id="addDealTypeForm">
+                        <div class="form-group flex-fill">
                             <input type="text" id="newDealTypeName" placeholder="Название (FBS, FBP, FSK)">
                         </div>
                         <button class="success" id="saveDealTypeBtn">➕ Добавить</button>
                     </div>
-                    <div id="dealTypesList"><p style="color:#94a3b8;">Загрузка...</p></div>
+                    <div id="dealTypesList"><p class="text-placeholder">Загрузка...</p></div>
                 </div>
 
                 <!-- ===== ИП ===== -->
-                <div style="margin-bottom: 24px;">
-                    <h4 style="margin:0 0 8px 0;">🏢 ИП</h4>
-                    <div class="inline-form" id="addIPForm" style="margin-bottom:8px;">
-                        <div class="form-group" style="flex:1;">
+                <div class="settings-section">
+                    <h4 class="settings-subheading">🏢 ИП</h4>
+                    <div class="inline-form form-row-compact" id="addIPForm">
+                        <div class="form-group flex-fill">
                             <input type="text" id="newIPName" placeholder="Название ИП (KTV, KPD, REG, SIA)">
                         </div>
                         <button class="success" id="saveIPBtn">➕ Добавить</button>
                     </div>
-                    <div id="ipsList"><p style="color:#94a3b8;">Загрузка...</p></div>
+                    <div id="ipsList"><p class="text-placeholder">Загрузка...</p></div>
                 </div>
 
                 <!-- ===== МП ===== -->
                 <div>
-                    <h4 style="margin:0 0 8px 0;">📦 МП</h4>
-                    <div class="inline-form" id="addMPForm" style="margin-bottom:8px;">
-                        <div class="form-group" style="flex:1;">
+                    <h4 class="settings-subheading">📦 МП</h4>
+                    <div class="inline-form form-row-compact" id="addMPForm">
+                        <div class="form-group flex-fill">
                             <input type="text" id="newMPName" placeholder="Название МП (OZ, WB)">
                         </div>
                         <button class="success" id="saveMPBtn">➕ Добавить</button>
                     </div>
-                    <div id="mpsList"><p style="color:#94a3b8;">Загрузка...</p></div>
+                    <div id="mpsList"><p class="text-placeholder">Загрузка...</p></div>
                 </div>
             </div>
 
             <!-- ==================== ПАНЕЛЬ: ТОВАРЫ ==================== -->
             <div class="sandbox-panel" id="panel-products">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                    <h3 style="margin:0;">📦 Товары</h3>
-                    <button id="addProductGlobalBtn" class="success" style="padding:6px 16px;">➕ Добавить товар</button>
+                <div class="section-title-row">
+                    <h3 class="heading-reset">📦 Товары</h3>
+                    <button id="addProductGlobalBtn" class="success button-compact-wide">➕ Добавить товар</button>
                 </div>
-                <div id="productsList"><p style="color:#94a3b8;">Загрузка товаров...</p></div>
+                <div id="productsList"><p class="text-placeholder">Загрузка товаров...</p></div>
             </div>
 
             <!-- ==================== ПАНЕЛЬ: ЗАДАЧИ (исправлена) ==================== -->
             <div class="sandbox-panel" id="panel-tasks">
                 <!-- Блок управления типами задач (перенесён наружу из .tasks-layout) -->
-                <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                    <input type="text" id="taskTypeName" placeholder="Название типа (например, Печать)" style="flex:1; min-width:200px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:20px;">
-                    <button id="saveTaskTypeBtn" class="success" style="padding:8px 20px;">➕ Добавить тип</button>
+                <div class="task-type-toolbar">
+                    <input class="task-type-name-input" type="text" id="taskTypeName" placeholder="Название типа (например, Печать)">
+                    <button id="saveTaskTypeBtn" class="success button-form-wide">➕ Добавить тип</button>
                 </div>
                 <!-- Список типов задач (будет заполняться JS) -->
-                <div id="taskTypeList" class="task-type-list"><p style="color:#94a3b8;">Загрузка...</p></div>
+                <div id="taskTypeList" class="task-type-list"><p class="text-placeholder">Загрузка...</p></div>
 
                 <div class="tasks-layout">
                     <!-- Левая колонка: блоки задач, сгруппированные по типам -->
                     <div class="tasks-left" id="tasksLeftPanel">
-                        <p style="color:#94a3b8;">Загрузка...</p>
+                        <p class="text-placeholder">Загрузка...</p>
                     </div>
                     <!-- Правая колонка: конструктор техкарт (только техкарты) -->
                     <div class="tasks-right" id="tasksRightPanel">
-                        <div style="padding:16px; background:#f8fafc; border-radius:12px; height:100%;">
-                            <h4 style="margin:0 0 12px 0;">🧩 Конструктор техкарт</h4>
+                        <div class="techcard-builder">
+                            <h4 class="builder-heading">🧩 Конструктор техкарт</h4>
 
                             <!-- Поля для техкарты -->
-                            <div id="techcard-fields" style="margin-bottom:12px;">
-                                <label style="font-weight:500; font-size:0.85rem;">Название техкарты</label>
-                                <input type="text" id="techCardNameInput" placeholder="Введите название" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:20px; margin-top:4px;">
-                                <label style="font-weight:500; font-size:0.85rem; display:block; margin-top:8px;">Загрузить существующую</label>
-                                <select id="techCardSelect" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:20px; margin-top:4px;">
+                            <div class="field-group-compact" id="techcard-fields">
+                                <label class="field-label-small">Название техкарты</label>
+                                <input class="field-control-rounded" type="text" id="techCardNameInput" placeholder="Введите название">
+                                <label class="field-label-stacked">Загрузить существующую</label>
+                                <select class="field-control-rounded" id="techCardSelect">
                                     <option value="">-- Создать новую --</option>
                                 </select>
                             </div>
 
-                            <div style="margin-bottom:12px;">
-                                <label style="font-weight:500; font-size:0.85rem;">Задачи (порядок сверху вниз)</label>
-                                <div id="constructorTasksList" style="min-height:120px; border:2px dashed #cbd5e1; border-radius:12px; padding:8px; background:white; margin-top:4px;">
-                                    <p style="color:#94a3b8; text-align:center;">Перетащите сюда задачи</p>
+                            <div class="field-group-compact">
+                                <label class="field-label-small">Задачи (порядок сверху вниз)</label>
+                                <div class="constructor-dropzone" id="constructorTasksList">
+                                    <p class="empty-state-text">Перетащите сюда задачи</p>
                                 </div>
                             </div>
-                            <div style="display:flex; gap:8px;">
-                                <button id="saveConstructorBtn" style="flex:1; background:#22c55e; color:white; border:none; border-radius:20px; padding:8px; cursor:pointer;">💾 Сохранить</button>
-                                <button id="deleteConstructorBtn" style="flex:1; background:#ef4444; color:white; border:none; border-radius:20px; padding:8px; cursor:pointer;">🗑️ Удалить</button>
-                                <button id="clearConstructorBtn" style="flex:1; background:#94a3b8; color:white; border:none; border-radius:20px; padding:8px; cursor:pointer;">🧹 Очистить</button>
+                            <div class="button-row-compact">
+                                <button class="button-save-fill" id="saveConstructorBtn">💾 Сохранить</button>
+                                <button class="button-delete-fill" id="deleteConstructorBtn">🗑️ Удалить</button>
+                                <button class="button-clear-fill" id="clearConstructorBtn">🧹 Очистить</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- ===== СПИСОК ДОЛЖНОСТЕЙ (ТАБЛИЦА) ===== -->
-                <div style="margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <h4 style="margin:0;">📋 Список должностей</h4>
+                <div class="settings-section-divided">
+                    <div class="section-heading-row">
+                        <h4 class="heading-reset">📋 Список должностей</h4>
                     </div>
-                    <div style="display:flex; gap:8px; margin-bottom:12px;">
-                        <input type="text" id="newRoleNameInline" placeholder="Название новой должности" style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:20px;">
-                        <button id="addRoleInlineBtn" class="success" style="padding:8px 16px; border:none; border-radius:20px; background:#22c55e; color:white; cursor:pointer;">➕ Добавить</button>
+                    <div class="inline-create-row">
+                        <input class="inline-name-input" type="text" id="newRoleNameInline" placeholder="Название новой должности">
+                        <button id="addRoleInlineBtn" class="success button-add-inline">➕ Добавить</button>
                     </div>
-                    <table style="width:100%; border-collapse: collapse;">
+                    <table class="settings-table">
                         <thead>
                             <tr>
-                                <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #e2e8f0;">Название</th>
-                                <th style="text-align:center; padding:6px 8px; border-bottom:1px solid #e2e8f0;">Множ. назнач.</th>
-                                <th style="text-align:right; padding:6px 8px; border-bottom:1px solid #e2e8f0; width:80px;">Действия</th>
+                                <th class="table-heading-name">Название</th>
+                                <th class="table-heading-center">Множ. назнач.</th>
+                                <th class="table-heading-actions">Действия</th>
                             </tr>
                         </thead>
                         <tbody id="rolesSimpleList">
-                            <tr><td colspan="2" style="color:#94a3b8; text-align:center;">Загрузка...</td></tr>
+                            <tr><td class="empty-state-text" colspan="2">Загрузка...</td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
 
             <div class="sandbox-panel" id="panel-points">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+                <div class="points-header">
                     <div>
-                        <h3 style="margin:0 0 4px;">⭐ Баллы за выполнение задач</h3>
-                        <div style="color:#64748b;">Строки — задачи, столбцы — товары. Пустая ячейка означает, что баллы не заданы.</div>
+                        <h3 class="points-heading">⭐ Баллы за выполнение задач</h3>
+                        <div class="text-secondary">Строки — задачи, столбцы — товары. Пустая ячейка означает, что баллы не заданы.</div>
                     </div>
                     <button id="refreshPointsMatrixBtn" class="btn">Обновить</button>
                 </div>
-                <div id="pointsMatrixStatus" style="min-height:20px; margin-bottom:8px;"></div>
+                <div class="points-status" id="pointsMatrixStatus"></div>
                 <div id="pointsMatrixContainer">Загрузка...</div>
             </div>
 
@@ -824,7 +164,7 @@
                     <button id="refreshRolesBtn">🔄 Обновить</button>
                     <button id="addRoleBtn" class="success">➕ Добавить должность</button>
                 </div>
-                <div id="rolesList"><p style="color:#94a3b8;">Загрузка должностей...</p></div>
+                <div id="rolesList"><p class="text-placeholder">Загрузка должностей...</p></div>
             </div>
 
         </div>
@@ -852,29 +192,29 @@
                             <option value="">МП</option>
                         </select>
                     </div>
-                    <div class="form-group" style="margin-top:12px;">
+                    <div class="form-group field-spaced">
                         <label>Путь к файлу импорта</label>
-                        <input type="text" id="importPathInput" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1;" placeholder="Путь будет сгенерирован автоматически">
-                        <button type="button" id="resetPathBtn" class="btn-sm" style="margin-top:4px; background:#94a3b8; color:white; border:none; border-radius:20px; padding:2px 12px; cursor:pointer;">↻ Сбросить</button>
+                        <input class="path-input" type="text" id="importPathInput" placeholder="Путь будет сгенерирован автоматически">
+                        <button type="button" id="resetPathBtn" class="btn-sm button-reset-path">↻ Сбросить</button>
                     </div>
                     <!-- БЛОК ИМПОРТА ТОВАРОВ -->
-                    <div style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                    <div class="import-section">
+                        <div class="import-toolbar">
 
-                            <div id="manualAddForm" style="display: flex; margin-top: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-                                <select id="manualProductSelect" style="flex: 2; min-width: 150px; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 20px;">
+                            <div class="manual-product-form" id="manualAddForm">
+                                <select class="manual-product-select" id="manualProductSelect">
                                     <option value="">-- Выберите товар --</option>
                                 </select>
-                                <input type="number" id="manualProductQuantity" placeholder="Количество" style="width: 100px; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 20px;" min="1" value="1">
-                                <button type="button" id="manualAddConfirmBtn" class="btn" style="background: #22c55e;">➕ Добавить</button>
-                                <button type="button" id="importProductsBtn" class="btn" style="background: #3b82f6;">📥 Импорт товаров</button>
+                                <input class="quantity-input" type="number" id="manualProductQuantity" placeholder="Количество" min="1" value="1">
+                                <button type="button" id="manualAddConfirmBtn" class="btn button-success-bg">➕ Добавить</button>
+                                <button type="button" id="importProductsBtn" class="btn button-primary-bg">📥 Импорт товаров</button>
                             </div>
-                            <button type="button" id="clearImportBtn" class="btn btn-warning" style="display: none;">🗑️ Очистить</button>
-                            <span id="importStatus" style="color: #64748b; font-size: 0.9rem;"></span>
+                            <button type="button" id="clearImportBtn" class="btn btn-warning is-hidden">🗑️ Очистить</button>
+                            <span class="import-status-text" id="importStatus"></span>
                         </div>
-                        <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display: none;">
-                        <div id="importPreviewContainer" style="margin-top: 12px; overflow-x: auto; display: none;">
-                            <table id="importPreviewTable" class="report-table" style="width: 100%;">
+                        <input class="is-hidden" type="file" id="importFileInput" accept=".xlsx,.xls">
+                        <div class="import-preview" id="importPreviewContainer">
+                            <table id="importPreviewTable" class="report-table full-width">
                                 <thead>
                                     <tr>
                                         <th>Наименование</th>
@@ -888,11 +228,11 @@
                         </div>
                     </div>
 
-                    <div style="display:flex; gap:12px; margin-top:16px;">
-                        <button type="submit" class="success" style="padding:8px 24px;">Создать</button>
-                        <button type="button" id="cancelCreateBtn" style="background:#94a3b8; padding:8px 24px;">Отмена</button>
+                    <div class="form-actions-left">
+                        <button type="submit" class="success button-submit-wide">Создать</button>
+                        <button class="button-cancel-wide" type="button" id="cancelCreateBtn">Отмена</button>
                     </div>
-                    <div id="createError" style="color:red; margin-top:8px;"></div>
+                    <div class="form-error-spaced" id="createError"></div>
                 </form>
             </div>
         </div>
@@ -908,52 +248,67 @@
         </div>
 
         <div id="productModal" class="modal">
-            <div class="modal-content" style="max-width: 450px;">
-                <span class="close-product-modal" style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
+            <div class="modal-content modal-size-product">
+                <span class="close-product-modal modal-close-product">&times;</span>
                 <h3 id="productModalTitle">Создание товара</h3>
                 <form id="productForm">
                     <div class="form-group">
-                        <label>Название товара <span style="color:red;">*</span></label>
-                        <input type="text" id="productNameInput" placeholder="Короткое название" required style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1; margin-top:4px;">
+                        <label>Название товара <span class="required-mark">*</span></label>
+                        <input class="product-form-control" type="text" id="productNameInput" placeholder="Короткое название" required>
                     </div>
-                    <div class="form-group" style="margin-top:12px;">
+                    <div class="form-group field-spaced">
                         <label>Полное наименование</label>
-                        <input type="text" id="productFullNameInput" placeholder="Полное наименование (опционально)" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1; margin-top:4px;">
+                        <input class="product-form-control" type="text" id="productFullNameInput" placeholder="Полное наименование (опционально)">
                     </div>
-                    <div class="form-group" style="margin-top:12px;">
+                    <div class="form-group field-spaced">
                         <label>Техкарта</label>
-                        <select id="productTechCardSelect" style="width:100%; padding:8px; border-radius:20px; border:1px solid #cbd5e1; margin-top:4px;">
+                        <select class="product-form-control" id="productTechCardSelect">
                             <option value="">Без техкарты</option>
                         </select>
                     </div>
-                    <div style="display:flex; gap:12px; margin-top:16px; justify-content:flex-end;">
-                        <button type="button" id="cancelProductBtn" style="background:#94a3b8; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Отмена</button>
-                        <button type="submit" id="saveProductBtn" style="background:#22c55e; border:none; color:white; padding:8px 16px; border-radius:20px; cursor:pointer;">Сохранить</button>
+                    <div class="form-actions-end">
+                        <button class="button-cancel-form" type="button" id="cancelProductBtn">Отмена</button>
+                        <button class="button-save-form" type="submit" id="saveProductBtn">Сохранить</button>
                     </div>
-                    <div id="productFormError" style="color:red; margin-top:8px;"></div>
+                    <div class="form-error-spaced" id="productFormError"></div>
                 </form>
             </div>
         </div>
         <!-- Модальное окно настроек типа сделки -->
         <div id="dealTypeSettingsModal" class="modal">
-            <div class="modal-content" style="max-width: 600px;">
-                <span class="close-deal-type-settings" style="float:right; font-size:1.8rem; cursor:pointer;">&times;</span>
+            <div class="modal-content modal-size-settings">
+                <span class="close-deal-type-settings modal-close-settings">&times;</span>
                 <h3>⚙️ Настройки типа сделки</h3>
                 <div id="dealTypeSettingsBody">
                     <!-- Здесь будет содержимое позже -->
-                    <p style="color: #94a3b8;">Содержимое настроек будет добавлено позже.</p>
+                    <p class="text-muted">Содержимое настроек будет добавлено позже.</p>
                 </div>
             </div>
         </div>
         <!-- ==================== ПАНЕЛЬ: РАССЫЛКА ==================== -->
         <div class="sandbox-panel" id="panel-mailing">
-            <h3 style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:0;">
+            <h3 class="task-list-heading">
                 <span>📋 Задачи</span>
-                <span id="adminActiveTasksCount" style="color:#2563eb; font-size:0.9rem;">Активные задачи: 0</span>
-                <span id="adminCompletedTasksCount" style="color:#16a34a; font-size:0.9rem;">Завершенные задачи: 0</span>
+                <span class="active-task-count" id="adminActiveTasksCount">Активные задачи: 0</span>
+                <span class="completed-task-count" id="adminCompletedTasksCount">Завершенные задачи: 0</span>
             </h3>
+            <div id="mailingFilters" class="mailing-filters">
+                <div class="mailing-filter-field"><label>Период</label><input type="text" id="filterDateRange" placeholder="Выберите даты" class="mailing-date-filter"></div>
+                <div class="mailing-filter-field"><label>Тип сделки</label><select id="filterDealType"><option value="">Все</option><option value="FBS">FBS</option><option value="FBO">FBO</option><option value="FSK">FSK</option></select></div>
+                <div class="mailing-filter-field"><label>Тип задачи</label><select id="filterTaskType"><option value="">Все</option></select></div>
+                <div class="mailing-filter-field"><label>Задача</label><select id="filterTask" class="mailing-wide-filter"><option value="">Все</option></select></div>
+                <div class="mailing-filter-field"><label>Товар</label><select id="filterProduct" class="mailing-wide-filter"><option value="">Все</option></select></div>
+                <div class="mailing-filter-field"><label>Сотрудник</label><select id="filterEmployee"><option value="">Все</option></select></div>
+                <div class="mailing-filter-field"><label>Роль</label><select id="filterRole"><option value="">Все</option><option value="main">Основной</option><option value="co">Соисполнитель</option></select></div>
+                <div class="mailing-filter-field"><label>Статус</label><select id="filterStatus"><option value="">Все</option><option value="not_completed">🔵 Не завершена</option><option value="active">🔵 Активна</option><option value="not_started">❌ Не начата</option><option value="in_progress">🔄 В процессе</option><option value="on_break">⏸️ Перерыв</option><option value="completed">✅ Завершена</option></select></div>
+                <div class="mailing-filter-actions">
+                    <button id="applyMailingFilters" class="btn button-primary-bg">🔍 Найти</button>
+                    <button id="resetMailingFilters" class="btn button-secondary-bg">✖ Сбросить все</button>
+                    <button id="openTaskCreationBtn" class="btn button-success-dark-bg">＋ Добавить задачу</button>
+                </div>
+            </div>
             <div id="mailingContainer">
-                <p style="color: #94a3b8;">Список уведомлений по задачам будет отображаться здесь.</p>
+                <p class="text-muted">Список уведомлений по задачам будет отображаться здесь.</p>
                 <!-- Позже добавим таблицу с уведомлениями -->
             </div>
         </div>

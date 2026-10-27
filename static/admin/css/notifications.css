@@ -1,0 +1,96 @@
+    .close-edit-notif {
+color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .close-edit-notif:hover {
+        color: black;
+    }
+
+    .recent-table table {
+        width: 100%;
+        border-collapse: separate;
+        margin-top: 0;
+    }
+
+    .recent-table th {
+        position: sticky;
+        top: 0;
+        background: #f8fafc;
+        z-index: 20;
+    }
+
+    .report-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+
+    .close-create-notif {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .close-create-notif:hover {
+        color: black;
+    }
+
+    .flatpickr-calendar button,
+    .flatpickr-calendar .flatpickr-prev-month,
+    .flatpickr-calendar .flatpickr-next-month {
+        height: auto !important;
+        padding: 4px 6px !important;
+        background: transparent !important;
+        border: none !important;
+        margin: 0 !important;
+        font-size: 14px !important;
+        line-height: 1 !important;
+        color: #3b82f6 !important;
+    }
+    .flatpickr-calendar button:hover {
+        background: #e2e8f0 !important;
+    }
+
+    .flatpickr-current-month .cur-month,
+    .flatpickr-current-month .cur-year {
+        font-size: 14px;
+    }
+
+    .flatpickr-calendar {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border-radius: 16px;
+        margin-top: 4px;
+    }
+    .report-table td a {
+        color: #1e293b;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+
+    .report-table td a:hover {
+        color: #3b82f6 !important;
+        text-decoration: underline !important;
+        cursor: pointer;
+    }
+
+    .recent-start {
+        background-color: rgba(34, 197, 94, 0.15);
+    }
+    .recent-break-start {
+        background-color: rgba(250, 204, 21, 0.2);
+    }
+    .recent-break-end {
+        background-color: rgba(249, 115, 22, 0.2);
+    }
+    .recent-end {
+        background-color: rgba(239, 68, 68, 0.15);
+    }
+    #notificationsContainer .report-table td:nth-child(6) {
+        text-align: left;
+    }
+.notification-grade-label { font-size:.7rem; color:#64748b; }
+.notification-actions { display:flex; flex-wrap:wrap; gap:4px; }

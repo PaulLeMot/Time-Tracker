@@ -1,20 +1,20 @@
 <!-- tabs/monthly.html -->
 <div class="monthly-tab-content">
-    <div class="date-picker" style="flex-wrap: wrap; gap: 12px; align-items: center;">
+    <div class="date-picker period-toolbar">
         <label>Период:
-            <input type="text" id="periodDateRange" placeholder="Выберите период" style="width: 240px;">
+            <input class="period-date-input" type="text" id="periodDateRange" placeholder="Выберите период">
         </label>
         <button id="loadPeriodReportBtn" class="btn">Показать</button>
-        <label style="margin-left: 8px;">Сотрудник:
-            <select id="periodEmployeeFilter" style="padding: 6px 12px; border-radius: 20px; border: 1px solid #cbd5e1;">
+        <label class="period-employee-label">Сотрудник:
+            <select class="period-employee-select" id="periodEmployeeFilter">
                 <option value="">Все</option>
             </select>
         </label>
-        <span id="trafficPeriodBtn" style="cursor:pointer; font-size:1.2rem; margin-left:8px;" title="Переключить режим светофора">🚦</span>
+        <span class="period-traffic-toggle" id="trafficPeriodBtn" title="Переключить режим светофора">🚦</span>
     </div>
     <div id="periodReportContainer">Выберите период и нажмите «Показать»</div>
-    <div id="trafficPeriodContainer" style="display: none; margin-top: 16px; overflow-x: auto;"></div>
-    <div id="periodNotificationsContainer" style="margin-top: 24px; display: none;">
+    <div class="period-traffic-container" id="trafficPeriodContainer"></div>
+    <div class="period-notifications-container" id="periodNotificationsContainer">
         <h3>📋 Уведомления сотрудника за период</h3>
         <div id="periodNotificationsList">Загрузка...</div>
     </div>
