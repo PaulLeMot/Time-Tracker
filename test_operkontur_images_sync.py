@@ -16,7 +16,7 @@ class ImageSyncTests(unittest.TestCase):
             with self.assertRaises(SyncError):authenticate(secret,stamp,proof,content,clock)
     def test_validation_rejects_duplicates_path_in_code_and_unknown_fields(self):
         self.assertEqual(parse(self.body())['products'][0]['code'],'00123')
-        for rows in [[self.row(),self.row()],[{**self.row(),'code':'../12'}],[{**self.row(),'sql':'SYN'}],[{**self.row(),'name':''}]]:
+        for rows in [[self.row(),self.row()],[{**self.row(),'code':'../12'}],[{**self.row(),'sql':'SYN'}],[{**self.row(),'name':''}],[{**self.row(),'product_type':''}]]:
             with self.assertRaises(SyncError):parse(json.dumps({'version':1,'job_id':'a'*32,'products':rows}).encode())
     def test_only_available_matching_jpeg_is_eligible(self):
         with tempfile.TemporaryDirectory() as d:

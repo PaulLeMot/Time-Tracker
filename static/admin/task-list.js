@@ -270,7 +270,9 @@ function renderMailingTable(groupedNotifications, container) {
             task.products.forEach((product, index) => {
                 if (index) productsCell.append(document.createElement('br'));
                 productsCell.append(document.createTextNode(`${product.name} `));
-                productsCell.append(createElement('span', { className: 'product-quantity', text: `(${product.quantity})` }));
+                if (product.quantity !== null && product.quantity !== undefined) {
+                    productsCell.append(createElement('span', { className: 'product-quantity', text: `(${product.quantity})` }));
+                }
             });
         } else {
             productsCell.textContent = '—';

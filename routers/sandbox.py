@@ -441,7 +441,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
             products_table.append({
                 "product_id": pid,
                 "product_name": comp["product_type_name"],
-                "expected_quantity": deal_products_map.get(pid, 0),  # <-- ДОБАВЛЕНО
+                "expected_quantity": deal_products_map.get(pid),
                 "defect_qty": comp["defect_quantity"],
                 "defect_comment": comp.get("defect_comment"),
                 "produced_by": {str(d["employee_id"]): d["quantity"] for d in comp["distributions"]}
@@ -451,7 +451,7 @@ async def get_deal(deal_id: int, db: AsyncSession = Depends(get_db)):
             products_table.append({
                 "product_id": pid,
                 "product_name": p_data.get("name", f"Товар #{pid}"),
-                "expected_quantity": deal_products_map.get(pid, 0),  # <-- ДОБАВЛЕНО
+                "expected_quantity": deal_products_map.get(pid),
                 "defect_qty": 0,
                 "defect_comment": None,
                 "produced_by": {}
@@ -1190,12 +1190,13 @@ async def preview_import(file: UploadFile = File(...)):
     for _, row in df.iterrows():
         name = str(row[name_col]) if name_col in row else ''
         full_name = str(row[full_name_col]) if full_name_col in row else ''
-        quantity = 1
+        quantity = None
         if quantity_col and quantity_col in row:
             try:
-                quantity = int(row[quantity_col])
+                if pd.notna(row[quantity_col]):
+                    quantity = int(row[quantity_col])
             except (ValueError, TypeError):
-                quantity = 1
+                quantity = None
         # Пропускаем пустые названия
         if name and name.strip():
             result.append({
@@ -1271,12 +1272,13 @@ async def auto_import(
     for _, row in df.iterrows():
         name = str(row[name_col]) if name_col in row else ''
         full_name = str(row[full_name_col]) if full_name_col in row else ''
-        quantity = 1
+        quantity = None
         if quantity_col and quantity_col in row:
             try:
-                quantity = int(row[quantity_col])
-            except:
-                quantity = 1
+                if pd.notna(row[quantity_col]):
+                    quantity = int(row[quantity_col])
+            except (ValueError, TypeError):
+                quantity = None
         if name and name.strip():
             result.append({
                 "name": name.strip(),
@@ -1337,12 +1339,13 @@ async def import_by_path(data: ImportPathRequest, db: AsyncSession = Depends(get
     for _, row in df.iterrows():
         name = str(row[name_col]) if name_col in row else ''
         full_name = str(row[full_name_col]) if full_name_col in row else ''
-        quantity = 1
+        quantity = None
         if quantity_col and quantity_col in row:
             try:
-                quantity = int(row[quantity_col])
-            except:
-                quantity = 1
+                if pd.notna(row[quantity_col]):
+                    quantity = int(row[quantity_col])
+            except (ValueError, TypeError):
+                quantity = None
         if name and name.strip():
             result.append({
                 "name": name.strip(),
@@ -1433,9 +1436,15 @@ async def start_deal(
         for p in products:
             key = p['full_name']
             if key not in product_quantities:
-                product_quantities[key] = 0
-            product_quantities[key] += p['quantity']
-        items_text = ", ".join([f"{name} — {qty} шт." for name, qty in product_quantities.items()])
+                product_quantities[key] = p['quantity']
+            elif product_quantities[key] is None or p['quantity'] is None:
+                product_quantities[key] = None
+            else:
+                product_quantities[key] += p['quantity']
+        items_text = ", ".join(
+            name if qty is None else f"{name} — {qty} шт."
+            for name, qty in product_quantities.items()
+        )
         message = f"📋 Задача: {task.name}\nТовары: {items_text}"
 
         notification = Notification(
@@ -2097,7 +2106,7 @@ from typing import List
 
 class UpdateProductQuantity(BaseModel):
     product_id: int
-    quantity: int
+    quantity: Optional[int] = None
 
 async def update_task_products_in_notifications(
     db: AsyncSession,

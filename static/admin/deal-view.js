@@ -44,14 +44,14 @@ function createDealProducts(deal) {
         const tbody = createElement('tbody');
         deal.products.forEach(product => {
             const quantityInput = createElement('input', {
-                className: 'product-quantity-input', attrs: { type: 'number', min: 1, value: product.quantity }, dataset: { productId: product.id }
+                className: 'product-quantity-input', attrs: { type: 'number', min: 0, value: product.quantity ?? '' }, dataset: { productId: product.id }
             });
             quantityInput.style.display = 'none';
             tbody.append(createElement('tr', { dataset: { productId: product.id } }, [
                 createElement('td', { text: product.name }),
                 createElement('td', { text: product.full_name || '—' }),
                 createElement('td', { className: 'cell-center' }, [
-                    createElement('span', { className: 'product-quantity-display', text: product.quantity }), quantityInput
+                    createElement('span', { className: 'product-quantity-display', text: product.quantity ?? '—' }), quantityInput
                 ]),
                 createElement('td', { className: 'cell-center' }, createElement('button', {
                     className: 'delete-product-from-deal icon-delete-button', text: '✖', attrs: { type: 'button' }, dataset: { productId: product.id }
@@ -74,7 +74,7 @@ function createAddProductBlock() {
         createElement('h4', { text: '➕ Добавить товар в сделку' }),
         createElement('div', { className: 'add-product-controls' }, [
             select,
-            createElement('input', { className: 'add-product-quantity', attrs: { id: 'addProductQuantity', type: 'number', min: 1, value: 1, placeholder: 'Количество' } }),
+            createElement('input', { className: 'add-product-quantity', attrs: { id: 'addProductQuantity', type: 'number', min: 0, placeholder: 'Количество (необязательно)' } }),
             createElement('button', { className: 'btn button-success-bg', text: '➕ Добавить', attrs: { id: 'addProductToDealBtn', type: 'button' } })
         ]),
         createElement('div', { className: 'form-error', attrs: { id: 'addProductError' } })
@@ -174,7 +174,7 @@ function createTaskProductEditor(products) {
     if (!products.length) list.append(createElement('span', { className: 'text-muted', text: 'Нет товаров' }));
     products.forEach(product => list.append(createElement('span', { className: 'task-product-chip' }, [
         document.createTextNode(`${product.name} `),
-        createElement('input', { className: 'task-product-quantity', attrs: { type: 'number', min: 1, value: product.quantity }, dataset: { productId: product.id } }),
+        createElement('input', { className: 'task-product-quantity', attrs: { type: 'number', min: 0, value: product.quantity ?? '' }, dataset: { productId: product.id } }),
         createElement('button', { className: 'task-product-delete icon-delete-button', text: '✖', attrs: { type: 'button' }, dataset: { productId: product.id } })
     ])));
     const select = createElement('select', { className: 'task-product-add-select' });
@@ -182,7 +182,7 @@ function createTaskProductEditor(products) {
         createElement('strong', { text: 'Товары задачи:' }), list,
         createElement('div', { className: 'task-product-add-row' }, [
             select,
-            createElement('input', { className: 'task-product-add-quantity', attrs: { type: 'number', min: 1, value: 1 } }),
+            createElement('input', { className: 'task-product-add-quantity', attrs: { type: 'number', min: 0, placeholder: 'Количество (необязательно)' } }),
             createElement('button', { className: 'task-product-add btn button-success-bg', text: '➕ Добавить', attrs: { type: 'button' } })
         ])
     ]);

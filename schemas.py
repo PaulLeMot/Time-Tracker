@@ -31,7 +31,7 @@ class StageResponse(BaseModel):
 
 class DealProductCreate(BaseModel):
     product_id: int
-    quantity: int
+    quantity: Optional[int] = None
 
 class DealCreate(BaseModel):
     title: str
@@ -48,4 +48,4 @@ class ProductUpdate(BaseModel):
 class DealProductItem(BaseModel):
     name: str
     full_name: Optional[str] = None
-    quantity: int = 1
+    quantity: Optional[int] = None

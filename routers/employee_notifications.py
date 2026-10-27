@@ -1027,7 +1027,7 @@ async def get_independent_task_details(
         {
             "id": item.get("id") or product_ids_by_name.get(item.get("name")),
             "name": item.get("name"),
-            "quantity": item.get("quantity", 1),
+            "quantity": item.get("quantity"),
         }
         for item in products
     ]

@@ -205,7 +205,11 @@ import { createElement, appendLabeledValue, showMessage } from './dom.js';
         details.append(createElement('div', {}, createElement('strong', { text: 'Товары:' })));
         if (products.length) {
             const list = createElement('ul');
-            products.forEach(product => list.append(createElement('li', { text: `${product.name} (${product.quantity})` })));
+            products.forEach(product => list.append(createElement('li', {
+                text: product.quantity === null || product.quantity === undefined
+                    ? product.name
+                    : `${product.name} (${product.quantity})`
+            })));
             details.append(list);
         } else {
             details.append(createElement('p', { text: 'Товары не указаны' }));
@@ -218,7 +222,11 @@ import { createElement, appendLabeledValue, showMessage } from './dom.js';
     }
 
     function formatProductsSummary(products) {
-        return products.length ? products.map(product => `${product.name}(${product.quantity})`).join(', ') : 'нет товаров';
+        return products.length
+            ? products.map(product => product.quantity === null || product.quantity === undefined
+                ? product.name
+                : `${product.name}(${product.quantity})`).join(', ')
+            : 'нет товаров';
     }
 
     function appendTaskTime(parent, notification, isMain) {
@@ -343,7 +351,7 @@ import { createElement, appendLabeledValue, showMessage } from './dom.js';
                     if (match) {
                         return { name: match[1].trim(), quantity: parseInt(match[2]) };
                     } else {
-                        return { name: item, quantity: 1 };
+                        return { name: item, quantity: null };
                     }
                 });
             }
@@ -468,7 +476,7 @@ import { createElement, appendLabeledValue, showMessage } from './dom.js';
                         });
                     } else {
                         if (assignees.length > 0) {
-                            employeeState.completion.distributions[pt.id][assignees[0].employee_id] = pt.quantity;
+                            employeeState.completion.distributions[pt.id][assignees[0].employee_id] = pt.quantity ?? 0;
                             for (let i = 1; i < assignees.length; i++) {
                                 employeeState.completion.distributions[pt.id][assignees[i].employee_id] = 0;
                             }
@@ -477,7 +485,7 @@ import { createElement, appendLabeledValue, showMessage } from './dom.js';
                 } else {
                     employeeState.completion.distributions[pt.id] = {};
                     if (assignees.length > 0) {
-                        employeeState.completion.distributions[pt.id][assignees[0].employee_id] = pt.quantity;
+                        employeeState.completion.distributions[pt.id][assignees[0].employee_id] = pt.quantity ?? 0;
                         for (let i = 1; i < assignees.length; i++) {
                             employeeState.completion.distributions[pt.id][assignees[i].employee_id] = 0;
                         }
@@ -677,10 +685,10 @@ export function renderDefectTable() {
         const row = createElement('tr', { dataset: { productTypeId: product.id } });
         row.append(
             createElement('td', { text: product.name }),
-            createElement('td', { text: product.quantity }),
+            createElement('td', { text: product.quantity ?? '—' }),
             createElement('td', {}, createElement('input', {
                 className: 'defect-input defect-quantity-input',
-                attrs: { type: 'number', min: 0, max: product.quantity, value: product.defect_quantity },
+                attrs: { type: 'number', min: 0, max: product.quantity ?? undefined, value: product.defect_quantity },
                 dataset: { productId: product.id }
             })),
             createElement('td', {}, createElement('input', {
@@ -742,8 +750,10 @@ export function renderDistributionTable() {
             (sum, assignee) => sum + (employeeState.completion.distributions[product.id]?.[assignee.employee_id] || 0), 0
         );
         const cell = createElement('td', { className: 'distribution-total-cell', dataset: { productId: product.id } });
-        cell.append(createElement('span', { className: 'expected-quantity', text: product.quantity }));
-        if (total !== product.quantity) cell.append(document.createTextNode(' '), createElement('span', { className: 'task-form-error', text: `(${total})` }));
+        cell.append(createElement('span', { className: 'expected-quantity', text: product.quantity ?? '—' }));
+        if (product.quantity !== null && product.quantity !== undefined && total !== product.quantity) {
+            cell.append(document.createTextNode(' '), createElement('span', { className: 'task-form-error', text: `(${total})` }));
+        }
         totalRow.append(cell);
     });
     totalRow.append(
@@ -869,8 +879,10 @@ export function updateDistributionTotals() {
             employeeState.completion.assignees.forEach(a => {
                 total += (employeeState.completion.distributions[pt.id]?.[a.employee_id] || 0);
             });
-            td.replaceChildren(createElement('span', { className: 'expected-quantity', text: pt.quantity }));
-            if (total !== pt.quantity) td.append(document.createTextNode(' '), createElement('span', { className: 'task-form-error', text: `(${total})` }));
+            td.replaceChildren(createElement('span', { className: 'expected-quantity', text: pt.quantity ?? '—' }));
+            if (pt.quantity !== null && pt.quantity !== undefined && total !== pt.quantity) {
+                td.append(document.createTextNode(' '), createElement('span', { className: 'task-form-error', text: `(${total})` }));
+            }
         }
     });
 }
@@ -887,7 +899,7 @@ export async function saveCompletionForProduct(productTypeId) {
         }));
         // Проверяем, что сумма распределений не превышает количество товара
         const totalDist = dists.reduce((sum, d) => sum + d.quantity, 0);
-        if (totalDist > pt.quantity) {
+        if (pt.quantity !== null && pt.quantity !== undefined && totalDist > pt.quantity) {
             document.getElementById('completeError').innerText = '';
             updateDistributionTotals();
             employeeState.completionSaving = false;
@@ -939,7 +951,7 @@ document.getElementById('finalCompleteBtn').addEventListener('click', async func
         let allValid = true;
         for (const pt of employeeState.completion.productTypes) {
             const total = employeeState.completion.assignees.reduce((sum, a) => sum + (employeeState.completion.distributions[pt.id]?.[a.employee_id] || 0), 0);
-            if (total !== pt.quantity) {
+            if (pt.quantity !== null && pt.quantity !== undefined && total !== pt.quantity) {
                 allValid = false;
                 break;
             }
@@ -1059,7 +1071,7 @@ export function initTaskCreationModal() {
             const productRows = data.products.map(item => createElement('div', { className: 'product-choice-row' }, [
                 createElement('input', { className: 'new-task-product', attrs: { type: 'checkbox', value: item.id }, dataset: { name: item.name } }),
                 createElement('span', { text: item.name }),
-                createElement('input', { className: 'new-task-product-quantity', attrs: { type: 'number', min: 1, value: 1, title: 'Количество' }, dataset: { productId: item.id } })
+                createElement('input', { className: 'new-task-product-quantity', attrs: { type: 'number', min: 0, title: 'Количество (необязательно)' }, dataset: { productId: item.id } })
             ]));
             document.getElementById('newTaskProducts').replaceChildren(...(productRows.length ? productRows : [createElement('span', { className: 'text-secondary', text: 'Нет товаров' })]));
         } catch (errorValue) {
@@ -1082,11 +1094,14 @@ export function initTaskCreationModal() {
         const error = document.getElementById('newTaskCreationError');
         const employeeIds = [...modal.querySelectorAll('.new-task-employee:checked')].map(item => Number(item.value));
         const mainEmployee = modal.querySelector('input[name="newTaskMainEmployee"]:checked');
-        const products = [...modal.querySelectorAll('.new-task-product:checked')].map(item => ({
-            id: Number(item.value),
-            name: item.dataset.name,
-            quantity: Math.max(1, Number(modal.querySelector(`.new-task-product-quantity[data-product-id="${item.value}"]`)?.value || 1))
-        }));
+        const products = [...modal.querySelectorAll('.new-task-product:checked')].map(item => {
+            const rawQuantity = modal.querySelector(`.new-task-product-quantity[data-product-id="${item.value}"]`)?.value.trim() || '';
+            return {
+                id: Number(item.value),
+                name: item.dataset.name,
+                quantity: rawQuantity === '' ? null : Number(rawQuantity)
+            };
+        });
         if (!employeeIds.length) { error.textContent = 'Выберите хотя бы одного сотрудника'; return; }
         if (!mainEmployee || !employeeIds.includes(Number(mainEmployee.value))) { error.textContent = 'Выберите основного исполнителя'; return; }
         const taskId = Number(document.getElementById('newTaskTemplate').value);

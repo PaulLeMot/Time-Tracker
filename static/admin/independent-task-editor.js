@@ -73,7 +73,10 @@ export async function openIndependentTaskEditor(independentTaskId) {
             if (!selectedIds.length) { error.textContent = 'Выберите хотя бы одного сотрудника'; return; }
             if (!selectedMain || !selectedIds.includes(Number(selectedMain.value))) { error.textContent = 'Выберите основного исполнителя'; return; }
             const newMainId = Number(selectedMain.value);
-            const products = [...body.querySelectorAll('.independent-edit-product:checked')].map(item => ({id:Number(item.value), name:item.dataset.name, quantity:Math.max(1, Number(body.querySelector(`.independent-edit-product-quantity[data-product-id="${item.value}"]`)?.value || 1))}));
+            const products = [...body.querySelectorAll('.independent-edit-product:checked')].map(item => {
+                const rawQuantity = body.querySelector(`.independent-edit-product-quantity[data-product-id="${item.value}"]`)?.value.trim() || '';
+                return {id:Number(item.value), name:item.dataset.name, quantity:rawQuantity === '' ? null : Number(rawQuantity)};
+            });
             button.disabled = true;
             error.textContent = '';
             try {
@@ -138,7 +141,7 @@ function createIndependentEditor(task, options, score, assignedIds, mainAssignee
             checkbox,
             createElement('span', { text: product.name }),
             createElement('input', {
-                className: 'independent-edit-product-quantity', attrs: { type: 'number', min: 1, value: selected?.quantity || 1 },
+                className: 'independent-edit-product-quantity', attrs: { type: 'number', min: 0, value: selected?.quantity ?? '' },
                 dataset: { productId: product.id }
             })
         ]));
@@ -187,8 +190,8 @@ function createIndependentProductionTable(task, completionMap) {
     task.products.forEach(product => {
         const completion = completionMap[String(product.id)] || {};
         const values = new Map((completion.distributions || []).map(item => [Number(item.employee_id), Number(item.quantity || 0)]));
-        const row = createElement('tr', { className: 'independent-product-row', dataset: { productId: product.id, quantity: product.quantity } });
-        row.append(createElement('td', { text: product.name }), createElement('td', { className: 'expected-quantity', text: product.quantity }));
+        const row = createElement('tr', { className: 'independent-product-row', dataset: { productId: product.id, quantity: product.quantity ?? '' } });
+        row.append(createElement('td', { text: product.name }), createElement('td', { className: 'expected-quantity', text: product.quantity ?? '—' }));
         task.assignees.forEach(employee => row.append(createElement('td', {}, createElement('input', {
             className: 'independent-product-distribution', attrs: { type: 'number', min: 0, value: values.get(Number(employee.employee_id)) || 0 },
             dataset: { employeeId: employee.employee_id }

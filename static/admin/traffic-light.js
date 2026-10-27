@@ -2214,11 +2214,11 @@ export async function renderCurrentRoles(employeeId) {
 export async function saveProductQuantity(input, dealId) {
     const tr = input.closest('tr');
     const productId = parseInt(tr ? tr.dataset.productId : input.dataset.productId);
-    const quantity = parseInt(input.value);
-    if (isNaN(productId) || isNaN(quantity) || quantity < 1) {
+    const quantity = input.value.trim() === '' ? null : Number(input.value);
+    if (isNaN(productId) || (quantity !== null && (!Number.isInteger(quantity) || quantity < 0))) {
         const span = input.closest('td').querySelector('.product-quantity-display');
         if (span) {
-            input.value = span.textContent;
+            input.value = span.textContent === '—' ? '' : span.textContent;
             span.style.display = 'inline';
         }
         input.style.display = 'none';
@@ -2237,7 +2237,7 @@ export async function saveProductQuantity(input, dealId) {
         }
         const span = input.closest('td').querySelector('.product-quantity-display');
         if (span) {
-            span.textContent = quantity;
+            span.textContent = quantity ?? '—';
             span.style.display = 'inline';
         }
         input.style.display = 'none';
@@ -2247,7 +2247,7 @@ export async function saveProductQuantity(input, dealId) {
         showToast('Ошибка: ' + err.message, true);
         const span = input.closest('td').querySelector('.product-quantity-display');
         if (span) {
-            input.value = span.textContent;
+            input.value = span.textContent === '—' ? '' : span.textContent;
             span.style.display = 'inline';
         }
         input.style.display = 'none';

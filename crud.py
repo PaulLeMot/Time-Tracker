@@ -1061,10 +1061,11 @@ async def get_task_score_details(
         product_id = item.get("id") or product_ids_by_name.get(item.get("name"))
         if product_id:
             product_ids.append(int(product_id))
+        raw_quantity = item.get("quantity")
         normalized_products.append({
             "id": int(product_id) if product_id else None,
             "name": item.get("name"),
-            "quantity": int(item.get("quantity") or 0),
+            "quantity": int(raw_quantity) if raw_quantity is not None else None,
         })
     point_result = await db.execute(select(TaskProductPoint).where(
         TaskProductPoint.task_id == int(task_id),
@@ -1077,6 +1078,9 @@ async def get_task_score_details(
     total_points_raw = 0.0
     for product in normalized_products:
         product["points_per_unit"] = point_map.get(product["id"], 0)
+        if product["quantity"] is None:
+            product["total_points"] = None
+            continue
         product["total_points"] = round(product["quantity"] * product["points_per_unit"])
         total_points_raw += product["quantity"] * product["points_per_unit"]
 
@@ -1198,6 +1202,15 @@ async def get_independent_tasks(
     return result.unique().scalars().all()
 
 
+def _format_product_items(products: list[dict]) -> str:
+    return ", ".join(
+        item["name"]
+        if item.get("quantity") is None
+        else f"{item['name']} — {item['quantity']} шт."
+        for item in products
+    )
+
+
 async def _create_independent_assignee(
     db: AsyncSession,
     independent_task: IndependentTask,
@@ -1210,9 +1223,7 @@ async def _create_independent_assignee(
     message = f"📋 Независимая задача: {display_name}"
     products = products or []
     if products:
-        message += "\nТовары: " + ", ".join(
-            f"{item['name']} — {item.get('quantity', 1)} шт." for item in products
-        )
+        message += "\nТовары: " + _format_product_items(products)
     if independent_task.description:
         message += f"\n{independent_task.description}"
 
@@ -1358,9 +1369,7 @@ async def update_independent_task(
         independent_task.status = status
     if products is not _UNSET:
         display_name = independent_task.title or independent_task.task.name
-        product_text = ", ".join(
-            f"{item['name']} — {item.get('quantity', 1)} шт." for item in products
-        )
+        product_text = _format_product_items(products)
         for assignment in independent_task.assignees:
             extra_data = dict(assignment.notification.extra_data or {})
             extra_data["products"] = products
@@ -1519,9 +1528,7 @@ async def create_deal_task_assignment(
 
     ordered_ids = [main_employee_id] + [item for item in employee_ids if item != main_employee_id]
     products = products or []
-    product_text = ", ".join(
-        f"{item['name']} — {item.get('quantity', 1)} шт." for item in products
-    )
+    product_text = _format_product_items(products)
     message = f"📋 Задача: {task.name}"
     if product_text:
         message += f"\nТовары: {product_text}"
@@ -1958,12 +1965,21 @@ async def add_products_to_deal(
     """Привязать товары к сделке (создавая товары при необходимости)."""
     for item in products:
         product = await get_or_create_product_type(db, item.name, item.full_name)
-        deal_product = DealProductType(
-            deal_id=deal_id,
-            product_id=product.id,
-            quantity=item.quantity
+        result = await db.execute(
+            select(DealProductType).where(
+                DealProductType.deal_id == deal_id,
+                DealProductType.product_id == product.id,
+            )
         )
-        db.add(deal_product)
+        deal_product = result.scalar_one_or_none()
+        if deal_product:
+            deal_product.quantity = item.quantity
+        else:
+            db.add(DealProductType(
+                deal_id=deal_id,
+                product_id=product.id,
+                quantity=item.quantity,
+            ))
     await db.commit()
 
 async def get_deal_type_tasks(db: AsyncSession) -> dict:
@@ -2200,7 +2216,7 @@ async def get_task_total_quantity(
     deal_id: int,
     task_id: int,
     product_type_id: int
-) -> int:
+) -> Optional[int]:
     """
     Вычислить общее количество товаров конкретного типа, назначенных на задачу в рамках сделки.
     Учитывается только если задача присутствует в техкарте этого типа товара.
@@ -2217,8 +2233,8 @@ async def get_task_total_quantity(
         ProductType.id == product_type_id
     )
     result = await db.execute(stmt)
-    total = result.scalar() or 0
-    return int(total)
+    total = result.scalar()
+    return int(total) if total is not None else None
 
 
 async def create_or_update_task_completion(
@@ -2238,7 +2254,7 @@ async def create_or_update_task_completion(
     """
     # Проверяем, что сумма распределений равна общему количеству товаров для этого типа
     total_quantity = await get_task_total_quantity(db, deal_id, task_id, product_type_id)
-    if distributions:
+    if distributions and total_quantity is not None:
         sum_dist = sum(d.get("quantity", 0) for d in distributions)
         if sum_dist != total_quantity:
             raise ValueError(

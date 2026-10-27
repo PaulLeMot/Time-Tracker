@@ -131,8 +131,8 @@ class Explanation(Base):
 class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True)
-    code = Column(String, unique=True, nullable=True)
-    product_type = Column(String, nullable=True)
+    code = Column(String, unique=True, nullable=False)
+    product_type = Column(String, nullable=False)
     fandom = Column(String, nullable=True)
     name = Column(String, nullable=False)
 
@@ -170,8 +170,8 @@ class Deal(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String(200), nullable=False)
     deal_type_id = Column(Integer, ForeignKey("deal_types.id"))
-    ip_id = Column(Integer, ForeignKey("ip_list.id", ondelete="SET NULL"), nullable=True)
-    mp_id = Column(Integer, ForeignKey("mp_list.id", ondelete="SET NULL"), nullable=True)
+    ip_id = Column(Integer, ForeignKey("ip_list.id"), nullable=True)
+    mp_id = Column(Integer, ForeignKey("mp_list.id"), nullable=True)
     status = Column(String, default="in_progress")
 
     deal_type = relationship("DealType", back_populates="deals")
@@ -183,12 +183,16 @@ class Deal(Base):
 class DealProductType(Base):
     __tablename__ = "deal_products"
     id = Column(Integer, primary_key=True)
-    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"), nullable = True)
-    product_id = Column(Integer, ForeignKey("product_types.id"), nullable = True)
-    quantity = Column(Integer, nullable = True)
+    deal_id = Column(Integer, ForeignKey("deals.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("product_types.id"), nullable=False)
+    quantity = Column(Integer, nullable=True)
 
     deal = relationship("Deal", back_populates="deal_products")
     product_type = relationship("ProductType", back_populates="deal_products")
+    __table_args__ = (
+        UniqueConstraint("deal_id", "product_id"),
+        Index("idx_deal_products_deal_id", "deal_id"),
+    )
 
 class DealTypeTask(Base):
     __tablename__ = "deal_type_tasks"
@@ -206,7 +210,7 @@ class ProductType(Base):
     __tablename__ = "product_types"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    full_name = Column(Text, nullable=True)
+    full_name = Column(String, nullable=True)
     tech_card_id = Column(Integer, ForeignKey("tech_cards.id"), nullable=True)
     tech_card = relationship("TechCard", back_populates="products")
     deal_products = relationship("DealProductType", back_populates="product_type")
@@ -238,7 +242,6 @@ class Task(Base):
     task_completion_data = relationship("TaskCompletionData", back_populates="task", cascade="all, delete-orphan")
     independent_tasks = relationship("IndependentTask", back_populates="task")
     product_points = relationship("TaskProductPoint", back_populates="task", cascade="all, delete-orphan")
-    __table_args__ = (Index("idx_tasks_type_id", "task_type_id"),)
 
 
 class IndependentTask(Base):
@@ -319,7 +322,7 @@ class TaskProductPoint(Base):
 class TechCardTask(Base):
     __tablename__="tech_card_tasks"
     id = Column(Integer, primary_key=True)
-    tech_card_id=Column(Integer, ForeignKey("tech_cards.id"), nullable=False)
+    tech_card_id=Column(Integer, ForeignKey("tech_cards.id"), nullable=True)
     task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False)
     sequence = Column(Integer, nullable = False)
     task = relationship("Task", back_populates="tech_card_tasks")
@@ -372,8 +375,7 @@ class TaskExecution(Base):
             TaskExecutionStatus,
             name="taskexecutionstatus",
             values_callable=lambda enum_cls: [e.value for e in enum_cls],
-            native_enum=False,
-            length=20,
+            native_enum=True,
         ),
         default=TaskExecutionStatus.NOT_STARTED,
         nullable=False,
@@ -392,8 +394,6 @@ class TaskExecution(Base):
             "completion_percent IS NULL OR completion_percent BETWEEN 0 AND 100",
             name="ck_task_execution_completion_percent",
         ),
-        Index("idx_task_executions_employee_id", "employee_id"),
-        Index("idx_task_executions_notification_id", "notification_id"),
     )
 
 class TaskBreak(Base):

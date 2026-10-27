@@ -391,8 +391,12 @@ function showDetail(deal, selectedTaskId = null, expandedTaskIds = new Set()) {
         }
         taskContainer?.querySelector('.task-product-add')?.addEventListener('click', async () => {
             const productId = Number(productSelect?.value);
-            const quantity = Number(taskContainer.querySelector('.task-product-add-quantity')?.value);
-            if (!productId || quantity < 1) return showToast('Выберите товар и укажите количество', true);
+            const rawQuantity = taskContainer.querySelector('.task-product-add-quantity')?.value.trim() || '';
+            const quantity = rawQuantity === '' ? null : Number(rawQuantity);
+            if (!productId) return showToast('Выберите товар', true);
+            if (quantity !== null && (!Number.isInteger(quantity) || quantity < 0)) {
+                return showToast('Количество должно быть целым неотрицательным числом', true);
+            }
             try {
                 await apiFetch(`/api/sandbox/deals/${deal.id}/tasks/${selectedTask.task_id}/products`, {
                     method: 'PUT',
@@ -420,8 +424,10 @@ function showDetail(deal, selectedTaskId = null, expandedTaskIds = new Set()) {
         });
         taskContainer?.querySelectorAll('.task-product-quantity').forEach(input => {
             input.addEventListener('change', async () => {
-                const quantity = Number(input.value);
-                if (quantity < 1) return viewDeal(deal.id, selectedTask.task_id);
+                const quantity = input.value.trim() === '' ? null : Number(input.value);
+                if (quantity !== null && (!Number.isInteger(quantity) || quantity < 0)) {
+                    return viewDeal(deal.id, selectedTask.task_id);
+                }
                 try {
                     await apiFetch(`/api/sandbox/deals/${deal.id}/tasks/${selectedTask.task_id}/products`, {
                         method: 'PUT',
@@ -875,7 +881,7 @@ function showDetail(deal, selectedTaskId = null, expandedTaskIds = new Set()) {
         if (!row) return;
 
         const productId = parseInt(row.dataset.productId);
-        const expectedQty = parseInt(row.dataset.expectedQty);
+        const expectedQty = row.dataset.expectedQty === '' ? null : parseInt(row.dataset.expectedQty);
         const taskId = parseInt(row.dataset.taskId);
         const dealId = parseInt(row.dataset.dealId);
 
@@ -895,7 +901,7 @@ function showDetail(deal, selectedTaskId = null, expandedTaskIds = new Set()) {
         });
 
         // 2. Жесткая валидация: сумма распределений должна равняться количеству товара
-        if (sumDist !== expectedQty) {
+        if (expectedQty !== null && sumDist !== expectedQty) {
             showToast(`❌ Ошибка: сумма распределений (${sumDist}) не равна количеству товара (${expectedQty})`, true);
             row.style.backgroundColor = '#fef2f2'; // Подсвечиваем строку красным
             return;
@@ -1013,13 +1019,13 @@ async function addProductToDeal(dealId) {
     if (!select || !quantityInput) return;
 
     const productId = parseInt(select.value);
-    const quantity = parseInt(quantityInput.value);
+    const quantity = quantityInput.value.trim() === '' ? null : Number(quantityInput.value);
     if (!productId) {
         errorDiv.textContent = 'Выберите товар';
         return;
     }
-    if (isNaN(quantity) || quantity < 1) {
-        errorDiv.textContent = 'Количество должно быть больше 0';
+    if (quantity !== null && (!Number.isInteger(quantity) || quantity < 0)) {
+        errorDiv.textContent = 'Количество должно быть целым неотрицательным числом';
         return;
     }
 
@@ -1039,7 +1045,7 @@ async function addProductToDeal(dealId) {
         viewDeal(dealId);
         // Сбросить выбор
         select.value = '';
-        quantityInput.value = '1';
+        quantityInput.value = '';
     } catch (err) {
         errorDiv.textContent = err.message;
     }
@@ -1695,7 +1701,7 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
     if (manualAddCancelBtn) {
         manualAddCancelBtn.addEventListener('click', function() {
             if (manualProductSelect) manualProductSelect.selectedIndex = 0;
-            if (manualProductQuantity) manualProductQuantity.value = 1;
+            if (manualProductQuantity) manualProductQuantity.value = '';
         });
     }
 
@@ -1708,9 +1714,10 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
                 showToast('Выберите товар из списка', true);
                 return;
             }
-            const quantity = parseInt(manualProductQuantity.value) || 1;
-            if (quantity < 1) {
-                showToast('Количество должно быть больше 0', true);
+            const rawQuantity = manualProductQuantity.value.trim();
+            const quantity = rawQuantity === '' ? null : Number(rawQuantity);
+            if (quantity !== null && (!Number.isInteger(quantity) || quantity < 0)) {
+                showToast('Количество должно быть целым неотрицательным числом', true);
                 return;
             }
             const name = selectedOption.dataset.name;
@@ -1726,7 +1733,7 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
             importPreviewContainer.style.display = 'block';
             // Очищаем поля, но не скрываем форму
             if (manualProductSelect) manualProductSelect.selectedIndex = 0;
-            if (manualProductQuantity) manualProductQuantity.value = 1;
+            if (manualProductQuantity) manualProductQuantity.value = '';
             showToast(`✅ Товар "${name}" добавлен`);
         });
 
@@ -1766,7 +1773,7 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
                 <td>${escapeHtml(p.name)}</td>
                 <td>${escapeHtml(p.full_name || '')}</td>
                 <td>
-                    <input type="number" class="quantity-input import-quantity-input" value="${p.quantity}" data-index="${index}" min="1">
+                    <input type="number" class="quantity-input import-quantity-input" value="${p.quantity ?? ''}" data-index="${index}" min="0">
                 </td>
                 <td><button class="btn-sm btn-danger remove-import-item" data-index="${index}">✖</button></td>
             `;
@@ -1777,8 +1784,12 @@ async function saveTaskTime(input, dealId, field, notificationId = null, taskId 
         importPreviewBody.querySelectorAll('.quantity-input').forEach(input => {
             input.addEventListener('change', function() {
                 const idx = parseInt(this.dataset.index, 10);
-                let val = parseInt(this.value, 10);
-                if (isNaN(val) || val < 1) val = 1;
+                const rawValue = this.value.trim();
+                let val = rawValue === '' ? null : Number(rawValue);
+                if (val !== null && (!Number.isInteger(val) || val < 0)) {
+                    val = null;
+                    this.value = '';
+                }
                 importedProducts[idx].quantity = val;
                 updateImportStatus();
             });

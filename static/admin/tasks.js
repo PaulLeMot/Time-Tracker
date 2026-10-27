@@ -113,7 +113,12 @@ export function createProductionMatrixElement(task, dealId) {
         table.append(createElement('thead', { className: 'table-light' }, header));
         const tbody = createElement('tbody');
         matrix.rows.forEach(product => {
-            const row = createElement('tr', { dataset: { productId: product.product_id, expectedQty: product.expected_quantity || 0, taskId: task.task_id, dealId } });
+            const row = createElement('tr', { dataset: {
+                productId: product.product_id,
+                expectedQty: product.expected_quantity ?? '',
+                taskId: task.task_id,
+                dealId
+            } });
             row.append(
                 createElement('td', { className: 'text-start', text: product.product_name }),
                 createElement('td', {}, createElement('input', { className: 'matrix-defect-qty matrix-number-input', attrs: { type: 'number', min: 0, value: product.defect_qty || 0 }, dataset: { productId: product.product_id } })),
@@ -207,7 +212,7 @@ export function initTaskCreationModal() {
             const productRows = data.products.map(item => createElement('div', { className: 'task-product-choice' }, [
                 createElement('input', { className: 'new-task-product', attrs: { type: 'checkbox', value: item.id }, dataset: { name: item.name } }),
                 createElement('span', { text: item.name }),
-                createElement('input', { className: 'new-task-product-quantity', attrs: { type: 'number', min: 1, value: 1, title: 'Количество' }, dataset: { productId: item.id } })
+                createElement('input', { className: 'new-task-product-quantity', attrs: { type: 'number', min: 0, title: 'Количество (необязательно)' }, dataset: { productId: item.id } })
             ]));
             const productsContainer = document.getElementById('newTaskProducts');
             productsContainer.replaceChildren(...(productRows.length ? productRows : [createElement('span', { className: 'text-muted', text: 'Нет товаров' })]));
@@ -229,7 +234,10 @@ export function initTaskCreationModal() {
         const error = document.getElementById('newTaskCreationError');
         const employeeIds = [...modal.querySelectorAll('.new-task-employee:checked')].map(item => Number(item.value));
         const main = modal.querySelector('input[name="newTaskMainEmployee"]:checked');
-        const products = [...modal.querySelectorAll('.new-task-product:checked')].map(item => ({id:Number(item.value), name:item.dataset.name, quantity:Math.max(1, Number(modal.querySelector(`.new-task-product-quantity[data-product-id="${item.value}"]`)?.value || 1))}));
+        const products = [...modal.querySelectorAll('.new-task-product:checked')].map(item => {
+            const rawQuantity = modal.querySelector(`.new-task-product-quantity[data-product-id="${item.value}"]`)?.value.trim() || '';
+            return {id:Number(item.value), name:item.dataset.name, quantity:rawQuantity === '' ? null : Number(rawQuantity)};
+        });
         const taskId = Number(document.getElementById('newTaskTemplate').value);
         if (!employeeIds.length) { error.textContent = 'Выберите хотя бы одного сотрудника'; return; }
         if (!main || !employeeIds.includes(Number(main.value))) { error.textContent = 'Выберите основного исполнителя'; return; }

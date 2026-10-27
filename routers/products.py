@@ -143,6 +143,14 @@ async def import_products(
             df[col] = df[col].astype(str).str.replace('\u00a0', ' ', regex=False).str.strip()
             df[col] = df[col].replace({'nan': None, 'None': None, '': None})
 
+        missing_required = df['product_type'].isna() | df['name'].isna()
+        if missing_required.any():
+            rows = [str(index + 2) for index in df.index[missing_required][:10]]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Тип и название товара обязательны. Проверьте строки: {', '.join(rows)}",
+            )
+
         dup_count = df.duplicated(subset=['code'], keep=False).sum()
         if dup_count:
             print(f"Найдено {dup_count} строк с дублирующимися кодами. Оставлены первые вхождения.")
@@ -152,7 +160,7 @@ async def import_products(
         for _, row in df.iterrows():
             product = Product(
                 code=row['code'],
-                product_type=row['product_type'] if pd.notna(row['product_type']) else None,
+                product_type=row['product_type'],
                 fandom=row['fandom'] if pd.notna(row['fandom']) else None,
                 name=row['name']
             )
@@ -166,6 +174,9 @@ async def import_products(
             "duplicates_removed": int(dup_count)   # обязательно int()
         }
 
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         import traceback
