@@ -1,10 +1,14 @@
 import hashlib,json,tempfile,time,unittest
 from pathlib import Path
-from operkontur_images_sync import authenticate,signature,parse,eligible,changes,available_codes,SyncError
+from operkontur_images_sync import authenticate,signature,parse,eligible,changes,available_codes,SyncError,parse_inventory
 
 class ImageSyncTests(unittest.TestCase):
     def row(self):return {'code':'00123','product_type':'SYN type','fandom':None,'name':'SYN product','sha256':hashlib.sha256(b'\xff\xd8SYN').hexdigest()}
     def body(self):return json.dumps({'version':1,'job_id':'a'*32,'products':[self.row()]}).encode()
+    def test_inventory_allows_only_unique_five_digit_codes(self):
+        self.assertEqual(parse_inventory(b'{"codes":["00123","00456"]}'),['00123','00456'])
+        for body in (b'{}',b'{"codes":["00123","00123"]}',b'{"codes":[12345]}',b'{"codes":["../12"]}',b'{"codes":[],"extra":1}',b'null',b'{"codes":[{}]}'):
+            with self.assertRaises(SyncError):parse_inventory(body)
     def test_signed_payload_tamper_wrong_key_and_expiry(self):
         key=b'SYN'*16;body=self.body();stamp=str(int(time.time()));proof=signature(key,stamp,body)
         authenticate(key,stamp,proof,body)

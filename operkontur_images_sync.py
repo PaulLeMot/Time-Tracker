@@ -2,7 +2,7 @@
 from pathlib import Path
 import hashlib,hmac,json,re,time,os
 
-VERSION='1.0.0'
+VERSION='1.1.0'
 MAX_BODY=8*1024*1024
 
 class SyncError(ValueError):pass
@@ -70,3 +70,12 @@ def available_codes(root):
             if n>200000:raise OSError('Too many image files')
             if re.fullmatch(r'[0-9]{5}\.jpg',entry.name) and entry.is_file(follow_symlinks=False):codes.append(entry.name[:5])
     return sorted(codes)
+
+
+def parse_inventory(body):
+    """Validate a bounded set of catalog codes; no paths or arbitrary fields."""
+    try:
+        value=json.loads(body);codes=value['codes']
+        if set(value)!={'codes'} or not isinstance(codes,list) or len(codes)>200000 or any(not isinstance(c,str) or not re.fullmatch('[0-9]{5}',c) for c in codes) or len(set(codes))!=len(codes):raise ValueError()
+    except (ValueError,TypeError,KeyError):raise SyncError('Invalid inventory request') from None
+    return codes
