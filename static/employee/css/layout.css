@@ -1,0 +1,210 @@
+/* ===== АДАПТИВНОСТЬ ===== */
+        @media (max-width: 768px) {
+            .container { padding: 16px; }
+            .tabs { overflow-x: auto; white-space: nowrap; flex-wrap: nowrap; }
+            .tab-btn { font-size: 0.85rem; padding: 6px 16px; }
+
+            /* Мобильные таблицы отчётов */
+            .report-table, .report-table thead, .report-table tbody,
+            .report-table tr, .report-table th, .report-table td {
+                display: block;
+            }
+            .report-table thead { display: none; }
+            .report-table tr {
+                margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 12px;
+                background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .report-table td {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 10px 12px; border-bottom: 1px solid #e2e8f0;
+                text-align: left; gap: 8px;
+            }
+            .report-table td:last-child { border-bottom: none; }
+            .report-table td::before {
+                content: attr(data-label); font-weight: 600; width: 40%;
+                color: #0f172a; flex-shrink: 0;
+            }
+            .report-table td:first-child { background-color: #f8fafc; font-weight: 600; }
+            .report-table td:last-child { justify-content: flex-end; }
+            .report-table td:last-child::before { content: none; }
+
+            /* Аккордеон мониторинга */
+            .monitor-accordion-item {
+                border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 12px;
+                background: white; overflow: hidden;
+            }
+            .monitor-accordion-header {
+                background: #f8fafc; padding: 14px 16px; font-weight: 600;
+                cursor: pointer; display: flex; justify-content: space-between;
+                align-items: center; font-size: 1rem;
+            }
+            .monitor-accordion-header:after { content: "▼"; font-size: 0.8rem; transition: transform 0.2s; }
+            .monitor-accordion-item.open .monitor-accordion-header:after { transform: rotate(180deg); }
+            .monitor-accordion-details { display: none; padding: 16px; border-top: 1px solid #e2e8f0; background: white; }
+            .monitor-accordion-item.open .monitor-accordion-details { display: block; }
+            .monitor-accordion-details-row {
+                display: flex; justify-content: space-between; padding: 8px 0;
+                border-bottom: 1px solid #f1f5f9;
+            }
+            .monitor-accordion-details-row:last-child { border-bottom: none; }
+
+            /* Аккордеон уведомлений */
+            .notifications-accordion-item {
+                border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 12px;
+                background: white; overflow: hidden;
+            }
+            .notifications-accordion-header {
+                background: #f8fafc; padding: 14px 16px; cursor: pointer;
+                display: flex; justify-content: space-between; align-items: center; font-size: 1rem;
+            }
+            .notifications-accordion-header:after { content: "▼"; font-size: 0.8rem; transition: transform 0.2s; }
+            .notifications-accordion-item.open .notifications-accordion-header:after { transform: rotate(180deg); }
+            .notifications-accordion-details { display: none; padding: 16px; border-top: 1px solid #e2e8f0; background: white; }
+            .notifications-accordion-item.open .notifications-accordion-details { display: block; }
+            .notif-detail-row { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9; }
+            .notif-detail-label { font-weight: 600; color: #0f172a; margin-bottom: 4px; font-size: 0.85rem; }
+            .notif-detail-value { font-size: 0.95rem; }
+            .notif-explanation-text { background: #f8fafc; padding: 12px; border-radius: 8px; margin-top: 12px; font-size: 0.9rem; }
+
+            .dropdown-menu { right: -10px !important; min-width: 160px !important; }
+        }
+        @media (max-width: 480px) {
+            .container { padding: 12px; }
+        }
+
+        /* Плоский пикер */
+        .flatpickr-calendar button,
+        .flatpickr-calendar .flatpickr-prev-month,
+        .flatpickr-calendar .flatpickr-next-month {
+            height: auto !important; padding: 4px 6px !important;
+            background: transparent !important; border: none !important;
+            margin: 0 !important; font-size: 14px !important; line-height: 1 !important;
+            color: #3b82f6 !important;
+        }
+        .flatpickr-calendar button:hover { background: #e2e8f0 !important; }
+        .flatpickr-current-month .cur-month, .flatpickr-current-month .cur-year { font-size: 14px; }
+        .flatpickr-calendar { box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 16px; margin-top: 4px; }
+
+        /* Контейнер для вкладок и контента */
+        .main-layout {
+            display: flex;
+            gap: 24px;          /* отступ между вкладками и содержимым */
+            margin-top: 16px;
+        }
+
+        /* Блок вкладок (вертикальный) */
+        .tabs {
+            display: flex;
+            flex-direction: column;   /* вертикальное расположение */
+            gap: 8px;
+            flex-shrink: 0;          /* не сжимается */
+            min-width: 50px;        /* чтобы текст не обрезался */
+            border-bottom: none;     /* убираем лишнюю линию */
+            padding-bottom: 0;
+            overflow-x: visible;
+        }
+
+        /* Кнопки вкладок */
+        .tab-btn {
+            background: transparent;
+            border: none;
+            padding: 10px 16px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            border-radius: 40px;
+            transition: all 0.2s;
+            text-align: left;        /* выравнивание текста по левому краю */
+            white-space: nowrap;     /* чтобы текст не переносился */
+        }
+
+        .tab-btn:hover {
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+
+        .tab-btn.active {
+            background: #3b82f6;
+            color: white;
+        }
+
+        /* Блок для содержимого вкладок */
+        .tab-contents {
+            flex: 1;                /* занимает всё оставшееся пространство */
+            min-width: 0;           /* предотвращает переполнение */
+        }
+
+        /* Основной контейнер */
+        .main-layout {
+            display: flex;
+            gap: 24px;
+            margin-top: 16px;
+            transition: gap 0.3s ease;
+        }
+
+        /* Блок вкладок (шторка) – теперь без min-width */
+        .tabs {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex-shrink: 0;
+            overflow: hidden;
+            width: auto;
+            max-width: 200px;          /* максимальная ширина при открытии */
+            transition: max-width 0.3s ease, opacity 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+            opacity: 1;
+            border-bottom: none;
+            padding: 0 !important;     /* убираем все внутренние отступы */
+            margin: 0 !important;      /* убираем внешние отступы */
+            min-width: 0 !important;   /* обязательно! чтобы max-width мог сработать */
+        }
+
+        /* Закрытое состояние шторки */
+        .main-layout.drawer-closed {
+            gap: 0;                    /* убираем отступ между вкладками и контентом */
+        }
+
+        .main-layout.drawer-closed .tabs {
+            max-width: 0 !important;   /* сворачиваем в ноль */
+            opacity: 0;
+            pointer-events: none;      /* чтобы кнопки вкладок не кликались */
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden;
+        }
+
+        /* Цвета текста для отметок (в колонке "Действие") */
+        .add-entry-color td:last-child {
+            color: inherit;   /* наследуем цвет от родителя, но можно переопределить ниже */
+            font-size: 0.85rem;   /* задаём меньший размер */
+            font-weight: 600;
+        }
+
+        /* Индивидуальные цвета */
+        .add-entry-color.start td:last-child { color: #22c55e; }
+        .add-entry-color.break_start td:last-child { color: #facc15; }
+        .add-entry-color.break_end td:last-child { color: #f97316; }
+        .add-entry-color.end td:last-child { color: #ef4444; }
+
+        /* На десктопе (ширина > 768px) игнорируем drawer-closed */
+        @media (min-width: 769px) {
+            /* Открываем панель, даже если класс есть */
+            .main-layout.drawer-closed {
+                gap: 24px !important;
+            }
+            .main-layout.drawer-closed .tabs {
+                max-width: 200px !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+
+            /* Скрываем кнопку-бургер на десктопе (она не нужна) */
+            #drawerToggle {
+                display: none !important;
+            }
+        }
+.monitor-accordion-header { width:100%; border:0; color:inherit; font:inherit; cursor:pointer; text-align:left; }

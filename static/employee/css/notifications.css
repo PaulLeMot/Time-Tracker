@@ -1,0 +1,14 @@
+/* ===== ЦВЕТОВЫЕ СТАТУСЫ УВЕДОМЛЕНИЙ ===== */
+        .notif-answered { background-color: rgba(34, 197, 94, 0.1) !important; }
+        .notif-pending { background-color: rgba(239, 68, 68, 0.1) !important; }
+
+        /* ===== ПРОЧЕЕ ===== */
+        .date-picker { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+        input, select { padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 20px; font-size: 1rem; }
+        #notifBadge {
+            display: none; background: #ef4444; color: white; border-radius: 20px;
+            padding: 2px 8px; font-size: 0.7rem; margin-left: 5px;
+        }
+.notifications-accordion-header { width:100%; border:0; color:inherit; font:inherit; cursor:pointer; text-align:left; }
+.notification-action-buttons { display:inline-flex; gap:4px; }
+.message-error { color:#dc2626; }

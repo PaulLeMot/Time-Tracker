@@ -1,0 +1,154 @@
+.recent-table {
+        overflow-x: visible;
+        overflow-y: visible;
+    }
+    .recent-table table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        margin-top: 0;
+        width: 100%;
+    }
+    .recent-table th, .recent-table td {
+        padding: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .row-not-started { background-color: #f1f5f9; }
+    .row-working { background-color: #dcfce7; }
+    .row-on-break { background-color: #fef9c3; }
+    .row-ended { background-color: #dbeafe; }
+    .worked-hours-cell { background-color: #dbeafe; }
+    .break-minutes-cell { background-color: #fef9c3; }
+    .break-minutes-cell { border-right: 1px solid #292929; }
+    .highlight-fio {
+        background-color: #e0f2fe !important;
+    }
+    .highlight-day {
+        background-color: #e0f2fe !important;
+    }
+    .break-minutes-cell {
+        border-right: 1px solid #292929;
+    }
+    .break-minutes-cell:last-child {
+        border-right: none;
+    }
+
+    .highlight-fio {
+        background-color: #e0f2fe !important;
+    }
+    .highlight-day-header {
+        background-color: #e0f2fe !important;
+    }
+    .highlight-hour-header {
+        background-color: #e0f2fe !important;
+    }
+    #weeklyReportContainer {
+        margin-top: 16px;
+    }
+
+    #weeklyReportContainer .report-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    #weeklyReportContainer .report-table thead th {
+        line-height: 40px;
+        vertical-align: middle;
+    }
+    .sortable-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        background: #f8fafc;
+        border-radius: 60px;
+        padding: 0;
+        flex-wrap: wrap;
+        align-items: center;
+        height: 38px;
+    }
+
+    .sortable-list li {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 40px;
+        padding: 6px 16px;
+        cursor: grab;
+        user-select: none;
+        transition: background 0.2s;
+        display: inline-block;
+        line-height: 1.2;
+        font-size: 0.85rem;
+    }
+    .sortable-list li:last-child {
+        border-bottom: none;
+    }
+    .sortable-list li:active {
+        cursor: grabbing;
+    }
+    .sortable-list li.dragging {
+        opacity: 0.5;
+    }
+    .report-table thead th {
+        position: sticky;
+        top: 0;
+        background-color: #f8fafc;
+        z-index: 10;
+    }
+    .inactive-day {
+        background-color: #e2e8f0 !important;
+    }
+
+    .report-table td {
+        text-align: center;
+        vertical-align: top;
+        padding: 8px 4px;
+    }
+
+    .report-table td > div {
+        line-height: 1.4;
+        margin: 2px 0;
+        min-height: 1.4em;
+    }
+
+    .report-table td.fio-cell {
+        text-align: left;
+        vertical-align: middle;
+    }
+    .report-table td.inactive-day,
+    .report-table td.inactive-day div {
+        background-color: #ededed !important;
+        color: #c8c8c8 !important;
+    }
+
+    /* Таблица статистики за период — центрирование заголовков и ячеек */
+    .period-stat-table th,
+    .period-stat-table td {
+        text-align: center;
+    }
+
+    /* Исключение: первый столбец (ФИО) выравниваем влево */
+    .period-stat-table th:first-child,
+    .period-stat-table td:first-child {
+        text-align: left;
+    }
+
+/* Period report fragment. */
+.period-toolbar { flex-wrap: wrap; gap: 12px; align-items: center; }
+.period-date-input { width: 240px; }
+.period-employee-label { margin-left: 8px; }
+.period-employee-select { padding: 6px 12px; border-radius: 20px; border: 1px solid #cbd5e1; }
+.period-traffic-toggle { cursor:pointer; font-size:1.2rem; margin-left:8px; }
+.period-traffic-container { display: none; margin-top: 16px; overflow-x: auto; }
+.period-notifications-container { margin-top: 24px; display: none; }
+.rounding-settings-button { border:0; background:none; cursor:pointer; font-size:1.2rem; }
+.week-date-label { font-size:.7rem; color:#64748b; }
+.fio-cell { white-space:nowrap; }
+.weekly-notification-button { margin-left:8px; vertical-align:middle; }
+.worked-time-value { color:green; font-weight:500; }
+.start-time-value { color:blue; font-size:.85em; }
+.break-time-value { color:darkorange; font-weight:500; }
+.end-time-value { color:red; font-size:.85em; }
+.full-width-table { width:100%; }

@@ -1,0 +1,230 @@
+/* Аккордеон для задач */
+        .task-accordion-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            background: white;
+            overflow: hidden;
+        }
+        .task-accordion-header {
+            background: #f8fafc;
+            padding: 14px 16px;
+            font-weight: 600;
+            cursor: default;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1rem;
+        }
+        .task-accordion-header:after {
+            content: "";
+            font-size: 0.8rem;
+            transition: transform 0.2s;
+        }
+        .task-accordion-details {
+            display: block !important;
+            padding: 16px;
+            border-top: 1px solid #e2e8f0;
+            background: white;
+        }
+
+        .task-accordion-details div {
+            margin-bottom: 8px;
+        }
+        .task-accordion-details ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        .assignee-tag {
+            display: inline-block;
+            padding: 2px 12px;
+            border-radius: 16px;
+            margin-right: 4px;
+            font-size: 0.9rem;
+        }
+        .main-assignee {
+            background: #dbeafe;
+            font-weight: bold;
+        }
+        .co-assignee {
+            background: #f1f5f9;
+        }
+        .remove-assignee {
+            cursor: pointer;
+            color: #ef4444;
+            margin-left: 6px;
+            font-weight: bold;
+        }
+
+        /* стили для модалки завершения задачи */
+        #completeTaskModal .modal-content input[type="number"],
+        #completeTaskModal .modal-content input[type="text"] {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+        #completeTaskModal .modal-content input[type="number"] {
+            max-width: 80px;
+        }
+        #completeTaskModal .modal-content table th,
+        #completeTaskModal .modal-content table td {
+            padding: 6px 8px;
+            vertical-align: middle;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        #completeTaskModal .modal-content table td:first-child {
+            font-weight: 500;
+        }
+        #completeTaskModal .modal-content .defect-input {
+            background-color: #fef2f2; /* лёгкий красный оттенок для брака */
+        }
+        #completeTaskModal .modal-content .distribution-input {
+            background-color: #f0fdf4; /* лёгкий зелёный оттенок для производства */
+        }
+        /* Обертка для статуса с кнопкой редактирования */
+        .task-status-wrapper {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .task-status-wrapper .edit-completion-btn {
+            display: none; /* Скрыто по умолчанию */
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0;
+            line-height: 1;
+            transition: transform 0.2s;
+        }
+        .task-status-wrapper .edit-completion-btn:hover {
+            transform: scale(1.2);
+        }
+        /* Показываем кнопку при наведении на обертку */
+        .task-status-wrapper:hover .edit-completion-btn {
+            display: inline-block;
+        }
+        .task-filter-clear {
+            border: 1px solid #cbd5e1;
+            border-left: 0;
+            background: white;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 0 8px 8px 0;
+        }
+        #taskFilters select, #taskFilters input {
+            padding: 6px 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px 0 0 8px;
+            background: white;
+        }
+
+/* Специализированная статическая компоновка */
+.task-deal-field { display:none; }
+.compact-data-table { width:100%; font-size: 0.85rem; border-collapse: collapse; }
+.table-total-row { border-top:2px solid #cbd5e1; }
+.notification-summary { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
+.notification-date { white-space:nowrap; }
+.notification-preview { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#475569; font-size:0.85rem; }
+.text-disabled { color:gray; }
+.status-completed { color:#22c55e; }
+.task-header-content { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.task-title { font-weight: 600; font-size: 1rem; line-height: 1.4; }
+.task-assignees { margin-top:8px; }
+.task-actions { margin-top:12px; }
+.modal-size-assignee { max-width:400px; }
+.modal-close-assignee { float:right;cursor:pointer;font-size:1.5rem; }
+.assignee-select { width:100%;padding:8px;border-radius:20px;border:1px solid #cbd5e1; }
+.assignee-modal-actions { margin-top:16px;display:flex;gap:8px;justify-content:flex-end; }
+.button-cancel { background:#94a3b8;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer; }
+.button-confirm { background:#22c55e;border:none;color:white;padding:8px 16px;border-radius:20px;cursor:pointer; }
+.defect-quantity-input { width:70px; }
+.percentage-heading { padding:8px; text-align:center; min-width:120px; background:#eff6ff; }
+.points-heading { padding:8px; text-align:center; min-width:110px; background:#f0fdf4; }
+.completion-percentage-input { width:75px; text-align:center; border:1px solid #93c5fd; border-radius:7px; padding:6px; }
+.expected-quantity { color:#2563eb; }
+.percentage-summary-cell { background:#eff6ff; }
+.points-summary-cell { background:#f0fdf4; color:#15803d; text-align:center; }
+.text-secondary { color:#64748b; }
+.points-value { color:#15803d; }
+.points-total { text-align:center; font-weight:700; color:#15803d; background:#f0fdf4; }
+.task-choice-row { display:flex; align-items:center; gap:8px; }
+.task-choice-label { flex:1; }
+.product-choice-row { display:grid; grid-template-columns:auto 1fr 90px; gap:8px; align-items:center; }
+.employee-header { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 16px; align-items: center; }
+.drawer-toggle { background: transparent; border: none; font-size: 1.8rem; cursor: pointer; padding: 0 8px; }
+.employee-heading { margin: 0; font-size: 1.1rem; }
+.settings-menu-wrap { position: relative; display: inline-block; }
+.settings-button { background: transparent; border: none; font-size: 1.6rem; cursor: pointer; padding: 0 4px; line-height: 1; }
+.is-hidden { display: none; }
+.section-heading-compact { font-size: 1.0rem; }
+.button-primary { background: #3b82f6; }
+.monitor-toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.filter-toolbar { margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.date-range-control { width: 240px; }
+.task-heading-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.active-task-count { color:#2563eb; font-size:0.9rem; }
+.completed-task-count { color:#16a34a; font-size:0.9rem; }
+.task-filter-panel { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px; padding:12px; background:#f8fafc; border-radius:12px; }
+.filter-label { display:block; font-size:0.8rem; color:#64748b; }
+.inline-control { display:flex; }
+.filter-select { min-width:150px; }
+.button-secondary { background:#94a3b8; }
+.button-create-task { display:none; background:#16a34a; }
+.modal-size-md { max-width: 500px; }
+.explanation-input { width:100%; margin:10px 0; }
+.employee-info-panel { margin-bottom: 12px; padding: 8px; background: #f8fafc; border-radius: 12px; font-weight: 500; color: #0f172a; }
+.form-field { margin-bottom: 12px; }
+.control-full-width { width:100%; }
+.preformatted-message { background:#f8fafc; padding: 12px; border-radius: 8px; white-space: pre-wrap; }
+.modal-size-sm { max-width: 400px; }
+.full-width { width: 100%; }
+.spaced-top { margin-top: 12px; }
+.modal-size-completion { max-width: 800px; max-height: 90vh; overflow-y: auto; }
+.modal-close-completion { float:right; font-size:1.8rem; cursor:pointer; color:#aaa; }
+.task-completion-info { margin-bottom: 16px; font-size: 0.95rem; color: #475569; }
+.subsection-heading { margin: 16px 0 8px; }
+.responsive-table-block { overflow-x: auto; margin-bottom: 20px; }
+.data-table { width:100%; border-collapse: collapse; }
+.table-header-row { background:#f8fafc; }
+.table-cell-left { padding:8px; text-align:left; }
+.table-summary { font-weight:bold; background:#f1f5f9; }
+.task-comment-input { width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.95rem; resize: vertical; box-sizing:border-box; }
+.modal-actions { margin-top: 20px; display: flex; gap: 12px; justify-content: flex-end; }
+.button-success { background:#22c55e; }
+.completion-error { color:red; margin-top:12px; }
+.modal-size-task { max-width:720px; max-height:90vh; overflow-y:auto; }
+.modal-close-task { float:right; cursor:pointer; font-size:1.7rem; color:#94a3b8; }
+.task-form-grid { display:grid; gap:14px; }
+.task-form-control { width:100%; margin-top:5px; }
+.field-hint { display:block; color:#64748b; margin-top:3px; }
+.task-description { width:100%; box-sizing:border-box; margin-top:5px; }
+.task-choice-list { display:grid; gap:7px; margin-top:7px; }
+.task-form-error { color:#dc2626; }
+.task-form-actions { display:flex; justify-content:flex-end; gap:8px; }
+
+/* Состояния динамических компонентов */
+.notification-grade { font-size: .8rem; }
+.grade-red, .notification-type-reprimand { color: #ef4444; }
+.grade-yellow, .notification-type-warning { color: #f59e0b; }
+.grade-blue, .notification-type-performance_review { color: #3b82f6; }
+.grade-green, .notification-type-commendation { color: #22c55e; }
+.task-status-not-started { color: #64748b; }
+.task-status-in-progress { color: #2563eb; }
+.task-status-on-break { color: #f59e0b; }
+.task-status-completed { color: #16a34a; }
+.percentage-total { text-align:center; font-weight:700; background:#eff6ff; }
+.percentage-total.is-valid { color:#16a34a; }
+.percentage-total.is-invalid { color:#dc2626; }
+.task-accordion-header { width:100%; border:0; background:transparent; padding:0; text-align:left; color:inherit; font:inherit; cursor:pointer; }
+.percentage-input-cell { background:#eff6ff; }
+.employee-points-cell { background:#f0fdf4; color:#15803d; font-weight:700; text-align:center; }
+.distribution-total-cell { font-weight:700; }
+.message-error { color:#dc2626; }
+.message-muted { color:#64748b; }
