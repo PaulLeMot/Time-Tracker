@@ -1,6 +1,6 @@
 """Authenticated additive image catalog exchange; independent of manual Excel import."""
 from pathlib import Path
-import hashlib,hmac,json,re,time
+import hashlib,hmac,json,re,time,os
 
 VERSION='1.0.0'
 MAX_BODY=8*1024*1024
@@ -18,7 +18,8 @@ def parse(body):
     if len(body)>MAX_BODY:raise SyncError('Payload too large')
     try:value=json.loads(body)
     except (ValueError,UnicodeError):raise SyncError('Invalid JSON') from None
-    if not isinstance(value,dict) or set(value)!={'version','job_id','products'} or value['version']!=1 or not re.fullmatch('[a-f0-9]{32}',str(value['job_id'])):raise SyncError('Invalid request')
+    if not isinstance(value,dict) or set(value)-{'mode'}!={'version','job_id','products'} or value['version']!=1 or not re.fullmatch('[a-f0-9]{32}',str(value['job_id'])):raise SyncError('Invalid request')
+    if value.get('mode','upsert') not in ('upsert','missing_only'):raise SyncError('Invalid synchronization mode')
     rows=value['products']
     if not isinstance(rows,list) or len(rows)>20000:raise SyncError('Invalid products')
     seen=set()
@@ -53,11 +54,19 @@ def eligible(rows,root):
         else:accepted.append({k:row[k] for k in ('code','product_type','fandom','name')})
     return accepted,rejected
 
-def changes(rows,existing):
+def changes(rows,existing,mode='upsert'):
     counts={'added':0,'updated':0,'unchanged':0};changed=[]
     for row in rows:
         old=existing.get(row['code'])
         if old is None:counts['added']+=1;changed.append(row)
-        elif any(old.get(k)!=row[k] for k in ('product_type','fandom','name')):counts['updated']+=1;changed.append(row)
+        elif mode!='missing_only' and any(old.get(k)!=row[k] for k in ('product_type','fandom','name')):counts['updated']+=1;changed.append(row)
         else:counts['unchanged']+=1
     return counts,changed
+
+def available_codes(root):
+    codes=[]
+    with os.scandir(root) as entries:
+        for n,entry in enumerate(entries):
+            if n>200000:raise OSError('Too many image files')
+            if re.fullmatch(r'[0-9]{5}\.jpg',entry.name) and entry.is_file(follow_symlinks=False):codes.append(entry.name[:5])
+    return sorted(codes)
