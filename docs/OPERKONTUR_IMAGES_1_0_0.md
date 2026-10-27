@@ -10,4 +10,8 @@ Provision a random shared secret of at least 32 bytes in `/app/.operkontur-image
 
 The response reports `added`, `updated`, `unchanged`, and per-code `rejected` reasons. The sender records these independently of image-copy and FTP outcomes.
 
+An optional signed `mode` is `upsert` (default, normal export scope) or `missing_only` (full catalog reconciliation). The latter inserts absent codes while preserving metadata of existing rows. Both verify ready images and never delete products.
+
+`POST /api/integrations/operkontur/images/availability` accepts the signed literal body `{}` and returns numeric JPEG codes from the configured ready-image folder. It only lists files, does not touch the database, and supports the sender's 250px thumbnail presence filter when its HTTP process cannot access SMB. Actual image bytes continue to use the existing static route.
+
 Validation: `python -m unittest test_operkontur_images_sync.py`. Tests use temporary synthetic files and no working database. Deployment should verify the existing manual route is unchanged and test a limited authorized catalog selection without importing the old Excel automatically.

@@ -1,6 +1,6 @@
 import hashlib,json,tempfile,time,unittest
 from pathlib import Path
-from operkontur_images_sync import authenticate,signature,parse,eligible,changes,SyncError
+from operkontur_images_sync import authenticate,signature,parse,eligible,changes,available_codes,SyncError
 
 class ImageSyncTests(unittest.TestCase):
     def row(self):return {'code':'00123','product_type':'SYN type','fandom':None,'name':'SYN product','sha256':hashlib.sha256(b'\xff\xd8SYN').hexdigest()}
@@ -26,5 +26,17 @@ class ImageSyncTests(unittest.TestCase):
         count,changed=changes([row],existing);self.assertEqual(count,{'added':1,'updated':0,'unchanged':0});self.assertEqual(existing,{'00999':old})
         existing['00123']=row;self.assertEqual(changes([row],existing)[0]['unchanged'],1)
         self.assertEqual(changes([{**row,'name':'SYN updated'}],existing)[0]['updated'],1)
+    def test_full_refresh_adds_missing_without_changing_existing_metadata(self):
+        row={k:v for k,v in self.row().items() if k!='sha256'}
+        old={**row,'name':'SYN existing name'}
+        self.assertEqual(changes([row],{'00123':old},'missing_only'),({'added':0,'updated':0,'unchanged':1},[]))
+        self.assertEqual(old['name'],'SYN existing name')
+        value=json.loads(self.body());value['mode']='missing_only';self.assertEqual(parse(json.dumps(value).encode())['mode'],'missing_only')
+    def test_availability_lists_only_ready_numeric_jpeg_names(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            for name in ('00123.jpg','name.jpg','00123.png','.operkontur-images.json'):(root/name).write_bytes(b'SYN')
+            (root/'00456.jpg').mkdir()
+            self.assertEqual(available_codes(root),['00123'])
 
 if __name__=='__main__':unittest.main()
