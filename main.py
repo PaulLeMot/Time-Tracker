@@ -54,6 +54,8 @@ app.include_router(admin.notifications_router)
 app.include_router(auth.router)
 app.include_router(employee_notifications.router)
 app.include_router(products.router)
+from routers import operkontur_images
+app.include_router(operkontur_images.router)
 app.include_router(mark.router)
 app.include_router(sandbox.router)
 from sse import admin_events_endpoint, monitor_events_endpoint

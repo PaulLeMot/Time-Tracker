@@ -43,3 +43,5 @@ backups/
 
 # Cursor
 .cursorignore
+# Local integration secret; never include it in source or Docker build context.
+.operkontur-images.key
