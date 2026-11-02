@@ -114,6 +114,9 @@ document.getElementById('run').onclick = async function () {
             check(cancel.bottom<=height && cancel.top>=0,'Cancel outside viewport');
             check(dialog.scrollHeight<=dialog.clientHeight+1,'Camera dialog scrolls');
             check(video.height>30,'Preview collapsed');
+            const scanline=iframe.contentWindow.getComputedStyle(doc.querySelector('.tt-camera-frame'),'::after');
+            check(scanline.content==='""' && scanline.height==='2px' && scanline.pointerEvents==='none','Decorative barcode scanline missing');
+            check(scanline.animationName===(iframe.contentWindow.matchMedia('(prefers-reduced-motion: reduce)').matches?'none':'tt-camera-scan-glow'),'Scanline motion preference ignored');
             const torch=doc.querySelector('.tt-camera-torch'),zoom=doc.querySelector('.tt-camera-zoom');
             const label=torch.textContent,buttonWidth=torch.getBoundingClientRect().width,zoomTop=zoom.getBoundingClientRect().top;
             const originalColor=iframe.contentWindow.getComputedStyle(torch).backgroundColor;
@@ -123,6 +126,10 @@ document.getElementById('run').onclick = async function () {
             check(iframe.contentWindow.getComputedStyle(torch).backgroundColor!==originalColor,'Torch active color missing');
             torch.click();await until(()=>torch.getAttribute('aria-pressed')==='false');
             check(torch.textContent===label&&iframe.contentWindow.getComputedStyle(torch).backgroundColor===originalColor,'Torch off state not restored');
+            doc.querySelector('[data-mode="text"]').click();await until(()=>doc.querySelector('.tt-camera-text-mode .tt-camera-frame'));
+            check(iframe.contentWindow.getComputedStyle(doc.querySelector('.tt-camera-frame'),'::after').content==='none','Barcode line leaked into text mode');
+            doc.querySelector('[data-mode="barcode"]').click();await until(()=>doc.querySelector('.tt-camera-capture:not(.tt-camera-text-mode) .tt-camera-frame'));
+            check(iframe.contentWindow.getComputedStyle(doc.querySelector('.tt-camera-frame'),'::after').content==='""','Barcode line not restored');
             results.push({camera:true,width,height,font,dialogHeight:dialog.clientHeight,previewHeight:video.height,cancelBottom:cancel.bottom,pass:true});
             doc.querySelector('.tt-camera-close').click();
         } catch(error) { results.push({camera:true,width,height,font,pass:false,error:error.message}); }

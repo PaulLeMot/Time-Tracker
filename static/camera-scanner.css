@@ -16,6 +16,15 @@
 .tt-camera-preview video {display: block; width: 100%; max-height: 52vh; max-height: 52dvh; object-fit: contain;}
 .tt-camera-preview video[hidden], .tt-camera-dialog [hidden] {display: none;}
 .tt-camera-frame {position: absolute; inset: 24% 5%; border: 2px solid #fff; border-radius: 6px; pointer-events: none;}
+.tt-camera-capture:not(.tt-camera-text-mode) .tt-camera-frame::after {
+    content: ""; position: absolute; left: 1%; right: 1%; top: 50%; height: 2px;
+    border-radius: 999px; pointer-events: none;
+    background: linear-gradient(90deg, transparent, #ff4055 7%, #ff7180 50%, #ff4055 93%, transparent);
+    box-shadow: 0 0 3px #ff9ca6, 0 0 9px rgb(255 38 63 / 75%), 0 0 17px rgb(255 38 63 / 35%);
+    animation: tt-camera-scan-glow 2s ease-in-out infinite;
+}
+@keyframes tt-camera-scan-glow {0%, 100% {opacity: .65;} 50% {opacity: 1;}}
+@media (prefers-reduced-motion: reduce) {.tt-camera-frame::after {animation: none !important; opacity: 1;}}
 .tt-camera-actions {display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px;}
 .tt-camera-choices {display: grid; gap: 8px;}
 .tt-camera-modes, .tt-camera-controls {display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0;}
