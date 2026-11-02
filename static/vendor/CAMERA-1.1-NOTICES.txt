@@ -1,0 +1,31 @@
+Camera1.1 third-party browser artifacts (pinned copies; no runtime CDN)
+
+zxing-wasm3.1.6 by Ze-Zheng Wu, MIT.
+https://github.com/Sec-ant/zxing-wasm/tree/v3.1.6
+License: zxing-wasm-3.1.6/LICENSE-MIT.txt
+Its reader WASM contains ZXing-C++ (Apache2.0), upstream commit
+2c3dcfeffa7878950a58c1703c86774a428b0c91, and the Apache2.0 bridge.
+Licenses: LICENSE-APACHE-2.0.txt and LICENSE-bridge.txt in that directory.
+Reader build only; no writer is distributed by camera1.1.
+
+tesseract.js6.0.1, Apache2.0.
+https://github.com/naptha/tesseract.js/tree/v6.0.1
+License: tesseract-6.0.1/LICENSE.txt; bundled worker notices retained as
+worker.min.js.LICENSE.txt. The official worker message protocol is pinned.
+
+tesseract.js-core6.1.2, Apache2.0.
+https://github.com/naptha/tesseract.js-core
+License: tesseract-core-6.1.2/LICENSE.txt.
+Only self-contained baseline/SIMD LSTM builds are distributed; OEM1 is fixed.
+Tesseract and Leptonica attribution: see upstream projects and the copied
+Leptonica BSD license in that directory. Embedded Emscripten runtime is MIT/NCSA:
+https://github.com/emscripten-core/emscripten/blob/main/LICENSE
+
+@tesseract.js-data/eng1.0.0 npm packaging: MIT (registry metadata).
+The eng4.0.0_best_int LSTM trained model derives from tessdata_best,
+licensed Apache2.0: tesseract-eng-1.0.0/LICENSE-model.txt.
+https://github.com/tesseract-ocr/tessdata_best
+
+Existing ZXing-JS0.23.0 remains as a local fallback; its existing license files
+and camera-dependencies.lock.json are unchanged. New artifact hashes and npm
+integrity values are recorded in camera-1.1-dependencies.lock.json.
