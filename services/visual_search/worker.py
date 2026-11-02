@@ -25,11 +25,47 @@ def compute(connection, index, model, resources):
         job_handle = restrict_compute(**resources)
         from .engine import Engine, resolve_index
         engine = Engine(resolve_index(index), model)
-        connection.send(('ready', list(engine.types), engine.index_id))
+        check_sessions = {}
+        public_types=sorted({r['product_type'] for r in engine.rows if r.get('namespace','portal')=='portal'})
+        public_codes={r['code'] for r in engine.rows if r.get('namespace','portal')=='portal'}
+        connection.send(('ready', public_types, engine.index_id, public_codes))
         while True:
-            body, kind = connection.recv()
+            message = connection.recv()
+            body, kind = message[:2]
+            namespace = message[2] if len(message)>2 else 'portal'
             try:
-                result = engine.search(body, kind)
+                context=message[4] if len(message)>4 else None
+                if len(message)>3 and message[3]=='close-check':
+                    check_sessions.pop(context,None);connection.send(('ok',{'closed':True,'timings_ms':{}}));continue
+                result = engine.search(body, kind, namespace=namespace)
+                if len(message)>3 and message[3]=='check':
+                    import hashlib,io
+                    from PIL import Image,ImageOps
+                    with Image.open(io.BytesIO(body)) as raw:
+                        normalized=ImageOps.exif_transpose(raw).convert('RGB')
+                    pixel_hash=hashlib.sha256(f'RGB:{normalized.width}:{normalized.height}:'.encode()+normalized.tobytes()).hexdigest()
+                    byte_hash=hashlib.sha256(body).hexdigest()
+                    exact=[{'code':r['code'],'asset_id':r.get('asset_id')} for r in engine.rows if r.get('namespace','portal')==namespace and (r.get('sha256')==byte_hash or r.get('pixel_sha256')==pixel_hash)]
+                    result.update(sha256=byte_hash,pixel_sha256=pixel_hash,match_type='exact_file' if any(r.get('sha256')==byte_hash and r.get('namespace','portal')==namespace for r in engine.rows) else 'exact_pixels' if exact else 'visual' if result['items'] else 'none',exact_matches=list({r['code']:r for r in exact}.values()))
+                    if context:
+                        from .engine import local_features,geometry
+                        import numpy as np
+                        now=time.monotonic()
+                        check_sessions={k:v for k,v in check_sessions.items() if now-v['updated']<90}
+                        if context not in check_sessions:
+                            if len(check_sessions)>=4:check_sessions.pop(next(iter(check_sessions)))
+                            check_sessions[context]={'updated':now,'items':[]}
+                        session=check_sessions[context];session['updated']=now
+                        if len(session['items'])>=64:raise ValueError('upload_batch_limit')
+                        normalized.thumbnail((1024,1024));vector=engine.embed(normalized);points,desc=local_features(normalized);matches=[]
+                        for ordinal,prior in enumerate(session['items']):
+                            score=float(vector@prior['vector'])
+                            exact_kind='exact_file' if prior['sha']==byte_hash else 'exact_pixels' if prior['pixels']==pixel_hash else None
+                            if not exact_kind and score<.75:continue
+                            inliers,geo=geometry(points,desc,prior['points'],prior['descriptors'])
+                            matches.append({'ordinal':ordinal,'type':exact_kind or 'visual','score':round(score,5),'status':'confirmed' if exact_kind or score>=.92 and inliers>=10 and geo>=.30 else 'uncertain'})
+                        result['within_batch']=sorted(matches,key=lambda x:-x['score'])[:5]
+                        session['items'].append({'sha':byte_hash,'pixels':pixel_hash,'vector':vector,'points':points,'descriptors':desc})
                 connection.send(('ok', result))
             except ValueError:
                 connection.send(('error', 'invalid_image_or_type'))
@@ -52,9 +88,13 @@ def compute(connection, index, model, resources):
 class Runner:
     def __init__(self, config):
         self.config, self.process, self.pipe = config, None, None
-        self.lock, self.capacity = asyncio.Lock(), Capacity(3)
+        maximum=config.get('queue_capacity',3)
+        if type(maximum) is not int or not 1<=maximum<=8:raise ValueError('queue_capacity')
+        self.lock, self.capacity = asyncio.Lock(), Capacity(maximum)
         self.ready, self.types, self.index = False, [], None
+        self.codes = set()
         self.error = None
+        self.start_lock = asyncio.Lock()
 
     def stop(self):
         self.ready = False
@@ -68,6 +108,10 @@ class Runner:
             self.pipe = None
 
     async def start(self):
+        async with self.start_lock:
+            await self._start()
+
+    async def _start(self):
         self.stop()
         context = mp.get_context('spawn')
         if os.name == 'nt':
@@ -81,32 +125,37 @@ class Runner:
         self.pipe = parent
         self.process = context.Process(target=compute, args=(child, self.config['index'], self.config['model'], self.config.get('resources', {})), daemon=True)
         self.process.start()
+        process = self.process
         child.close()
         deadline = time.monotonic() + 90
-        while time.monotonic() < deadline and self.process.is_alive():
+        while time.monotonic() < deadline and self.process is process and process.is_alive():
             if parent.poll():
                 message = parent.recv()
                 if message[0] == 'ready':
                     self.ready, self.types, self.index = True, message[1], message[2]
+                    self.codes = message[3] if len(message)>3 else set()
                     self.error = None
                     return
                 self.error = message[1:] if len(message) > 1 else 'compute_init_failed'
                 break
             await asyncio.sleep(.02)
-        self.stop()
+        if self.process is process:
+            self.stop()
 
-    async def search(self, body, kind, request):
+    async def search(self, body, kind, request, namespace='portal', operation_kind='search', check_context=None):
         started = time.monotonic()
         async with asyncio.timeout(7):
             async with self.lock:
-                if not self.ready or not self.process.is_alive():
+                if not self.ready or self.process is None:
+                    raise HTTPException(503, 'warming_or_unavailable')
+                if not self.process.is_alive():
                     self.stop()
                     raise HTTPException(503, 'warming_or_unavailable')
                 if await request.is_disconnected():
                     raise HTTPException(499, 'cancelled')
                 queued = (time.monotonic() - started) * 1000
                 async def exchange():
-                    await asyncio.to_thread(self.pipe.send, (body, kind))
+                    await asyncio.to_thread(self.pipe.send, (body, kind, namespace, operation_kind, check_context))
                     return await asyncio.to_thread(self.pipe.recv)
                 operation = asyncio.create_task(exchange())
                 try:
@@ -167,6 +216,7 @@ def create_worker(config):
                     old_process, old_pipe = runner.process, runner.pipe
                     runner.process, runner.pipe = replacement.process, replacement.pipe
                     runner.types, runner.index = replacement.types, replacement.index
+                    runner.codes = replacement.codes
                     replacement.process = replacement.pipe = None
                     pointer_bytes = expected_pointer
                     old_process.terminate(); old_process.join(timeout=2); old_process.close(); old_pipe.close()
@@ -181,6 +231,9 @@ def create_worker(config):
             nonlocal recovery, reload_task, attempted_pointer
             while True:
                 await asyncio.sleep(.5)
+                if management is not None:
+                    try:await asyncio.to_thread(management.tick)
+                    except OSError:pass  # Transient storage contention must not stop query supervision.
                 if runner.ready and (runner.process is None or not runner.process.is_alive()):
                     runner.stop()
                 if not runner.ready and (recovery is None or recovery.done()):
@@ -209,6 +262,8 @@ def create_worker(config):
         cache.clear()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    from .management2 import install
+    management = install(app, config, runner)
 
     @app.middleware('http')
     async def no_store(request, call_next):
@@ -231,6 +286,13 @@ def create_worker(config):
             raise HTTPException(503, 'warming_or_unavailable')
         return {'api_version': 1, 'product_types': runner.types, 'index_version': runner.index, 'max_body': 2 * 1024 * 1024}
 
+    @app.get('/v1/catalogue/{code}')
+    async def catalogue_code(code: str, request: Request):
+        auth.check(request, b'')
+        if not runner.ready:raise HTTPException(503, 'warming_or_unavailable')
+        if code not in runner.codes:raise HTTPException(404, 'catalogue_code_not_allowed')
+        return {'code':code,'index_version':runner.index}
+
     @app.get('/v1/results')
     async def results(request: Request, cursor: str = Query(pattern='^[a-f0-9]{32}$'), offset: int = Query(0, ge=0, le=200000)):
         subject = auth.check(request, b'')
@@ -244,17 +306,29 @@ def create_worker(config):
                          'next_offset': offset+30 if offset+30 < result['total'] else None}
 
     @app.post('/v1/search')
-    async def search(request: Request, product_type: str = Query(min_length=1, max_length=2000)):
+    async def search(request: Request, product_type: str = Query('', max_length=2000)):
         nonlocal recovery
         runner.capacity.enter()
         try:
             body = await read_body(request)
             subject = auth.check(request, body)
+            active_subjects = getattr(app.state, 'active_subjects', set())
+            app.state.active_subjects = active_subjects
+            if subject in active_subjects:
+                raise HTTPException(429, 'one_active_search_per_employee')
             if request.headers.get('content-type') not in ('image/jpeg', 'image/png', 'image/webp'):
                 raise HTTPException(415, 'image_content_type')
-            if product_type not in runner.types:
+            if product_type and product_type not in runner.types:
                 raise HTTPException(422, 'unknown_product_type')
-            result = await runner.search(body, product_type, request)
+            active_subjects.add(subject)
+            busy = Path(config['jobs']) / 'query-active' if config.get('jobs') else None
+            if busy: busy.touch()
+            try:
+                result = await runner.search(body, product_type, request)
+            finally:
+                active_subjects.discard(subject)
+                if busy and not active_subjects:
+                    busy.with_name('query-last').touch();busy.unlink(missing_ok=True)
             body = None
             now = time.monotonic()
             for key in list(cache):

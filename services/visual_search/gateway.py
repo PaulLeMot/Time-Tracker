@@ -3,9 +3,12 @@ import asyncio
 from contextlib import asynccontextmanager
 import ssl
 import time
+from pathlib import Path
+import json
 from urllib.parse import urlencode, urlsplit
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from .protocol import Capacity, read_body, signed
 
 
@@ -23,12 +26,14 @@ def create_gateway(config, *, auth_transport=None, worker_transport=None):
     profile = config.get('profile_url', 'http://127.0.0.1:8000/api/auth/profile')
     if urlsplit(profile).hostname not in ('127.0.0.1', 'localhost') or urlsplit(profile).path != '/api/auth/profile':
         raise ValueError('local_profile_only')
-    capacity = Capacity(3)
+    maximum=config.get('queue_capacity',3)
+    if type(maximum) is not int or not 1<=maximum<=8:raise ValueError('queue_capacity')
+    capacity = Capacity(maximum)
     failures, retry_at = 0, 0.
     auth_client = httpx.AsyncClient(transport=auth_transport, trust_env=False, timeout=2, follow_redirects=False)
     verify = ssl.create_default_context(cafile=config['ca_file']) if config.get('ca_file') else True
     worker_client = httpx.AsyncClient(transport=worker_transport, trust_env=False, verify=verify, timeout=7.5, follow_redirects=False,
-                                    limits=httpx.Limits(max_connections=3, max_keepalive_connections=3))
+                                    limits=httpx.Limits(max_connections=maximum, max_keepalive_connections=maximum))
 
     @asynccontextmanager
     async def lifespan(app):
@@ -92,6 +97,19 @@ def create_gateway(config, *, auth_transport=None, worker_transport=None):
     async def capabilities(request: Request):
         return await forward(request, '/v1/capabilities')
 
+    @app.get('/api/visual-search/image500/{code}')
+    async def image500(code: str, request: Request):
+        await employee(request)
+        import re
+        if not re.fullmatch('[0-9]{5}', code) or not config.get('image500_root'):
+            raise HTTPException(404, 'image_unavailable')
+        await forward(request, '/v1/catalogue/' + code)
+        root_path = Path(config['image500_root']).resolve(strict=True)
+        path = root_path / (code + '.jpg')
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != root_path:
+            raise HTTPException(404, 'image_unavailable')
+        return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control':'no-store'})
+
     @app.get('/api/visual-search/results')
     async def results(request: Request, cursor: str = Query(pattern='^[a-f0-9]{32}$'), offset: int = Query(0, ge=0, le=200000)):
         capacity.enter()
@@ -101,7 +119,7 @@ def create_gateway(config, *, auth_transport=None, worker_transport=None):
             capacity.leave()
 
     @app.post('/api/visual-search/search')
-    async def search(request: Request, product_type: str = Query(min_length=1, max_length=2000)):
+    async def search(request: Request, product_type: str = Query('', max_length=2000)):
         capacity.enter()
         try:
             # Authenticate before accepting an image body; forward rechecks the current session.

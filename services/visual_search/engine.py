@@ -26,7 +26,11 @@ cv2.setNumThreads(1)
 
 
 def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    value = hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        for block in iter(lambda: stream.read(1024*1024), b''):
+            value.update(block)
+    return value.hexdigest()
 
 
 def decode(body):
@@ -208,6 +212,11 @@ def resolve_index(root):
 
 
 class Engine:
+    def close(self):
+        for name in ('vectors', 'points', 'descriptors', 'offsets'):
+            value = getattr(self, name, None)
+            if getattr(value, '_mmap', None) is not None:
+                value._mmap.close()
     def __init__(self, generation, model_root, embedder=None):
         path = Path(generation)
         meta = json.loads((path / 'manifest.json').read_text('utf-8'))
@@ -229,14 +238,22 @@ class Engine:
         for row in self.rows:
             self.types.setdefault(row['product_type'], {}).setdefault(row['feature'], []).append(row)
 
-    def search(self, body, product_type, mode='hybrid'):
+    def search(self, body, product_type='', mode='hybrid', namespace='portal'):
+        if self.meta.get('schema') == 2:
+            from .retrieval2 import search
+            return search(self, body, product_type, mode, namespace)
+        if namespace != 'portal':
+            raise ValueError('namespace_not_available_in_legacy_index')
         started = time.perf_counter()
-        if product_type not in self.types:
+        if product_type and product_type not in self.types:
             raise ValueError('unknown_product_type')
         image = decode(body)
         decoded = time.perf_counter()
         qp, qd = local_features(image)
-        groups = self.types[product_type]  # Category restriction BEFORE any topK.
+        groups = self.types[product_type] if product_type else {}
+        if not product_type:
+            for row in self.rows:
+                groups.setdefault(row['feature'], []).append(row)
         candidates = np.array(list(groups), dtype='int64')
         vector = self.embed(image) if mode != 'sift' else None
         embedded = time.perf_counter()

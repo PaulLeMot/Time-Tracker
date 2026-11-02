@@ -80,7 +80,7 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(client.post(path,headers={'Origin':'https://portal.test'},content=b'x').status_code,401)
             h={'Origin':'https://portal.test','Cookie':'session=test','Content-Type':'image/jpeg'}
             self.assertEqual(client.post(path,headers=h,content=b'x').status_code,200)
-            self.assertEqual(client.post('/api/visual-search/search?product_type=',headers=h,content=b'x').status_code,422)
+            self.assertEqual(client.post('/api/visual-search/search?product_type=',headers=h,content=b'x').status_code,200)
             self.assertEqual(client.post(path,headers=h|{'Origin':'https://foreign.test'},content=b'x').status_code,403)
             self.assertEqual(client.post(path,headers=h|{'Content-Type':'multipart/form-data'},content=b'x').status_code,415)
             self.assertEqual(client.post(path,headers=h,content=b'x'*(MAX_BODY+1)).status_code,413)
@@ -129,7 +129,11 @@ class IndexTests(unittest.TestCase):
         self.assertTrue(all(x['product_type']=='Тестовый вид А' for x in result['items']))
         result=self.engine.search(body,'Тестовый вид Б')
         self.assertEqual([x['code'] for x in result['items']],['98054'])
-        with self.assertRaises(ValueError):self.engine.search(body,'')
+        self.assertIn('98054',{x['code'] for x in self.engine.search(body,'')['items']})
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.engine.close()
 
     def test_corrupt_index_and_pointer_are_rejected(self):
         with tempfile.TemporaryDirectory() as d:

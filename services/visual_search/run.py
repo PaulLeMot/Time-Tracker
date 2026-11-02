@@ -12,6 +12,7 @@ def main():
     parser.add_argument('--config', required=True)
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text('utf-8-sig'))
+    config['_config_file'] = str(Path(args.config).resolve())
     if args.role == 'worker':
         from .resources import restrict_compute
         job_handle = restrict_compute(memory_mb=config.get('service_memory_mb', 2048), cpu_percent=config.get('resources', {}).get('cpu_percent', 10))

@@ -24,3 +24,25 @@
 #photoSearchBtn { flex-shrink:0; margin-right:8px; padding:6px 10px; min-height:40px; border:1px solid #cbd5e1; border-radius:20px; background:#eff6ff; color:#0f172a; cursor:pointer; white-space:nowrap; }
 .tt-camera-search .search-row-bottom .field-fandom { flex:1; min-width:0; }
 @media(max-width:480px) { .tt-photo-results { grid-template-columns:repeat(2,minmax(0,1fr)); } .tt-photo-dialog footer button { flex:1; padding:8px; } .tt-photo-dialog { max-height:98dvh; } }
+
+/* Stage2: one exact canvas is both the preview and encoded request. */
+.tt-photo-stage { width:min(100%,42dvh); aspect-ratio:1; max-width:100%; }
+.tt-photo-stage canvas { touch-action:none; cursor:grab; }
+.tt-photo-stage video { object-fit:contain; }
+.tt-photo-dialog { width:min(1100px,98vw); max-width:98vw; box-sizing:border-box; }
+.tt-photo-dialog header { min-width:0; }
+.tt-photo-dialog header h2 { min-width:0; flex:1; overflow-wrap:anywhere; }
+.tt-photo-dialog header button { flex-shrink:0; }
+.tt-photo-results.tt-photo-single,.products-grid.tt-single-product { grid-template-columns:minmax(0,1fr); }
+.tt-photo-single .product-card img,.tt-single-product .product-card img { width:100%; height:clamp(240px,65dvh,900px); object-fit:contain; }
+.tt-photo-results .tt-match-confirmed { background:#e6f4e8; }
+.tt-photo-results .tt-match-uncertain { background:#fff7d6; }
+.tt-photo-results .tt-match-weak { background:#fbe8e8; }
+.search-row-photo { display:flex; margin:8px 0; }
+#photoSearchBtn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border-radius:10px; width:52px; height:52px; padding:5px; margin:0; }
+#photoSearchBtn svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.8; }
+.tt-camera-search .search-row-top { flex-wrap:nowrap; }
+.tt-camera-search .search-row-bottom { display:flex; gap:8px; }
+.tt-camera-search .search-row-bottom .field-type,.tt-camera-search .search-row-bottom .field-fandom { flex:1; min-width:0; }
+.total-count { flex-shrink:0; white-space:nowrap; margin:0 8px; }
+@media(max-width:380px) { .tt-camera-search .search-row-top { flex-wrap:wrap; } .field-code { flex:1; min-width:90px; } }

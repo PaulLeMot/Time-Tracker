@@ -38,15 +38,17 @@ def signed(secret, method, path, subject, body=b''):
 
 
 class Authentication:
-    def __init__(self, secret):
+    def __init__(self, secret, *, allow_uuid=False):
         if len(secret) < 32:
             raise ValueError('secret_too_short')
         self.secret, self.used = secret, {}
+        self.allow_uuid = allow_uuid
 
     def check(self, request, body):
         headers = request.headers
         stamp, nonce, subject, signature = [headers.get(n, '') for n in ('x-vs-time', 'x-vs-nonce', 'x-vs-subject', 'x-vs-proof')]
-        if not re.fullmatch('[0-9]{10}', stamp) or abs(time.time() - int(stamp)) > 30 or not re.fullmatch('[a-f0-9]{32}', nonce) or not re.fullmatch('[0-9]{1,12}', subject):
+        valid_subject=re.fullmatch('[0-9]{1,12}',subject) or self.allow_uuid and re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',subject)
+        if not re.fullmatch('[0-9]{10}', stamp) or abs(time.time() - int(stamp)) > 30 or not re.fullmatch('[a-f0-9]{32}', nonce) or not valid_subject:
             raise HTTPException(401, 'service_auth')
         path = request.url.path + ('?' + request.url.query if request.url.query else '')
         expected = proof(self.secret, request.method, path, stamp, nonce, subject, body)
