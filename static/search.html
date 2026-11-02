@@ -6,6 +6,7 @@
     <title>Поиск товаров</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
     <link rel="stylesheet" href="/static/camera-scanner.css?v=1.1.4&build=20261102-scanline">
+    <link rel="stylesheet" href="/static/visual-search.css?v=0.1.0">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -251,6 +252,7 @@
                 </div>
                 <div class="dropdown-list" id="fandomDropdown"></div>
             </div>
+            <button type="button" id="photoSearchBtn" hidden aria-label="Поиск товара по фотографии рисунка">По фото</button>
             <span class="total-count" id="totalCount">0</span>
         </div>
     </div>
@@ -264,6 +266,7 @@
 <script src="/static/camera-engine.js?v=1.1.0&build=20261102b"></script>
 <script src="/static/camera-scanner.js?v=1.1.2&build=20261102-fixed"></script>
 <script src="/static/camera-code-search.js?v=1.1.0&build=20261102b"></script>
+<script src="/static/visual-search.js?v=0.1.0"></script>
 <script>
     // (Ваш существующий JS без изменений)
     const limit = 30;
@@ -275,6 +278,8 @@
     let totalProducts = 0;
     let isLoading = false;
     let hasMore = true;
+    let photoSearchActive = false;
+    let photoResumePagination = false;
     let searchGeneration = 0;
     let loadController = null;
     let cameraController = null;
@@ -449,6 +454,7 @@
     });
 
     function invalidateRequests() {
+        window.dispatchEvent(new Event('tt-search-change'));
         searchGeneration++;
         loadController?.abort(); cameraController?.abort();
         isLoading = false; cameraResolving = false;
@@ -530,7 +536,7 @@
     }
 
     async function loadProducts() {
-        if (isLoading || !hasMore || cameraResolving) return;
+        if (isLoading || !hasMore || cameraResolving || photoSearchActive) return;
         isLoading = true;
         loader.style.display = 'block';
         const generation = searchGeneration;
@@ -615,7 +621,7 @@
         if (nearEndFrame) return;
         nearEndFrame = requestAnimationFrame(() => {
             nearEndFrame = 0;
-            if (isLoading || !hasMore || cameraResolving) return;
+            if (isLoading || !hasMore || cameraResolving || photoSearchActive) return;
             const bounds = sentinel.getBoundingClientRect();
             if (bounds.top <= window.innerHeight + prefetchDistance && bounds.bottom >= 0) loadProducts();
         });
@@ -633,6 +639,18 @@
         if (!text) return '';
         return text.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
     }
+
+    window.TTVisualSearch?.create({
+        button: document.getElementById('photoSearchBtn'),
+        barcodeButton: cameraButton, selectedType: () => selectedType,
+        beforeOpen: () => {
+            imageScanner?.close('mode'); closeAllDropdowns(); clearTimeout(searchTimer);
+            photoResumePagination = hasMore; invalidateRequests(); photoSearchActive = true;
+        },
+        onClose: () => {
+            photoSearchActive = false; hasMore = photoResumePagination; scheduleNearEndLoad();
+        }
+    });
 
     initFilters();
     loadProducts();

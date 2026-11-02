@@ -1,0 +1,10 @@
+{
+  "enabled": false,
+  "bind": "127.0.0.1",
+  "port": 18983,
+  "origin": "https://operportal.fandocraft.ru:8443",
+  "profile_url": "http://127.0.0.1:8000/api/auth/profile",
+  "worker_url": "https://REQUIRED_WORKER_DNS_NAME:9443",
+  "ca_file": "REQUIRED_INTERNAL_CA_CERTIFICATE",
+  "key_hex": "REPLACE_WITH_64_OR_MORE_RANDOM_HEX_CHARACTERS"
+}

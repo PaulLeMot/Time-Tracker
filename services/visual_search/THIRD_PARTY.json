@@ -1,0 +1,688 @@
+[
+  {
+    "package": "annotated-types",
+    "version": "0.8.0",
+    "wheel": "annotated_types-0.8.0-py3-none-any.whl",
+    "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+    "license": "MIT",
+    "license_files": [
+      "annotated_types-0.8.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "anyio",
+    "version": "4.16.0",
+    "wheel": "anyio-4.16.0-py3-none-any.whl",
+    "sha256": "c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026",
+    "license": "MIT",
+    "license_files": [
+      "anyio-4.16.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "certifi",
+    "version": "2026.10.23",
+    "wheel": "certifi-2026.10.23-py3-none-any.whl",
+    "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1",
+    "license": "Mozilla Public License 2.0 (MPL 2.0)",
+    "license_files": [
+      "certifi-2026.10.23.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "charset-normalizer",
+    "version": "3.5.2",
+    "wheel": "charset_normalizer-3.5.2-cp312-cp312-win_amd64.whl",
+    "sha256": "780fbe7cab297b81dad9fb8dc5eb003c0468ffb0d9e5f65068c53a34661a96bc",
+    "license": "MIT",
+    "license_files": [
+      "charset_normalizer-3.5.2.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "click",
+    "version": "8.5.0",
+    "wheel": "click-8.5.0-py3-none-any.whl",
+    "sha256": "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "click-8.5.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "colorama",
+    "version": "0.4.6",
+    "wheel": "colorama-0.4.6-py2.py3-none-any.whl",
+    "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+    "license": "BSD License",
+    "license_files": [
+      "colorama-0.4.6.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "fastapi",
+    "version": "0.119.1",
+    "wheel": "fastapi-0.119.1-py3-none-any.whl",
+    "sha256": "0b8c2a2cce853216e150e9bd4faaed88227f8eb37de21cb200771f491586a27f",
+    "license": "MIT License",
+    "license_files": [
+      "fastapi-0.119.1.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "filelock",
+    "version": "4.2.4",
+    "wheel": "filelock-4.2.4-py3-none-any.whl",
+    "sha256": "301241438c57936ef93f4243a94f2559022268bfcf9b375a9a72eb0f8db8358e",
+    "license": "MIT",
+    "license_files": [
+      "filelock-4.2.4.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "fsspec",
+    "version": "2026.9.0",
+    "wheel": "fsspec-2026.9.0-py3-none-any.whl",
+    "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "fsspec-2026.9.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "h11",
+    "version": "0.16.0",
+    "wheel": "h11-0.16.0-py3-none-any.whl",
+    "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+    "license": "MIT License",
+    "license_files": [
+      "h11-0.16.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "httpcore",
+    "version": "1.0.9",
+    "wheel": "httpcore-1.0.9-py3-none-any.whl",
+    "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "httpcore-1.0.9.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "httpx",
+    "version": "0.28.1",
+    "wheel": "httpx-0.28.1-py3-none-any.whl",
+    "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+    "license": "BSD License",
+    "license_files": [
+      "httpx-0.28.1.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "huggingface_hub",
+    "version": "0.36.2",
+    "wheel": "huggingface_hub-0.36.2-py3-none-any.whl",
+    "sha256": "48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270",
+    "license": "Apache Software License",
+    "license_files": [
+      "huggingface_hub-0.36.2.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "idna",
+    "version": "3.20",
+    "wheel": "idna-3.20-py3-none-any.whl",
+    "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "idna-3.20.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "iniconfig",
+    "version": "2.3.1",
+    "wheel": "iniconfig-2.3.1-py3-none-any.whl",
+    "sha256": "9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7",
+    "license": "MIT",
+    "license_files": [
+      "iniconfig-2.3.1.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "Jinja2",
+    "version": "3.1.6",
+    "wheel": "jinja2-3.1.6-py3-none-any.whl",
+    "sha256": "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67",
+    "license": "BSD License",
+    "license_files": [
+      "jinja2-3.1.6.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "MarkupSafe",
+    "version": "3.0.3",
+    "wheel": "markupsafe-3.0.3-cp312-cp312-win_amd64.whl",
+    "sha256": "26a5784ded40c9e318cfc2bdb30fe164bdb8665ded9cd64d500a34fb42067b1c",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "markupsafe-3.0.3.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "mpmath",
+    "version": "1.3.0",
+    "wheel": "mpmath-1.3.0-py3-none-any.whl",
+    "sha256": "a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c",
+    "license": "BSD License",
+    "license_files": [
+      "mpmath-1.3.0.dist-info/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "networkx",
+    "version": "3.7",
+    "wheel": "networkx-3.7-py3-none-any.whl",
+    "sha256": "e3fd2c13a7814cee3746340d8d7f8598a67f16a58bf47fb7f8793fab6efca1b0",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "networkx-3.7.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "numpy",
+    "version": "2.2.6",
+    "wheel": "numpy-2.2.6-cp312-cp312-win_amd64.whl",
+    "sha256": "c1f9540be57940698ed329904db803cf7a402f3fc200bfe599334c9bd84a40b2",
+    "license": "BSD License",
+    "license_files": [
+      "numpy/ma/LICENSE",
+      "numpy/random/LICENSE.md",
+      "numpy/_core/include/numpy/random/LICENSE.txt",
+      "numpy-2.2.6.dist-info/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "opencv-python-headless",
+    "version": "4.12.0.88",
+    "wheel": "opencv_python_headless-4.12.0.88-cp37-abi3-win_amd64.whl",
+    "sha256": "86b413bdd6c6bf497832e346cd5371995de148e579b9774f8eba686dee3f5528",
+    "license": "Apache Software License",
+    "license_files": [
+      "cv2/LICENSE-3RD-PARTY.txt",
+      "cv2/LICENSE.txt",
+      "cv2/data/haarcascade_license_plate_rus_16stages.xml",
+      "opencv_python_headless-4.12.0.88.dist-info/LICENSE-3RD-PARTY.txt",
+      "opencv_python_headless-4.12.0.88.dist-info/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "packaging",
+    "version": "26.3",
+    "wheel": "packaging-26.3-py3-none-any.whl",
+    "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+    "license": "Apache-2.0 OR BSD-2-Clause",
+    "license_files": [
+      "packaging/licenses/__init__.py",
+      "packaging/licenses/_spdx.py",
+      "packaging-26.3.dist-info/licenses/LICENSE",
+      "packaging-26.3.dist-info/licenses/LICENSE.APACHE",
+      "packaging-26.3.dist-info/licenses/LICENSE.BSD"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "pillow",
+    "version": "11.3.0",
+    "wheel": "pillow-11.3.0-cp312-cp312-win_amd64.whl",
+    "sha256": "a6444696fce635783440b7f7a9fc24b3ad10a9ea3f0ab66c5905be1c19ccf17d",
+    "license": "MIT-CMU",
+    "license_files": [
+      "pillow-11.3.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "pluggy",
+    "version": "1.7.0",
+    "wheel": "pluggy-1.7.0-py3-none-any.whl",
+    "sha256": "7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec",
+    "license": "MIT License",
+    "license_files": [
+      "pluggy-1.7.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "psutil",
+    "version": "7.1.2",
+    "wheel": "psutil-7.1.2-cp37-abi3-win_amd64.whl",
+    "sha256": "8e17852114c4e7996fe9da4745c2bdef001ebbf2f260dec406290e66628bdb91",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "psutil-7.1.2.dist-info/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "pydantic",
+    "version": "2.14.2",
+    "wheel": "pydantic-2.14.2-py3-none-any.whl",
+    "sha256": "7efbf7507b937931cd32a5755acb00ea1cf5ccb1d4e8067a5850d5069e382118",
+    "license": "MIT",
+    "license_files": [
+      "pydantic-2.14.2.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "pydantic_core",
+    "version": "2.50.2",
+    "wheel": "pydantic_core-2.50.2-cp312-cp312-win_amd64.whl",
+    "sha256": "b381574614245f18fdb2d6d1aa8f149e225869c47b5ee7f81812de8977817314",
+    "license": "MIT",
+    "license_files": [
+      "pydantic_core-2.50.2.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "Pygments",
+    "version": "2.21.0",
+    "wheel": "pygments-2.21.0-py3-none-any.whl",
+    "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9",
+    "license": "BSD-2-Clause",
+    "license_files": [
+      "pygments-2.21.0.dist-info/licenses/AUTHORS",
+      "pygments-2.21.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "pytest",
+    "version": "8.4.2",
+    "wheel": "pytest-8.4.2-py3-none-any.whl",
+    "sha256": "872f880de3fc3a5bdc88a11b39c9710c3497a547cfa9320bc3c5e62fbf272e79",
+    "license": "MIT License",
+    "license_files": [
+      "pytest-8.4.2.dist-info/licenses/AUTHORS",
+      "pytest-8.4.2.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "PyYAML",
+    "version": "6.0.3",
+    "wheel": "pyyaml-6.0.3-cp312-cp312-win_amd64.whl",
+    "sha256": "5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b",
+    "license": "MIT License",
+    "license_files": [
+      "pyyaml-6.0.3.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "regex",
+    "version": "2026.9.29",
+    "wheel": "regex-2026.9.29-cp312-cp312-win_amd64.whl",
+    "sha256": "fdd88ed5e20b1bcdd234421e454962c971aa44b653bdb7f1ea9ef683e90fb649",
+    "license": "Apache-2.0 AND CNRI-Python",
+    "license_files": [
+      "regex-2026.9.29.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "requests",
+    "version": "2.34.2",
+    "wheel": "requests-2.34.2-py3-none-any.whl",
+    "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+    "license": "Apache Software License",
+    "license_files": [
+      "requests-2.34.2.dist-info/licenses/LICENSE",
+      "requests-2.34.2.dist-info/licenses/NOTICE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "safetensors",
+    "version": "0.6.2",
+    "wheel": "safetensors-0.6.2-cp38-abi3-win_amd64.whl",
+    "sha256": "c7b214870df923cbc1593c3faee16bec59ea462758699bd3fee399d00aac072c",
+    "license": "Apache Software License",
+    "license_files": [
+      "safetensors-0.6.2.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "setuptools",
+    "version": "78.1.0",
+    "wheel": "setuptools-78.1.0-py3-none-any.whl",
+    "sha256": "3e386e96793c8702ae83d17b853fb93d3e09ef82ec62722e61da5cd22376dcd8",
+    "license": "MIT License",
+    "license_files": [
+      "setuptools/_vendor/packaging/licenses/__init__.py",
+      "setuptools/_vendor/packaging/licenses/_spdx.py",
+      "setuptools/_vendor/platformdirs-4.2.2.dist-info/licenses/LICENSE",
+      "setuptools/_vendor/wheel/vendored/packaging/LICENSE",
+      "setuptools/_vendor/wheel/vendored/packaging/LICENSE.APACHE",
+      "setuptools/_vendor/wheel/vendored/packaging/LICENSE.BSD",
+      "setuptools-78.1.0.dist-info/licenses/LICENSE",
+      "setuptools/_vendor/autocommand-2.2.2.dist-info/LICENSE",
+      "setuptools/_vendor/backports.tarfile-1.2.0.dist-info/LICENSE",
+      "setuptools/_vendor/importlib_metadata-8.0.0.dist-info/LICENSE",
+      "setuptools/_vendor/inflect-7.3.1.dist-info/LICENSE",
+      "setuptools/_vendor/jaraco.collections-5.1.0.dist-info/LICENSE",
+      "setuptools/_vendor/jaraco.context-5.3.0.dist-info/LICENSE",
+      "setuptools/_vendor/jaraco.functools-4.0.1.dist-info/LICENSE",
+      "setuptools/_vendor/jaraco.text-3.12.1.dist-info/LICENSE",
+      "setuptools/_vendor/more_itertools-10.3.0.dist-info/LICENSE",
+      "setuptools/_vendor/packaging-24.2.dist-info/LICENSE",
+      "setuptools/_vendor/packaging-24.2.dist-info/LICENSE.APACHE",
+      "setuptools/_vendor/packaging-24.2.dist-info/LICENSE.BSD",
+      "setuptools/_vendor/tomli-2.0.1.dist-info/LICENSE",
+      "setuptools/_vendor/typeguard-4.3.0.dist-info/LICENSE",
+      "setuptools/_vendor/typing_extensions-4.12.2.dist-info/LICENSE",
+      "setuptools/_vendor/wheel-0.45.1.dist-info/LICENSE.txt",
+      "setuptools/_vendor/zipp-3.19.2.dist-info/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "starlette",
+    "version": "0.48.0",
+    "wheel": "starlette-0.48.0-py3-none-any.whl",
+    "sha256": "0764ca97b097582558ecb498132ed0c7d942f233f365b86ba37770e026510659",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "starlette-0.48.0.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "sympy",
+    "version": "1.14.0",
+    "wheel": "sympy-1.14.0-py3-none-any.whl",
+    "sha256": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5",
+    "license": "BSD License",
+    "license_files": [
+      "sympy/parsing/latex/LICENSE.txt",
+      "sympy-1.14.0.dist-info/licenses/AUTHORS",
+      "sympy-1.14.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "tokenizers",
+    "version": "0.22.2",
+    "wheel": "tokenizers-0.22.2-cp39-abi3-win_amd64.whl",
+    "sha256": "c9ea31edff2968b44a88f97d784c2f16dc0729b8b143ed004699ebca91f05c48",
+    "license": "Apache Software License",
+    "license_files": [],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "torch",
+    "version": "2.9.0+cpu",
+    "wheel": "torch-2.9.0+cpu-cp312-cp312-win_amd64.whl",
+    "sha256": "e438061b87ec7dd6018fca9f975219889aa0a3f6cdc3ea10dd0ae2bc7f1c47ce",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "torch-2.9.0+cpu.dist-info/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "tqdm",
+    "version": "4.70.1",
+    "wheel": "tqdm-4.70.1-py3-none-any.whl",
+    "sha256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73",
+    "license": "MPL-2.0 AND MIT",
+    "license_files": [
+      "tqdm-4.70.1.dist-info/licenses/LICENCE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "transformers",
+    "version": "4.57.1",
+    "wheel": "transformers-4.57.1-py3-none-any.whl",
+    "sha256": "b10d05da8fa67dc41644dbbf9bc45a44cb86ae33da6f9295f5fbf5b7890bd267",
+    "license": "Apache Software License",
+    "license_files": [
+      "transformers-4.57.1.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "typing_extensions",
+    "version": "4.16.0",
+    "wheel": "typing_extensions-4.16.0-py3-none-any.whl",
+    "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+    "license": "PSF-2.0",
+    "license_files": [
+      "typing_extensions-4.16.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "typing-inspection",
+    "version": "0.4.4",
+    "wheel": "typing_inspection-0.4.4-py3-none-any.whl",
+    "sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+    "license": "MIT",
+    "license_files": [
+      "typing_inspection-0.4.4.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "urllib3",
+    "version": "2.8.0",
+    "wheel": "urllib3-2.8.0-py3-none-any.whl",
+    "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+    "license": "MIT",
+    "license_files": [
+      "urllib3-2.8.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "uvicorn",
+    "version": "0.38.0",
+    "wheel": "uvicorn-0.38.0-py3-none-any.whl",
+    "sha256": "48c0afd214ceb59340075b4a052ea1ee91c16fbc2a9b1469cca0e54566977b02",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "uvicorn-0.38.0.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-windows"
+  },
+  {
+    "package": "annotated-types",
+    "version": "0.8.0",
+    "wheel": "annotated_types-0.8.0-py3-none-any.whl",
+    "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+    "license": "MIT",
+    "license_files": [
+      "annotated_types-0.8.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "anyio",
+    "version": "4.16.0",
+    "wheel": "anyio-4.16.0-py3-none-any.whl",
+    "sha256": "c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026",
+    "license": "MIT",
+    "license_files": [
+      "anyio-4.16.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "certifi",
+    "version": "2026.10.23",
+    "wheel": "certifi-2026.10.23-py3-none-any.whl",
+    "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1",
+    "license": "Mozilla Public License 2.0 (MPL 2.0)",
+    "license_files": [
+      "certifi-2026.10.23.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "click",
+    "version": "8.5.0",
+    "wheel": "click-8.5.0-py3-none-any.whl",
+    "sha256": "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "click-8.5.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "fastapi",
+    "version": "0.119.1",
+    "wheel": "fastapi-0.119.1-py3-none-any.whl",
+    "sha256": "0b8c2a2cce853216e150e9bd4faaed88227f8eb37de21cb200771f491586a27f",
+    "license": "MIT License",
+    "license_files": [
+      "fastapi-0.119.1.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "h11",
+    "version": "0.16.0",
+    "wheel": "h11-0.16.0-py3-none-any.whl",
+    "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+    "license": "MIT License",
+    "license_files": [
+      "h11-0.16.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "httpcore",
+    "version": "1.0.9",
+    "wheel": "httpcore-1.0.9-py3-none-any.whl",
+    "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "httpcore-1.0.9.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "httpx",
+    "version": "0.28.1",
+    "wheel": "httpx-0.28.1-py3-none-any.whl",
+    "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+    "license": "BSD License",
+    "license_files": [
+      "httpx-0.28.1.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "idna",
+    "version": "3.20",
+    "wheel": "idna-3.20-py3-none-any.whl",
+    "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "idna-3.20.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "pydantic",
+    "version": "2.14.2",
+    "wheel": "pydantic-2.14.2-py3-none-any.whl",
+    "sha256": "7efbf7507b937931cd32a5755acb00ea1cf5ccb1d4e8067a5850d5069e382118",
+    "license": "MIT",
+    "license_files": [
+      "pydantic-2.14.2.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "pydantic_core",
+    "version": "2.50.2",
+    "wheel": "pydantic_core-2.50.2-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+    "sha256": "86e7abd24a67f61a4bfe8df059b67a2bdd8bf33705178e98463195d140bd3780",
+    "license": "MIT",
+    "license_files": [
+      "pydantic_core-2.50.2.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "starlette",
+    "version": "0.48.0",
+    "wheel": "starlette-0.48.0-py3-none-any.whl",
+    "sha256": "0764ca97b097582558ecb498132ed0c7d942f233f365b86ba37770e026510659",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "starlette-0.48.0.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "typing_extensions",
+    "version": "4.16.0",
+    "wheel": "typing_extensions-4.16.0-py3-none-any.whl",
+    "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+    "license": "PSF-2.0",
+    "license_files": [
+      "typing_extensions-4.16.0.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "typing-inspection",
+    "version": "0.4.4",
+    "wheel": "typing_inspection-0.4.4-py3-none-any.whl",
+    "sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+    "license": "MIT",
+    "license_files": [
+      "typing_inspection-0.4.4.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "uvicorn",
+    "version": "0.38.0",
+    "wheel": "uvicorn-0.38.0-py3-none-any.whl",
+    "sha256": "48c0afd214ceb59340075b4a052ea1ee91c16fbc2a9b1469cca0e54566977b02",
+    "license": "BSD-3-Clause",
+    "license_files": [
+      "uvicorn-0.38.0.dist-info/licenses/LICENSE.md"
+    ],
+    "platform": "wheelhouse-gateway-linux"
+  }
+]
