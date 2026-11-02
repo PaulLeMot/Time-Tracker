@@ -17,11 +17,13 @@ browser tabs benefit from the gateway correction without new client JavaScript.
 The camera1.1 task agreed to keep its work local until this incident is resolved,
 then refresh main and preserve this configuration change.
 
-Regression: `test_https_proxy_redirect.py` runs the actual nginx image with a
+Regression: `docs/verification/https_proxy_redirect.py.txt` runs the actual nginx image with a
 synthetic loopback-only upstream and temporary loopback TLS listener. It checks
 redirect origin,307POST method/body, encoded paths/query, external/relative
 redirects, and the existing root login redirect. No valid production attendance
 request is used. The existing TLS key is mounted read-only and never exported.
+The verification source uses a text suffix so installing it in the source bind
+mount does not activate uvicorn's Python-file reload watcher.
 
 Deployment: clean main-only fast-forward, compare exact changed file hashes,
 save previous gateway config privately, run nginx syntax validation, atomically

@@ -1,7 +1,7 @@
 """Isolated nginx regression. Synthetic loopback upstream only; never touches app/DB.
 
 Run on a Linux Docker host with an already available image and TLS directory:
-python test_https_proxy_redirect.py --config deploy/operportal-https.nginx.conf \
+python docs/verification/https_proxy_redirect.py.txt --config deploy/operportal-https.nginx.conf \
     --nginx-image <local-image-id> --tls-dir <private-existing-tls-dir>
 The private key stays mounted in nginx; it is never read or printed by this test.
 """
