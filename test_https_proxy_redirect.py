@@ -1,0 +1,102 @@
+"""Isolated nginx regression. Synthetic loopback upstream only; never touches app/DB.
+
+Run on a Linux Docker host with an already available image and TLS directory:
+python test_https_proxy_redirect.py --config deploy/operportal-https.nginx.conf \
+    --nginx-image <local-image-id> --tls-dir <private-existing-tls-dir>
+The private key stays mounted in nginx; it is never read or printed by this test.
+"""
+import argparse,contextlib,hashlib,http.client,http.server,json,os,pathlib,socket,ssl,subprocess,tempfile,threading,time,uuid
+
+HOST='operportal.fandocraft.ru'
+ORIGIN='https://'+HOST+':8443'
+class Stub(http.server.BaseHTTPRequestHandler):
+    protocol_version='HTTP/1.1'
+    def log_message(self,*args):pass
+    def do_POST(self):self.answer()
+    def do_GET(self):self.answer()
+    def answer(self):
+        body=self.rfile.read(int(self.headers.get('Content-Length','0')))
+        if self.path=='/api/timelog':
+            self.send_response(307);self.send_header('Location','http://'+HOST+':8443/api/timelog/')
+            self.send_header('Content-Length','0');self.end_headers();return
+        if self.path=='/external':location='https://example.invalid/unchanged?x=1'
+        elif self.path=='/relative':location='/static/login.html'
+        elif self.path=='/query':location='http://'+HOST+':8443/encoded%2Fpath/?a=1&b=2'
+        else:location=None
+        if location:
+            self.send_response(302);self.send_header('Location',location)
+            self.send_header('Content-Length','0');self.end_headers();return
+        data=json.dumps({'synthetic':True,'method':self.command,'path':self.path,'body_sha256':hashlib.sha256(body).hexdigest()}).encode()
+        self.send_response(200);self.send_header('Content-Type','application/json')
+        self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+
+def command(*args):
+    p=subprocess.run(args,capture_output=True,text=True,timeout=20)
+    if p.returncode:raise RuntimeError(p.stderr[-1200:])
+    return p.stdout.strip()
+
+def run(config,image,tlsdir):
+    config=pathlib.Path(config).read_text()
+    assert config.count('listen 192.168.137.105:8443 ssl;')==1
+    assert config.count('proxy_pass http://127.0.0.1:8000;')==1
+    with contextlib.closing(socket.socket()) as s:
+        s.bind(('127.0.0.1',0));port=s.getsockname()[1]
+    upstream=http.server.ThreadingHTTPServer(('127.0.0.1',0),Stub)
+    upstream.daemon_threads=True
+    thread=threading.Thread(target=upstream.serve_forever,daemon=True);thread.start()
+    text=config.replace('listen 192.168.137.105:8443 ssl;',f'listen 127.0.0.1:{port} ssl;')
+    text=text.replace('proxy_pass http://127.0.0.1:8000;',f'proxy_pass http://127.0.0.1:{upstream.server_port};')
+    assert '127.0.0.1:8000' not in text
+    name='operportal-redirect-test-'+uuid.uuid4().hex[:10]
+    started=False
+    try:
+        with tempfile.TemporaryDirectory(prefix='operportal-redirect-test-') as temp:
+            candidate=pathlib.Path(temp)/'nginx.conf';candidate.write_text(text)
+            args=['docker','run','--network','host','--user',f'{os.getuid()}:{os.getgid()}',
+                  '--read-only','--cap-drop','ALL','--security-opt','no-new-privileges',
+                  '--memory','64m','--pids-limit','64','--tmpfs','/tmp:rw,noexec,nosuid,size=8m',
+                  '-v',str(candidate)+':/config/nginx.conf:ro','-v',str(pathlib.Path(tlsdir).resolve())+':/tls:ro',
+                  '--entrypoint','nginx']
+            syntax=command(*(args[:2]+['--rm']+args[2:]+[image,'-t','-c','/config/nginx.conf']))
+            command(*(args[:2]+['-d','--name',name]+args[2:]+[image,'-c','/config/nginx.conf','-g','daemon off;']))
+            started=True
+            class LoopbackHTTPS(http.client.HTTPSConnection):
+                def connect(self):
+                    raw=socket.create_connection(('127.0.0.1',port),timeout=5)
+                    self.sock=self._context.wrap_socket(raw,server_hostname=HOST)
+            def request(method,path,body=None):
+                c=LoopbackHTTPS(HOST,port=port,context=ssl.create_default_context(),timeout=5)
+                try:
+                    c.request(method,path,body=body,headers={'Host':HOST+':8443','Content-Type':'application/json'})
+                    r=c.getresponse();data=r.read()
+                    return r.status,r.getheader('Location'),data
+                finally:c.close()
+            for attempt in range(30):
+                try:request('GET','/health');break
+                except (OSError,ssl.SSLError):
+                    if attempt==29:raise
+                    time.sleep(.1)
+            body=b'{"synthetic":true,"action":"break_start"}'
+            status,location,_=request('POST','/api/timelog',body)
+            assert status==307 and location==ORIGIN+'/api/timelog/',(status,location)
+            status,_,data=request('POST','/api/timelog/',body)
+            result=json.loads(data)
+            assert status==200 and result['synthetic'] and result['method']=='POST'
+            assert result['body_sha256']==hashlib.sha256(body).hexdigest()
+            assert request('GET','/external')[:2]==(302,'https://example.invalid/unchanged?x=1')
+            assert request('GET','/relative')[:2]==(302,'/static/login.html')
+            assert request('GET','/query')[:2]==(302,ORIGIN+'/encoded%2Fpath/?a=1&b=2')
+            assert request('GET','/')[:2]==(302,'/static/employee.html')
+            return {'nginx_syntax':'PASS','synthetic_upstream_only':True,'tls_certificate_verified':True,
+                    'https_redirect':'PASS','post_method_and_body_preserved':'PASS',
+                    'external_redirect_unchanged':'PASS','relative_redirect_unchanged':'PASS',
+                    'encoded_path_query_preserved':'PASS','entry_redirect_preserved':'PASS',
+                    'production_app_requests':0,'temporary_listener':'loopback only'}
+    finally:
+        if started:command('docker','rm','-f',name)
+        upstream.shutdown();upstream.server_close()
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--config',required=True)
+    parser.add_argument('--nginx-image',required=True);parser.add_argument('--tls-dir',required=True)
+    p=parser.parse_args();print(json.dumps(run(p.config,p.nginx_image,p.tls_dir),indent=2))
