@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const window = {fetch() { throw Error('Real transport forbidden'); }};
-vm.runInNewContext(fs.readFileSync('static/camera-code-search.js', 'utf8'), {window});
+vm.runInNewContext(fs.readFileSync('static/camera-code-search.js', 'utf8'), {window, DOMException});
 const api = window.TTCodeSearch;
 const response = (status, data) => ({status, ok: status >= 200 && status < 300, json: async () => data});
 const item = (code, marking, similar = false) => ({'Код': code, 'Вид': 'SYN', 'Название': 'SYN ' + code,
@@ -72,4 +72,56 @@ test('unsafe camera payload triggers zero lookups', async () => {
     let calls = 0;
     await assert.rejects(api.resolveImage({rawValue: '<script>90001</script>', format: 'CODE_128'}, {transport: async () => { calls++; }}));
     assert.equal(calls, 0);
+});
+
+test('OCR extracts articles inside text, keeps zeros and never slices long numeric IDs', () => {
+    assert.deepEqual(Array.from(api.textTokens('SYN PRODUCT\nSKU: O90001_BLUE\nORDER 1234567890123')),
+        ['O90001_BLUE', '90001', '1234567890123']);
+    assert.deepEqual(Array.from(api.textTokens('Артикул: 00001\nhttps://example.invalid/90002')), ['00001']);
+    assert.deepEqual(Array.from(api.textTokens('1900010')), ['1900010']);
+    assert.deepEqual(Array.from(api.textTokens('O9OOO1')), []);
+    assert.deepEqual(Array.from(api.textTokens('ORDER 090001')), ['090001']);
+    assert.deepEqual(Array.from(api.textTokens('SKU: 090001')), ['O90001', '90001', '090001']);
+    assert.ok(!api.textTokens('SKU: 0900012345').includes('90001'));
+    assert.equal(api.textTokens('90001 '.repeat(400)).length, 0);
+    assert.ok(api.textTokens('10001 10002 10003 10004 10005 10006 10007').length <= 6);
+});
+
+test('OCR uses existing exact/mapping lookups, merges aliases and preserves different products', async () => {
+    const calls = [];
+    const transport = async url => {
+        calls.push(url);
+        if (url === '/api/products/90001') return response(200, {code: '90001', name: 'SYN 90001', product_type: 'SYN'});
+        if (url.startsWith('/api/products/')) return response(404, {});
+        return response(200, [item('90001', 'sia_OZ'), item('90002', 'sia_WB')]);
+    };
+    const result = await api.resolveText('SKU O90001', {transport});
+    assert.equal(result.length, 2);
+    assert.ok(calls.includes('/api/mark/O90001'));
+    assert.ok(calls.every(url => !url.includes('filtered')));
+    const marking = await api.resolveText('SKU O90001', {mode: 'mark', marking: 'sia_OZ', transport});
+    assert.equal(marking.length, 1); assert.equal(marking[0].code, '90001');
+});
+
+test('OCR bounded O/0 variant retains the original reading and demands UI confirmation', async () => {
+    const result = await api.resolveText('SKU: 090001', {transport: async url => {
+        if (url === '/api/products/90001') return response(200, {code: '90001', name: 'SYN'});
+        return url.startsWith('/api/products/') ? response(404, {}) : response(200, []);
+    }});
+    assert.equal(result.length, 1); assert.equal(result[0].textAlternative, true);
+    assert.deepEqual(Array.from(result[0].textSources), ['090001']);
+});
+
+test('OCR internal five-digit FSK is accepted in marketplace context, related stickers excluded', async () => {
+    const result = await api.resolveText('ARTICLE 00001', {mode: 'mark', marking: 'kpd_WB',
+        transport: async () => response(200, [item('00001', 'FSK'), item('00002', 'FSK', true)])});
+    assert.equal(result.length, 1); assert.equal(result[0].code, '00001');
+});
+
+test('OCR failures and cancellation cannot produce a partial candidate result', async () => {
+    const transport = async url => url.endsWith('/90001') ? response(200, {code: '90001', name: 'SYN'}) : response(500, {});
+    await assert.rejects(api.resolveText('90001 90002', {transport}), error => error.kind === 'source');
+    const controller = new AbortController(); controller.abort();
+    await assert.rejects(api.resolveText('90001', {signal: controller.signal, transport}), {name: 'AbortError'});
+    await assert.rejects(api.resolveText('NO ARTICLE', {transport}), error => error.kind === 'no_article');
 });

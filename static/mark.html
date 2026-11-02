@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Маркировка</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
-    <link rel="stylesheet" href="/static/camera-scanner.css?v=1.0.0">
+    <link rel="stylesheet" href="/static/camera-scanner.css?v=1.1.0&build=20261102b">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
@@ -623,8 +623,9 @@
     </div>
 </div>
 <div id="toast" class="toast"></div>
-<script src="/static/camera-scanner.js?v=1.0.0"></script>
-<script src="/static/camera-code-search.js?v=1.0.0"></script>
+<script src="/static/camera-engine.js?v=1.1.0&build=20261102b"></script>
+<script src="/static/camera-scanner.js?v=1.1.0&build=20261102b"></script>
+<script src="/static/camera-code-search.js?v=1.1.0&build=20261102b"></script>
 <script>
     // --- История запросов ---
     let searchHistory = [];
@@ -657,6 +658,7 @@
         closeDropdownHistory();
         markScanner.open({returnFocusTo: markCameraButton, onError: markCameraNotice,
             onDecoded: decoded => {
+                if (decoded.format === 'OCR_TEXT') return performScan(decoded.rawValue, 'text');
                 try { const raw = TTCodeSearch.validate(decoded); return performScan(raw, true); }
                 catch (error) { markCameraNotice(error.message); }
             }});
@@ -1214,24 +1216,27 @@
         const marking = selectedMarking;
         if (!fromCamera) { addToHistory(code); markCameraNotice(); }
 
-        if (!isValidBarcode(code)) {
+        if (fromCamera !== 'text' && !isValidBarcode(code)) {
             showError('Некорректный штрих-код. Допустимы только буквы, цифры, дефис и подчёркивание (минимум 5 символов).');
             return;
         }
 
         if (fromCamera) {
-            markCameraNotice('Штрихкод считан. Поиск товара…');
+            const textMode = fromCamera === 'text';
+            markCameraNotice(textMode ? 'Текст прочитан. Проверяю артикул…' : 'Штрихкод считан. Поиск товара…');
             try {
-                const result = await TTCodeSearch.lookupMark(code, marking, {signal: controller.signal});
+                const result = textMode ? {items: await TTCodeSearch.resolveText(code, {mode: 'mark', marking, signal: controller.signal}), related: []}
+                    : await TTCodeSearch.lookupMark(code, marking, {signal: controller.signal});
                 if (generation !== scanGeneration) return;
-                const item = await TTCodeSearch.choose(result.items, markCameraButton, controller.signal);
+                const item = await TTCodeSearch.choose(result.items, markCameraButton, controller.signal, {confirm: textMode});
                 if (generation !== scanGeneration) return;
                 if (!item) { markCameraNotice(result.items.length ? 'Выбор отменён. Предыдущий результат сохранён.' : 'Товар не найден для выбранной маркировки. Проверьте код или выберите другую маркировку.'); return; }
-                addToHistory(code);
+                const confirmedCode = textMode ? item.rawValue : code;
+                addToHistory(confirmedCode);
                 document.getElementById('scanInput').value = '';
                 document.getElementById('lastScannedCode').style.display = 'flex';
-                lastScannedCode = code;
-                renderResults([item, ...result.related]);
+                lastScannedCode = confirmedCode;
+                renderResults([textMode ? item.markItem : item, ...result.related]);
                 markCameraNotice();
             } catch (error) {
                 if (generation === scanGeneration && error.name !== 'AbortError') markCameraNotice(error.message);

@@ -19,6 +19,14 @@
 .tt-camera-frame {position: absolute; inset: 24% 5%; border: 2px solid #fff; border-radius: 6px; pointer-events: none;}
 .tt-camera-actions {display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px;}
 .tt-camera-choices {display: grid; gap: 8px;}
+.tt-camera-modes, .tt-camera-controls {display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0;}
+.tt-camera-modes button {flex: 1 1 130px;}
+.tt-camera-modes button[aria-pressed="true"] {background: #eaf2ff; border-color: #225be5; color: #163b77;}
+.tt-camera-zoom {display: flex; flex: 1 1 180px; align-items: center; gap: 8px; min-height: 36px;}
+.tt-camera-zoom input {min-width: 80px; width: 100%; max-width: 200px;}
+.tt-camera-source {display: block; font-size: .9em; color: #536780; margin-top: 4px;}
+.tt-camera-dialog button:disabled {opacity: .6; cursor: wait;}
+.tt-camera-text-mode .tt-camera-frame {inset: 12% 5%;}
 .tt-camera-dialog .tt-camera-choice {text-align: left; white-space: normal; overflow-wrap: anywhere;}
 .tt-camera-notice {font: inherit; color: #1c2b3e; padding: 8px; overflow-wrap: anywhere;}
 .tt-camera-notice:empty {display: none;}

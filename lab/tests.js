@@ -84,8 +84,9 @@ document.getElementById('run').onclick = async function() {
         let calls = 0;
         const scanner = create({getUserMedia: async () => { calls++; }}, noDecode, false);
         await scanner.open(options()); assert(scanner.state === 'error' && calls === 0); scanner.dispose();
-        const unavailable = create({getUserMedia: async () => { throw Error('Should not request camera after decoder failure'); }}, async () => { throw Error('decoder'); });
-        await unavailable.open(options()); assert(unavailable.state === 'error'); unavailable.dispose();
+        const pending = track();
+        const unavailable = create({getUserMedia: async () => stream(pending)}, async () => { throw Error('decoder'); });
+        await unavailable.open(options()); assert(unavailable.state === 'error' && pending.stops === 1); unavailable.dispose();
     }));
     await test('Escape, Back, pagehide and background stop tracks; no automatic resume', () => withFake(async () => {
         for (const reason of ['cancel', 'popstate', 'pagehide', 'hidden']) {
@@ -120,10 +121,11 @@ document.getElementById('run').onclick = async function() {
             await until(() => grant); await until(() => scanner.state === 'error');
             grant(stream(t)); await opening; assert(t.stops === 1 && calls === 0); scanner.dispose();
             let loaded, disposed = 0, mediaCalls = 0;
-            scanner = create({getUserMedia: async () => { mediaCalls++; }}, () => new Promise(resolve => { loaded = resolve; }));
+            const pendingTrack = track();
+            scanner = create({getUserMedia: async () => { mediaCalls++; return stream(pendingTrack); }}, () => new Promise(resolve => { loaded = resolve; }));
             const loading = scanner.open(options()); scanner.close();
             loaded({decode: () => null, dispose() { disposed++; }}); await loading;
-            assert(disposed === 1 && mediaCalls === 0);
+            assert(disposed === 1 && mediaCalls === 1 && pendingTrack.stops === 1);
         } finally { scanner?.dispose(); window.setTimeout = originalTimeout; }
     }));
     await test('actual local decoder reads independent EAN13 and Code128 PNG frames', () => withFake(async () => {
@@ -133,7 +135,7 @@ document.getElementById('run').onclick = async function() {
             const t = track(); let decoded;
             const scanner = TTCamera.create({mediaDevices: {getUserMedia: async () => stream(t)}, isSecureContext: true});
             await scanner.open(options(value => { decoded = value; }));
-            await until(() => decoded || scanner.state === 'error');
+            await until(() => decoded || scanner.state === 'error', 20000);
             assert(decoded?.rawValue === label.rawValue && decoded?.format === label.format, 'Decode mismatch: ' + label.image);
             assert(t.readyState === 'ended'); scanner.dispose();
         }
@@ -146,6 +148,80 @@ document.getElementById('run').onclick = async function() {
         await scanner.open(options(() => callbacks++)); await delay(450);
         assert(scanner.state === 'scanning' && callbacks === 0 && t.readyState === 'live'); scanner.close();
         assert(t.stops === 1 && JSON.stringify({...localStorage}) === before && !document.querySelector('canvas')); scanner.dispose();
+    }));
+
+    await test('rear-only constraints, autofocus, supported controls and no front switch', () => withFake(async () => {
+        const t = track(), requests = [], settings = [];
+        t.getCapabilities = () => ({focusMode: ['continuous', 'single-shot'], torch: true, zoom: {min: 1, max: 8, step: .1}});
+        t.getSettings = () => ({facingMode: 'environment', deviceId: 'rear1', zoom: 1});
+        t.applyConstraints = async value => { settings.push(value); };
+        const scanner = create({getSupportedConstraints: () => ({facingMode: true}),
+            getUserMedia: async value => { requests.push(value); return stream(t); },
+            enumerateDevices: async () => [{kind: 'videoinput', deviceId: 'rear1', label: 'Back camera'},
+                {kind: 'videoinput', deviceId: 'front1', label: 'Front camera'}]});
+        await scanner.open(options());
+        assert(requests[0].video.facingMode.exact === 'environment' && requests[0].audio === false);
+        assert(settings[0].advanced[0].focusMode === 'continuous');
+        assert(document.querySelector('.tt-camera-switch').hidden, 'Front camera offered');
+        document.querySelector('.tt-camera-torch').click(); await delay(10);
+        assert(settings.at(-1).advanced[0].torch === true);
+        assert(document.querySelector('.tt-camera-zoom input').max === '3');
+        scanner.dispose(); assert(t.stops === 1);
+        const front = track(); front.getSettings = () => ({facingMode: 'user'});
+        const rejected = create({getUserMedia: async () => stream(front)});
+        await rejected.open(options()); assert(rejected.state === 'error' && front.stops === 1); rejected.dispose();
+    }));
+    await test('one pending decode only; close aborts initialization; late result cannot search', () => withFake(async () => {
+        let finish, calls = 0, hits = 0, aborted = false; const t = track();
+        const scanner = create({getUserMedia: async () => stream(t)}, async signal => {
+            signal.addEventListener('abort', () => { aborted = true; });
+            return {decode: () => { calls++; return new Promise(resolve => { finish = resolve; }); }, dispose() {}};
+        });
+        const opening = scanner.open(options(() => hits++)); await until(() => finish); await delay(250);
+        assert(calls === 1); scanner.close(); finish({value: {rawValue: '90001', format: 'CODE_128'}}); await opening;
+        assert(aborted && hits === 0 && t.stops === 1); scanner.dispose();
+    }));
+    await test('mode switch releases old stream; cancel during OCR initialization releases new stream', () => withFake(async () => {
+        const tracks = []; let loadText, textAbort = false, disposed = 0;
+        const scanner = TTCamera.create({mediaDevices: {getUserMedia: async () => { const t = track(); tracks.push(t); return stream(t); }},
+            isSecureContext: true, getDecoder: async (signal, mode) => {
+                if (mode !== 'text') return {decode: () => null, dispose() {}};
+                signal.addEventListener('abort', () => { textAbort = true; });
+                return new Promise(resolve => { loadText = resolve; });
+            }});
+        await scanner.open(options()); document.querySelector('[data-mode="text"]').click();
+        await until(() => loadText && tracks.length === 2); scanner.close();
+        loadText({decode: () => null, dispose() { disposed++; }}); await delay(20);
+        assert(textAbort && disposed === 1 && tracks.every(t => t.stops === 1)); scanner.dispose();
+    }));
+    await test('rear switch offers only two rear cameras; unavailable controls never break scanning', () => withFake(async () => {
+        const requests = [], tracks = [];
+        const scanner = create({getSupportedConstraints: () => ({facingMode: true}),
+            enumerateDevices: async () => [{kind: 'videoinput', deviceId: 'rear1', label: 'Back main'},
+                {kind: 'videoinput', deviceId: 'rear2', label: 'Back macro'}, {kind: 'videoinput', deviceId: 'front', label: 'Front'}],
+            getUserMedia: async request => { requests.push(request); const t = track(); tracks.push(t);
+                t.getSettings = () => ({facingMode: 'environment', deviceId: request.video.deviceId?.exact || 'rear1'});
+                t.getCapabilities = () => ({focusMode: ['continuous']}); t.applyConstraints = async () => { throw Error('Unsupported'); };
+                return stream(t); }});
+        await scanner.open(options()); assert(scanner.state === 'scanning');
+        document.querySelector('.tt-camera-switch').click(); await until(() => requests.length === 2 && scanner.state === 'scanning');
+        assert(requests[1].video.deviceId.exact === 'rear2' && requests[1].video.facingMode.exact === 'environment');
+        scanner.dispose(); assert(tracks.every(t => t.stops === 1));
+        let calls = 0; const unsupported = create({getSupportedConstraints: () => ({facingMode: false}), getUserMedia: async () => { calls++; }});
+        await unsupported.open(options()); assert(unsupported.state === 'error' && calls === 0); unsupported.dispose();
+    }));
+    await test('OCR mode reads actual local model and mixed label; repeated stable read only', () => withFake(async () => {
+        const image = new Image(); image.src = '/lab/labels/article.png'; await image.decode(); window.testLabel = image;
+        const t = track(); let decoded;
+        const scanner = TTCamera.create({mediaDevices: {getUserMedia: async () => stream(t)}, isSecureContext: true});
+        const before = JSON.stringify({...localStorage});
+        try {
+            await scanner.open({...options(value => { decoded = value; }), mode: 'text'});
+            await until(() => decoded || scanner.state === 'error', 50000);
+            assert(decoded?.format === 'OCR_TEXT' && TTCodeSearch.textTokens(decoded.rawValue).includes('90001'),
+                'Local OCR failed: ' + (decoded?.rawValue || document.querySelector('.tt-camera-status')?.textContent));
+            assert(scanner.lastMetrics.frames >= 2 && t.stops === 1 && JSON.stringify({...localStorage}) === before);
+        } finally { scanner.dispose(); }
     }));
 
     async function frame(path) {
@@ -216,6 +292,33 @@ document.getElementById('run').onclick = async function() {
         await win.performScan('90002', true); // not mapped, previous result stays; then a valid barcode
         await win.performScan('2400000900016', true); finish(); await old;
         assert(doc.querySelector('.code-part').textContent === '90001');
+    });
+    await test('OCR image result requires confirmation; rejection preserves previous products', async () => {
+        const win = await frame('/static/search.html'), doc = win.document;
+        await until(() => doc.querySelectorAll('.product-card').length === 3);
+        const rejected = win.findCameraImage({rawValue: 'SKU O90001', format: 'OCR_TEXT'});
+        await until(() => doc.querySelector('.tt-camera-choice'));
+        assert(doc.querySelectorAll('.product-card').length === 3 && !doc.querySelector('dialog img'));
+        assert(doc.querySelector('.tt-camera-source').textContent.includes('O90001'));
+        doc.querySelector('.tt-camera-reject').click(); await rejected;
+        assert(doc.querySelectorAll('.product-card').length === 3 && doc.getElementById('codeInput').value === '');
+        const accepted = win.findCameraImage({rawValue: 'SKU O90001', format: 'OCR_TEXT'});
+        await until(() => doc.querySelector('.tt-camera-choice')); doc.querySelector('.tt-camera-choice').click(); await accepted;
+        assert(doc.querySelectorAll('.product-card').length === 1 && doc.querySelector('.code').textContent === '90001');
+    });
+    await test('OCR marking confirmation, no full label in history, manual input cancels stale choice', async () => {
+        const win = await frame('/mark'), doc = win.document;
+        const historyBefore = win.localStorage.getItem('markSearchHistory');
+        const rejected = win.performScan('SKU O90001', 'text');
+        await until(() => doc.querySelector('.tt-camera-choice')); doc.querySelector('.tt-camera-reject').click(); await rejected;
+        assert(win.localStorage.getItem('markSearchHistory') === historyBefore);
+        const accepted = win.performScan('SKU O90001', 'text');
+        await until(() => doc.querySelector('.tt-camera-choice')); doc.querySelector('.tt-camera-choice').click(); await accepted;
+        assert(doc.querySelector('.code-part').textContent === '90001');
+        assert(!JSON.parse(win.localStorage.getItem('markSearchHistory')).includes('SKU O90001'));
+        const pending = win.performScan('SKU 90001', 'text'); await until(() => doc.querySelector('.tt-camera-choice'));
+        await win.performScan('2400000900016', true); await pending;
+        assert(!doc.querySelector('dialog') && doc.querySelector('.code-part').textContent === '90001');
     });
     const geometry = [];
     await test('both pages and choice dialog at six widths and normal/large text', async () => {

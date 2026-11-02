@@ -1,0 +1,58 @@
+"""Independent synthetic barcode encoder (ReportLab) + PNG fixtures (Pillow)."""
+import json
+from pathlib import Path
+from PIL import Image, ImageDraw
+from reportlab.graphics.barcode import code128, eanbc
+
+root = Path.cwd().resolve() / "lab/labels"
+root.mkdir(parents=True, exist_ok=True)
+cases = [
+    ("ean", "2400000900016", "EAN_13"),
+    ("market-ean", "2900000000018", "EAN_13"),
+    ("code128", "90001", "CODE_128"),
+    ("zeros", "000090001", "CODE_128"),
+    ("ozon", "OZNDEMO00001", "CODE_128"),
+    ("collision", "DEMO-COLLISION", "CODE_128"),
+]
+for name, raw, fmt in cases:
+    image = Image.new("RGB", (1000, 440), "white")
+    draw = ImageDraw.Draw(image)
+    if fmt == "CODE_128":
+        barcode = code128.Code128(raw)
+        barcode._calculate()
+        pattern = barcode.decomposed
+        width = sum(ord(c.lower()) - ord("a") + 1 for c in pattern) * 3
+        x = (1000 - width) // 2
+        for c in pattern:
+            w = (ord(c.lower()) - ord("a") + 1) * 3
+            if c.isupper():
+                draw.rectangle((x, 80, x + w - 1, 330), fill="black")
+            x += w
+    else:
+        barcode = eanbc.Ean13BarcodeWidget(value=raw[:12], barWidth=3, barHeight=250, humanReadable=False)
+        assert raw[-1] == barcode._checkdigit(raw[:12])
+        group = barcode.draw()
+        left = (1000 - barcode.width) / 2
+        for shape in group.contents:
+            if getattr(shape, "fillColor", None) is not None:
+                draw.rectangle((round(left + shape.x), 80, round(left + shape.x + shape.width) - 1, 330), fill="black")
+    draw.text((30, 385), "SYNTHETIC ONLY: " + raw + " / " + fmt, fill="black")
+    image.save(root / f"{name}.png")
+Image.new("RGB", (1000, 440), "white").save(root / "blank.png")
+(root / "cases.json").write_text(json.dumps([dict(image=f"{n}.png", rawValue=r, format=f) for n, r, f in cases], indent=2) + "\n", newline="\n")
+print(f"Generated {len(cases)} independent EAN-13/Code128 labels and one blank")
+
+# Camera1.1 difficult frames and mixed OCR label (all synthetic).
+from PIL import ImageEnhance, ImageFont
+im=Image.open(root/'ean.png')
+im.rotate(90,expand=True,fillcolor='white').save(root/'vertical.png')
+im.rotate(12,expand=True,fillcolor='white').save(root/'tilt.png')
+ImageEnhance.Contrast(im).enhance(.15).save(root/'faint.png')
+im.resize((400,176),Image.Resampling.LANCZOS).save(root/'small.png')
+m=Image.new('RGB',(1000,880),'white');m.paste(im,(0,0));m.paste(Image.open(root/'market-ean.png'),(0,440));m.save(root/'multiple.png')
+label=Image.new('RGB',(1000,440),'white');draw=ImageDraw.Draw(label)
+font_path=next((p for p in ['C:/Windows/Fonts/arial.ttf','/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'] if Path(p).is_file()),None)
+assert font_path, 'Install/select an explicit test font'
+font=ImageFont.truetype(font_path,48)
+for y,text in [(90,'SYNTHETIC PRODUCT'),(180,'SKU: O90001'),(270,'BLUE / SIZE M')]:draw.text((65,y),text,font=font,fill='black')
+label.save(root/'article.png')

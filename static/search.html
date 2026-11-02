@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Поиск товаров</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
-    <link rel="stylesheet" href="/static/camera-scanner.css?v=1.0.0">
+    <link rel="stylesheet" href="/static/camera-scanner.css?v=1.1.0&build=20261102b">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -261,8 +261,9 @@
     <div class="loader" id="loader">Загрузка...</div>
 </div>
 
-<script src="/static/camera-scanner.js?v=1.0.0"></script>
-<script src="/static/camera-code-search.js?v=1.0.0"></script>
+<script src="/static/camera-engine.js?v=1.1.0&build=20261102b"></script>
+<script src="/static/camera-scanner.js?v=1.1.0&build=20261102b"></script>
+<script src="/static/camera-code-search.js?v=1.1.0&build=20261102b"></script>
 <script>
     // (Ваш существующий JS без изменений)
     const limit = 30;
@@ -465,13 +466,17 @@
         const generation = searchGeneration;
         const controller = cameraController = new AbortController();
         cameraResolving = true;
-        cameraNotice('Штрихкод считан. Поиск товара…');
+        const textMode = decoded.format === 'OCR_TEXT';
+        cameraNotice(textMode ? 'Текст прочитан. Проверяю артикул…' : 'Штрихкод считан. Поиск товара…');
         try {
-            const items = await TTCodeSearch.resolveImage(decoded, {signal: controller.signal});
+            const items = textMode ? await TTCodeSearch.resolveText(decoded.rawValue, {signal: controller.signal})
+                : await TTCodeSearch.resolveImage(decoded, {signal: controller.signal});
             if (generation !== searchGeneration) return;
-            const item = await TTCodeSearch.choose(items, cameraButton, controller.signal);
+            const item = await TTCodeSearch.choose(items, cameraButton, controller.signal, {confirm: textMode});
             if (generation !== searchGeneration) return;
-            if (!item) { cameraNotice(items.length ? 'Выбор отменён. Предыдущий поиск сохранён.' : 'Товар по этому штрихкоду не найден. Проверьте таблицу сопоставлений или введите код вручную.'); return; }
+            if (!item) { cameraNotice(items.length ? 'Выбор отменён. Предыдущий поиск сохранён.' :
+                textMode ? 'Товар по прочитанному артикулу не найден. Наведите на артикул ещё раз или введите его вручную.' :
+                    'Товар по этому штрихкоду не найден. Проверьте таблицу сопоставлений или введите код вручную.'); return; }
             const product = item.product || await TTCodeSearch.request('/api/products/' + encodeURIComponent(item.code), {signal: controller.signal});
             if (generation !== searchGeneration) return;
             if (!product) { cameraNotice('Соответствие найдено, но изображения товара нет в каталоге.'); return; }
