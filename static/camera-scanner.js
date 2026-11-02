@@ -1,7 +1,7 @@
-/* TimeTracker camera1.1.0: rear-only, bounded asynchronous decoding, RAM-only frames. */
+/* TimeTracker camera1.1.1: rear-only, bounded asynchronous decoding, RAM-only frames. */
 (function (root) {
     'use strict';
-    const VERSION = '1.1.0';
+    const VERSION = '1.1.1';
     let enginePromise, activeScanner, preferredRear = '';
     function loadEngine() {
         if (root.TTCameraEngine) return Promise.resolve(root.TTCameraEngine);
@@ -58,6 +58,7 @@
         function fail(s, message) {
             if (!current(s) || s.state === 'error') return;
             s.state = 'error'; release(s);
+            s.dialog.classList.add('tt-camera-error');
             s.video.hidden = true; s.frame.hidden = true; s.controls.hidden = true;
             s.status.textContent = message; s.retry.hidden = false; s.options.onError?.(message);
         }
@@ -211,23 +212,20 @@
             if (disposed || session) return;
             activeScanner?.close('replaced'); activeScanner = api;
             const mode = options.mode || lastMode; lastMode = mode;
-            const dialog = document.createElement('dialog'); dialog.className = 'tt-camera-dialog';
+            const dialog = document.createElement('dialog'); dialog.className = 'tt-camera-dialog tt-camera-capture';
             dialog.setAttribute('aria-label', mode === 'text' ? 'Чтение артикула с этикетки' : 'Сканирование штрихкода');
             dialog.innerHTML = '<div class="tt-camera-head"><h2>Сканирование этикетки</h2><button type="button" class="tt-camera-close" aria-label="Закрыть">×</button></div>' +
                 '<div class="tt-camera-modes" role="group" aria-label="Режим считывания"><button type="button" data-mode="barcode">Штрихкод</button><button type="button" data-mode="text">Артикул в тексте</button></div>' +
                 '<p class="tt-camera-status" role="status" aria-live="polite"></p><div class="tt-camera-preview"><video muted playsinline></video><div class="tt-camera-frame" aria-hidden="true"></div></div>' +
                 '<div class="tt-camera-controls"><button type="button" class="tt-camera-torch" aria-pressed="false" hidden>Подсветка</button><button type="button" class="tt-camera-switch" hidden>Другая задняя камера</button>' +
                 '<label class="tt-camera-zoom" hidden>Масштаб <input type="range" aria-label="Масштаб камеры"></label></div>' +
-                '<p class="tt-camera-hint"></p><div class="tt-camera-actions"><button type="button" class="tt-camera-retry" hidden>Повторить</button><button type="button" class="tt-camera-cancel">Отмена</button></div>';
+                '<div class="tt-camera-actions"><button type="button" class="tt-camera-retry" hidden>Повторить</button><button type="button" class="tt-camera-cancel">Отмена</button></div>';
             document.body.append(dialog);
             const s = {id: ++generation, options: {...options, mode}, mode, dialog, state: 'requesting', abort: new AbortController(),
                 video: dialog.querySelector('video'), frame: dialog.querySelector('.tt-camera-frame'), canvas: document.createElement('canvas'),
                 status: dialog.querySelector('[role=status]'), retry: dialog.querySelector('.tt-camera-retry'), controls: dialog.querySelector('.tt-camera-controls'),
                 streamListeners: [], removeListeners: [], frames: 0, lastHint: performance.now(), frameCallback: null};
             session = s; dialog.classList.toggle('tt-camera-text-mode', mode === 'text');
-            dialog.querySelector('.tt-camera-hint').textContent = mode === 'text'
-                ? 'Считываем артикул среди текста. Найденный товар потребуется подтвердить. Кадры не сохраняются и не отправляются.'
-                : 'Наведите на один штрихкод целиком, с белыми полями по краям. Кадры не сохраняются и не отправляются.';
             const listen = (target, type, fn) => { target.addEventListener(type, fn); s.removeListeners.push(() => target.removeEventListener(type, fn)); };
             listen(dialog.querySelector('.tt-camera-close'), 'click', () => close());
             listen(dialog.querySelector('.tt-camera-cancel'), 'click', () => close());

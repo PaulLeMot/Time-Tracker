@@ -56,3 +56,11 @@ assert font_path, 'Install/select an explicit test font'
 font=ImageFont.truetype(font_path,48)
 for y,text in [(90,'SYNTHETIC PRODUCT'),(180,'SKU: O90001'),(270,'BLUE / SIZE M')]:draw.text((65,y),text,font=font,fill='black')
 label.save(root/'article.png')
+
+# Camera1.1.1 aspect-ratio fixtures, no production images.
+font32=ImageFont.truetype(font_path,32)
+for name,size in [('mobile-portrait',(480,640)),('mobile-wide',(640,480))]:
+    image=Image.new('RGB',size,'#d9ecf4');draw=ImageDraw.Draw(image)
+    draw.rounded_rectangle((40,40,size[0]-40,size[1]-40),radius=20,fill='#26709b')
+    draw.text((70,size[1]//2-20),'TEST 90001',font=font32,fill='white')
+    image.save(root/(name+'.png'))
