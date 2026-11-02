@@ -280,6 +280,8 @@
     let cameraController = null;
     let exactCameraProduct = null;
     let cameraResolving = false;
+    let optionsGeneration = 0;
+    let optionsController = null;
 
     const codeInput = document.getElementById('codeInput');
     const typeInput = document.getElementById('typeInput');
@@ -297,20 +299,31 @@
         btn.classList.toggle('visible', input.value.length > 0);
     }
 
-    async function loadFilterOptions(productType = '', fandom = '') {
+    async function loadFilterOptions(productType = '', fandom = '', signal) {
         let url = '/api/products/filter-options';
         const params = new URLSearchParams();
         if (productType) params.append('product_type', productType);
         if (fandom) params.append('fandom', fandom);
         if (params.toString()) url += '?' + params.toString();
-        const resp = await fetch(url);
+        const resp = await fetch(url, {signal});
+        if (!resp.ok) throw new Error('Не удалось обновить варианты фильтров. Товары загружаются независимо.');
         return await resp.json();
     }
 
     async function updateDropdowns() {
-        const data = await loadFilterOptions(selectedType, selectedFandom);
-        allTypes = data.product_types;
-        allFandoms = data.fandoms;
+        const generation = ++optionsGeneration;
+        optionsController?.abort();
+        const controller = optionsController = new AbortController();
+        try {
+            const data = await loadFilterOptions(selectedType, selectedFandom, controller.signal);
+            if (generation !== optionsGeneration) return;
+            allTypes = data.product_types;
+            allFandoms = data.fandoms;
+        } catch (error) {
+            if (generation === optionsGeneration && error.name !== 'AbortError' && !cameraResolving) {
+                cameraNotice('Не удалось обновить варианты фильтров. Товары загружаются независимо.');
+            }
+        }
     }
 
     async function initFilters() {
@@ -357,7 +370,7 @@
             typeInput.value = value;
             updateClearButton(typeInput, clearTypeBtn);
             closeAllDropdowns();
-            updateDropdowns().then(() => resetAndLoad());
+            resetAndLoad(); updateDropdowns();
         });
     });
     typeInput.addEventListener('focus', () => {
@@ -366,7 +379,7 @@
             typeInput.value = value;
             updateClearButton(typeInput, clearTypeBtn);
             closeAllDropdowns();
-            updateDropdowns().then(() => resetAndLoad());
+            resetAndLoad(); updateDropdowns();
         });
     });
 
@@ -377,7 +390,7 @@
             fandomInput.value = value;
             updateClearButton(fandomInput, clearFandomBtn);
             closeAllDropdowns();
-            updateDropdowns().then(() => resetAndLoad());
+            resetAndLoad(); updateDropdowns();
         });
     });
     fandomInput.addEventListener('focus', () => {
@@ -386,7 +399,7 @@
             fandomInput.value = value;
             updateClearButton(fandomInput, clearFandomBtn);
             closeAllDropdowns();
-            updateDropdowns().then(() => resetAndLoad());
+            resetAndLoad(); updateDropdowns();
         });
     });
 
@@ -439,6 +452,8 @@
         searchGeneration++;
         loadController?.abort(); cameraController?.abort();
         isLoading = false; cameraResolving = false;
+        hasMore = false;
+        loader.style.display = 'none';
     }
 
     function cameraNotice(message = '', action) {
@@ -453,7 +468,16 @@
 
     const cameraButton = document.getElementById('cameraSearchBtn');
     const imageScanner = window.TTCamera?.create();
-    window.addEventListener('pagehide', () => { imageScanner?.close('pagehide'); invalidateRequests(); });
+    let resumeOnPageShow = false;
+    window.addEventListener('pagehide', () => {
+        resumeOnPageShow = hasMore;
+        imageScanner?.close('pagehide'); invalidateRequests();
+        optionsGeneration++; optionsController?.abort();
+        cancelAnimationFrame(nearEndFrame); nearEndFrame = 0;
+    });
+    window.addEventListener('pageshow', event => {
+        if (event.persisted) { hasMore = resumeOnPageShow; scheduleNearEndLoad(); }
+    });
     cameraButton.onclick = () => {
         if (!imageScanner || !window.TTCodeSearch) { cameraNotice('Сканер не загрузился. Обновите страницу или введите код вручную.'); return; }
         closeAllDropdowns();
@@ -462,6 +486,7 @@
 
     async function findCameraImage(decoded) {
         clearTimeout(searchTimer);
+        const resumePagination = hasMore;
         invalidateRequests();
         const generation = searchGeneration;
         const controller = cameraController = new AbortController();
@@ -486,7 +511,11 @@
         } catch (error) {
             if (generation === searchGeneration && error.name !== 'AbortError') cameraNotice(error.message);
         } finally {
-            if (generation === searchGeneration) { cameraResolving = false; loader.style.display = 'none'; }
+            if (generation === searchGeneration) {
+                cameraResolving = false; loader.style.display = 'none';
+                hasMore = resumePagination;
+                scheduleNearEndLoad();
+            }
         }
     }
 
@@ -538,50 +567,75 @@
         if (data.items.length === 0 && currentOffset === 0) {
             grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px;">' + (exactCameraProduct ? 'Товар скрыт фильтром' : 'Ничего не найдено') + '</div>';
         } else {
+            const fragment = document.createDocumentFragment();
             data.items.forEach(p => {
                 const card = document.createElement('div');
                 card.className = 'product-card';
                 const image = document.createElement('img');
+                image.loading = currentOffset + fragment.childElementCount < 6 ? 'eager' : 'lazy';
+                image.decoding = 'async';
                 image.src = p.image_url; image.alt = p.name;
                 image.onerror = () => { image.onerror = null; image.src = '/static/ttr.png'; };
                 const name = document.createElement('div'); name.className = 'name'; name.textContent = p.name;
                 const codeLabel = document.createElement('div'); codeLabel.className = 'code'; codeLabel.textContent = p.code;
                 card.append(image, name, codeLabel);
-                grid.appendChild(card);
+                fragment.appendChild(card);
             });
+            grid.appendChild(fragment);
         }
 
         currentOffset += data.items.length;
-        hasMore = currentOffset < totalProducts;
+        hasMore = data.items.length > 0 && currentOffset < totalProducts;
         loader.style.display = hasMore ? 'block' : 'none';
         } catch (error) {
             if (generation === searchGeneration && error.name !== 'AbortError') {
                 cameraNotice(error.message); hasMore = false;
+                const retry = document.createElement('button'); retry.type = 'button';
+                retry.textContent = 'Повторить загрузку';
+                retry.onclick = () => { if (generation !== searchGeneration) return; cameraNotice(); hasMore = true; loadProducts(); };
+                document.getElementById('cameraSearchNotice').append(retry);
             }
         } finally {
-            if (generation === searchGeneration) { isLoading = false; loader.style.display = 'none'; }
+            if (generation === searchGeneration) {
+                isLoading = false; loader.style.display = 'none';
+                scheduleNearEndLoad();
+            }
         }
     }
 
     const sentinel = document.createElement('div');
     sentinel.id = 'scrollSentinel';
+    sentinel.style.height = '1px';
     grid.after(sentinel);
 
+    // Start the next small page before the user reaches the final visible row.
+    const prefetchDistance = Math.max(600, Math.min(window.innerHeight * 2, 1600));
+    let nearEndFrame = 0;
+    function scheduleNearEndLoad() {
+        if (nearEndFrame) return;
+        nearEndFrame = requestAnimationFrame(() => {
+            nearEndFrame = 0;
+            if (isLoading || !hasMore || cameraResolving) return;
+            const bounds = sentinel.getBoundingClientRect();
+            if (bounds.top <= window.innerHeight + prefetchDistance && bounds.bottom >= 0) loadProducts();
+        });
+    }
     const observer = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting && hasMore && !isLoading) {
             loadProducts();
         }
-    }, { threshold: 0.1 });
+    }, { rootMargin: `${prefetchDistance}px 0px`, threshold: 0 });
     observer.observe(sentinel);
+    window.addEventListener('scroll', scheduleNearEndLoad, {passive: true});
+    window.addEventListener('resize', scheduleNearEndLoad, {passive: true});
 
     function escapeHtml(text) {
         if (!text) return '';
         return text.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);
     }
 
-    initFilters().then(() => {
-        loadProducts();
-    });
+    initFilters();
+    loadProducts();
 </script>
 </body>
 </html>

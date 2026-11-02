@@ -37,6 +37,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlsplit(self.path)
         path, q = unquote(parsed.path), parse_qs(parsed.query)
+        if path in ('/search', '/baseline-search'):
+            file = ROOT / 'static/search.html' if path == '/search' else ROOT.parent / 'search-baseline.html'
+            html = file.read_text(encoding='utf-8').replace('<head>', '<head><script src="/lab/search-fixture.js"></script>', 1)
+            data = html.encode('utf-8')
+            self.send_response(200); self.send_header('Content-Type', 'text/html; charset=utf-8'); self.send_header('Cache-Control', 'no-store'); self.end_headers(); self.wfile.write(data); return
         if path in ('/mark', '/baseline-mark') and q.get('fixture'):
             file = ROOT / 'static/mark.html' if path == '/mark' else ROOT.parent / 'mobile-baseline-mark.html'
             html = file.read_text(encoding='utf-8').replace('</body>', '<script src="/lab/mobile-seed.js"></script></body>')
