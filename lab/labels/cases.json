@@ -1,0 +1,32 @@
+[
+  {
+    "image": "ean.png",
+    "rawValue": "2400000900016",
+    "format": "EAN_13"
+  },
+  {
+    "image": "market-ean.png",
+    "rawValue": "2900000000018",
+    "format": "EAN_13"
+  },
+  {
+    "image": "code128.png",
+    "rawValue": "90001",
+    "format": "CODE_128"
+  },
+  {
+    "image": "zeros.png",
+    "rawValue": "000090001",
+    "format": "CODE_128"
+  },
+  {
+    "image": "ozon.png",
+    "rawValue": "OZNDEMO00001",
+    "format": "CODE_128"
+  },
+  {
+    "image": "collision.png",
+    "rawValue": "DEMO-COLLISION",
+    "format": "CODE_128"
+  }
+]

@@ -1,0 +1,26 @@
+{
+  "name": "@zxing/library",
+  "version": "0.23.0",
+  "license": "Apache-2.0",
+  "artifact": "https://registry.npmjs.org/@zxing/library/-/library-0.23.0.tgz",
+  "integrity": "sha512-6fkkoFwP8CHxl6ugnPsj74PLJgX2iRv5zczGAyt5OBzQgxFhuhF0NCEc4t4OvSr8xAv2MRLlI0Iu9ZGDZQ2urA==",
+  "sha256": {
+    "zxing-library-0.23.0.min.js": "3ede94153fb0c5b67a12d7adff6decd827c2b22714fdc6faecf27a8f20937ea6",
+    "ZXING-LICENSE.txt": "849b3ff4527ff587eecc78736b5685bbba7a44b071f3b944da914e832292f6c0",
+    "TS-CUSTOM-ERROR-LICENSE.txt": "659b010fe62ce794cf25e1e36c2d739db17ea10a159f9a46ba2293e1f26d31c7"
+  },
+  "delivery": "upstream prebuilt UMD; no npm resolution or local build",
+  "upstream_declared_dependencies": {
+    "ts-custom-error": "^3.3.1"
+  },
+  "bundled_dependency_lock": "Entire upstream UMD including embedded helpers is fixed by SHA256; no separate transitive package resolution",
+  "transitive_license_source": {
+    "name": "ts-custom-error",
+    "version": "3.3.1",
+    "license": "MIT",
+    "artifact": "https://registry.npmjs.org/ts-custom-error/-/ts-custom-error-3.3.1.tgz",
+    "integrity": "sha512-5OX1tzOjxWEgsr/YEUWSuPrQ00deKLh6D7OTWcvNHm12/7QPyRh8SYpyWvA4IZv8H/+GQWQEh/kwo95Q9OVW1A=="
+  },
+  "optional_runtime_dependencies": [],
+  "browser_requirement": "native TextDecoder; ASCII linear payload only"
+}
