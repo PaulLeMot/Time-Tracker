@@ -25,6 +25,7 @@
 .tt-camera-zoom input {min-width: 80px; width: 100%; max-width: 200px;}
 .tt-camera-source {display: block; font-size: .9em; color: #536780; margin-top: 4px;}
 .tt-camera-dialog button:disabled {opacity: .6; cursor: wait;}
+.tt-camera-dialog .tt-camera-torch[aria-pressed="true"] {background: #fff3bf; border-color: #dcc66b;}
 .tt-camera-text-mode .tt-camera-frame {inset: 12% 5%;}
 .tt-camera-dialog .tt-camera-choice {text-align: left; white-space: normal; overflow-wrap: anywhere;}
 .tt-camera-notice {font: inherit; color: #1c2b3e; padding: 8px; overflow-wrap: anywhere;}

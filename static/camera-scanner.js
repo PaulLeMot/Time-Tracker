@@ -1,7 +1,7 @@
-/* TimeTracker camera1.1.1: rear-only, bounded asynchronous decoding, RAM-only frames. */
+/* TimeTracker camera1.1.2: rear-only, bounded asynchronous decoding, RAM-only frames. */
 (function (root) {
     'use strict';
-    const VERSION = '1.1.1';
+    const VERSION = '1.1.2';
     let enginePromise, activeScanner, preferredRear = '';
     function loadEngine() {
         if (root.TTCameraEngine) return Promise.resolve(root.TTCameraEngine);
@@ -90,7 +90,7 @@
                 if (torch.disabled) return;
                 torch.disabled = true;
                 const ok = await adjust(s, {advanced: [{torch: !s.torch}]});
-                if (ok) { s.torch = !s.torch; torch.setAttribute('aria-pressed', String(s.torch)); torch.textContent = s.torch ? 'Выключить свет' : 'Подсветка'; }
+                if (ok) { s.torch = !s.torch; torch.setAttribute('aria-pressed', String(s.torch)); }
                 else if (current(s)) status(s, 'Не удалось переключить подсветку. Продолжайте сканирование.');
                 torch.disabled = false;
             };

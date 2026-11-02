@@ -31,13 +31,22 @@ document.getElementById('run').onclick = async function () {
                 check(doc.getElementById('markingDisplay').parentElement.id==='lastScannedCode','Filter placement');
                 check(rect('#scannedCodeText').left<rect('#markingDisplay').left && rect('#markingDisplay').right<=rect('#markingLogo').left,'ID/filter/logo order');
                 check(before.photoHeight<=Math.min(height*.3,250)+1,'Photo budget');
-                check(before.secondStickerBottom<=before.tableBottom+1,'Second sticker clipped');
-                check(before.secondStickerBottom<=height-32,'Second sticker outside screen');
-                check(doc.querySelector('.sticker-section').scrollWidth<=doc.querySelector('.sticker-section').clientWidth+1,'WB numbers overflow horizontally');
-                if(height<=740) {
-                    const grid=doc.querySelector('.main-grid');grid.scrollTop=grid.scrollHeight;
-                    check(rect('#imageContainer').bottom<=height-31,'Cannot reach small-screen image');grid.scrollTop=0;
+                if(height>740) {
+                    check(before.secondStickerBottom<=before.tableBottom+1,'Second sticker clipped');
+                    check(before.secondStickerBottom<=height-32,'Second sticker outside screen');
                 }
+                check(doc.querySelector('.sticker-section').scrollWidth<=doc.querySelector('.sticker-section').clientWidth+1,'WB numbers overflow horizontally');
+                const fixedSelectors=['.search-row','#lastScannedCode','#productInfoContainer','#imageContainer'];
+                const fixedBefore=fixedSelectors.map(selector=>rect(selector).toJSON());
+                scroll.scrollTop=scroll.scrollHeight;check(scroll.scrollTop>0,'Table does not scroll');
+                doc.querySelector('.main-grid').scrollTop=10000;doc.documentElement.scrollTop=10000;doc.body.scrollTop=10000;
+                fixedSelectors.forEach((selector,index)=>{
+                    const after=rect(selector);check(Math.abs(after.top-fixedBefore[index].top)<1&&Math.abs(after.bottom-fixedBefore[index].bottom)<1,'Header or image moved: '+selector);
+                });
+                check(Math.abs(rect('#imageContainer').bottom-(height-32))<1,'Image not anchored to bottom');
+                check(scroll.clientHeight>=80,'Table collapsed');scroll.scrollTop=0;
+                for(const number of doc.querySelectorAll('.row-number,.sticker-highlight,.sticker-last'))
+                    check(Number(win.getComputedStyle(number).fontWeight)>=800,'Key number is not heavy');
                 const control = doc.getElementById('markingDisplay'); control.click();
                 [...doc.querySelectorAll('.marking-dropdown-item')].find(el=>el.textContent==='ktv_WB').click();
                 iframe.style.width='1000px';await until(()=>control.parentElement.classList.contains('input-marking-wrapper'));
@@ -83,6 +92,15 @@ document.getElementById('run').onclick = async function () {
             check(cancel.bottom<=height && cancel.top>=0,'Cancel outside viewport');
             check(dialog.scrollHeight<=dialog.clientHeight+1,'Camera dialog scrolls');
             check(video.height>30,'Preview collapsed');
+            const torch=doc.querySelector('.tt-camera-torch'),zoom=doc.querySelector('.tt-camera-zoom');
+            const label=torch.textContent,buttonWidth=torch.getBoundingClientRect().width,zoomTop=zoom.getBoundingClientRect().top;
+            const originalColor=iframe.contentWindow.getComputedStyle(torch).backgroundColor;
+            torch.click();await until(()=>torch.getAttribute('aria-pressed')==='true');
+            check(torch.textContent===label&&Math.abs(torch.getBoundingClientRect().width-buttonWidth)<1,'Torch caption/width changed');
+            check(Math.abs(zoom.getBoundingClientRect().top-zoomTop)<1,'Torch moved the zoom control');
+            check(iframe.contentWindow.getComputedStyle(torch).backgroundColor!==originalColor,'Torch active color missing');
+            torch.click();await until(()=>torch.getAttribute('aria-pressed')==='false');
+            check(torch.textContent===label&&iframe.contentWindow.getComputedStyle(torch).backgroundColor===originalColor,'Torch off state not restored');
             results.push({camera:true,width,height,font,dialogHeight:dialog.clientHeight,previewHeight:video.height,cancelBottom:cancel.bottom,pass:true});
             doc.querySelector('.tt-camera-close').click();
         } catch(error) { results.push({camera:true,width,height,font,pass:false,error:error.message}); }
