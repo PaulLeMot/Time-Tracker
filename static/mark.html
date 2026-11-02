@@ -398,12 +398,27 @@
         .sticker-section tr:last-child td {
             border-bottom: none;
         }
-        .sticker-count {
-            padding: 8px 12px;
-            font-weight: 600;
+        .sticker-section th {
+            padding: 6px 4px;
+            line-height: 1.15;
             border-bottom: 2px solid #e2e8f0;
             background: #f1f5f9;
-            border-radius: 8px 8px 0 0;
+        }
+        .sticker-heading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .sticker-heading > span:last-child {
+            flex: 1;
+            text-align: center;
+        }
+        .sticker-count {
+            white-space: nowrap;
+            font-weight: 400;
+        }
+        .sticker-count strong {
+            font-weight: 800;
         }
         .sticker-last {
             font-weight: 700;
@@ -1127,11 +1142,10 @@
                             allStickers.some(item => item.platform === 'WB' && item.articul !== null && item.articul !== undefined);
 
             let sectionHtml = `<div class="sticker-section">`;
-            sectionHtml += `<div class="sticker-count">Найдено товаров: ${mainCount}</div>`;
             sectionHtml += `<table><thead><tr>`;
-            sectionHtml += `<th>Стикер</th>`;
-            if (showArticul) sectionHtml += `<th>Артикул</th>`;
-            if (showRow) sectionHtml += `<th>Порядковый номер</th>`;
+            sectionHtml += `<th scope="col"><span class="sticker-heading"><span class="sticker-count" aria-label="Найдено товаров: ${mainCount}">Σ <strong>${mainCount}</strong></span><span>Стикер</span></span></th>`;
+            if (showArticul) sectionHtml += `<th scope="col">Артикул</th>`;
+            if (showRow) sectionHtml += `<th scope="col">Порядковый номер</th>`;
             sectionHtml += `</tr></thead><tbody>`;
 
             for (const item of allStickers) {
@@ -1174,7 +1188,7 @@
             sectionHtml += `</tbody></table></div>`;
             scrollHtml += sectionHtml;
         } else {
-            scrollHtml += `<div class="sticker-section"><div class="sticker-count">Найдено товаров: 0</div><table><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
+            scrollHtml += `<div class="sticker-section"><table><thead><tr><th colspan="2" scope="col"><span class="sticker-heading"><span class="sticker-count" aria-label="Найдено товаров: 0">Σ <strong>0</strong></span><span>Стикер</span></span></th></tr></thead><tbody><tr><td>0</td><td class="sticker-last">0000</td></tr></tbody></table></div>`;
         }
 
         // Пустые строки между таблицами

@@ -24,6 +24,11 @@ document.getElementById('run').onclick = async function () {
                 cameraTop:camera.top,inputTop:input.top,tableBottom:rect('#tablesScroll').bottom,
                 secondStickerBottom:stickerRows[1].getBoundingClientRect().bottom,pageWidth:doc.documentElement.scrollWidth};
             check(before.pageWidth<=width, 'Horizontal overflow');
+            const heading=doc.querySelector('.sticker-section thead');
+            check(heading.querySelectorAll('tr').length===1 && heading.querySelector('.sticker-count strong').textContent==='2','Compact header/count missing');
+            check(Number(win.getComputedStyle(heading.querySelector('strong')).fontWeight)>=800,'Count is not bold');
+            check(!doc.querySelector('.sticker-section > .sticker-count'),'Separate count row remains');
+            if(width<=700) check(heading.getBoundingClientRect().height<=48,'Header is too tall');
             check(rect('#productInfoContainer').top >= rect('#lastScannedCode').bottom, 'Product header order');
             check(camera.width>=(width<=700?44:36) && camera.height>=(width<=700?44:36), 'Camera touch target');
             if (width<=700) {
@@ -38,7 +43,9 @@ document.getElementById('run').onclick = async function () {
                 check(doc.querySelector('.sticker-section').scrollWidth<=doc.querySelector('.sticker-section').clientWidth+1,'WB numbers overflow horizontally');
                 const fixedSelectors=['.search-row','#lastScannedCode','#productInfoContainer','#imageContainer'];
                 const fixedBefore=fixedSelectors.map(selector=>rect(selector).toJSON());
+                const headingTop=heading.getBoundingClientRect().top;
                 scroll.scrollTop=scroll.scrollHeight;check(scroll.scrollTop>0,'Table does not scroll');
+                check(heading.getBoundingClientRect().top<headingTop-20,'Table header must scroll with rows');
                 doc.querySelector('.main-grid').scrollTop=10000;doc.documentElement.scrollTop=10000;doc.body.scrollTop=10000;
                 fixedSelectors.forEach((selector,index)=>{
                     const after=rect(selector);check(Math.abs(after.top-fixedBefore[index].top)<1&&Math.abs(after.bottom-fixedBefore[index].bottom)<1,'Header or image moved: '+selector);
@@ -82,6 +89,21 @@ document.getElementById('run').onclick = async function () {
         check(section.scrollLeft>0 && section.querySelector('th:last-child').getBoundingClientRect().right<=section.getBoundingClientRect().right+1,'Cannot reach mixed marketplace column');
         results.push({fixture:'mixed-WB-OZ',pass:true});
     } catch(error) { results.push({fixture:'mixed-WB-OZ',pass:false,error:error.message}); }
+    for (const fixture of ['zero-stickers','OZ-only','related-excluded']) {
+        try {
+            const {doc,win}=await frame('/mark?fixture=portrait',390,844,18);
+            const product=table=>({'Код':'90001','Название':'Синтетическая проверка шапки','Вид':'Тест','Фандом':'Тест',found_markings:['ktv_OZ'],table});
+            const table=[{marking:'ktv_OZ',platform:'OZ',stickers:[{sticker:'50000007956',articul:'90001'}]}];
+            const products=fixture==='zero-stickers'?[product([])]:[product(table)];
+            if(fixture==='related-excluded') products.push({...product(table),similar_sticker_match:true});
+            win.renderResults(products);
+            const section=doc.querySelector('.sticker-section');
+            check(section.querySelectorAll('thead tr').length===1,'Header row missing');
+            check(section.querySelector('.sticker-count strong').textContent===(fixture==='zero-stickers'?'0':'1'),'Count semantics changed');
+            if(fixture==='OZ-only') check(section.querySelector('th:last-child').textContent==='Артикул' && section.querySelectorAll('th').length===2,'OZ column lost');
+            results.push({fixture,pass:true});
+        } catch(error) { results.push({fixture,pass:false,error:error.message}); }
+    }
     for (const [width,height] of [[360,640],[390,667],[390,844],[446,840],[844,390]]) for (const font of [16,18]) {
         let cameraFrame;
         try {
