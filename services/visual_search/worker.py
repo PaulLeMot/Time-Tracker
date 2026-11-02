@@ -1,5 +1,6 @@
 """One warmed compute subprocess; bounded admission and hard execution deadline."""
 import asyncio
+import ipaddress
 from contextlib import asynccontextmanager
 import multiprocessing as mp
 import os
@@ -133,6 +134,11 @@ class Runner:
 
 
 def create_worker(config):
+    # Use the socket peer, never forwarding headers. This also protects hosts
+    # whose system firewall is managed separately or disabled.
+    allowed_clients = {str(ipaddress.ip_address(x)) for x in config.get('allowed_clients', [])}
+    if config.get('bind', '127.0.0.1') != '127.0.0.1' and not allowed_clients:
+        raise ValueError('remote_worker_requires_client_allowlist')
     runner = Runner(config)
     auth = Authentication(bytes.fromhex(config['key_hex']))
     cache = {}
@@ -206,6 +212,10 @@ def create_worker(config):
 
     @app.middleware('http')
     async def no_store(request, call_next):
+        peer = request.client.host if request.client else ''
+        if allowed_clients and peer not in allowed_clients:
+            return JSONResponse({'detail': 'client_not_allowed'}, status_code=403,
+                                headers={'Cache-Control': 'no-store'})
         response = await call_next(request)
         response.headers['Cache-Control'] = 'no-store'
         return response

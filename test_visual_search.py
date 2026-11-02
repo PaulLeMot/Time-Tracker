@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from services.visual_search.engine import decode, geometry, Engine, resolve_index, build
 from services.visual_search.gateway import create_gateway
 from services.visual_search.protocol import Authentication, Capacity, signed, read_body, MAX_BODY
+from services.visual_search.worker import create_worker
 
 
 class ProtocolTests(unittest.TestCase):
@@ -91,6 +92,19 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):create_gateway(config)
         config['worker_url']='https://worker.test';config['profile_url']='http://192.0.2.2/api/auth/profile'
         with self.assertRaises(ValueError):create_gateway(config)
+
+    def test_remote_worker_checks_socket_peer_before_body_or_hmac(self):
+        config={'bind':'192.0.2.1','key_hex':self.key.hex()}
+        with self.assertRaises(ValueError):create_worker(config)
+        app=create_worker(config|{'allowed_clients':['192.0.2.2']})
+        # No lifespan/compute is needed: the network guard rejects before reading.
+        client=TestClient(app, client=('192.0.2.3',32100))
+        response=client.post('/v1/search?product_type=A',content=b'not-read',
+                             headers={'x-forwarded-for':'192.0.2.2'})
+        self.assertEqual(response.status_code,403)
+        self.assertEqual(response.json()['detail'],'client_not_allowed')
+        client=TestClient(app, client=('192.0.2.2',32100))
+        self.assertEqual(client.get('/health').status_code,503)
 
     def test_worker_outage_is_bounded_and_no_store(self):
         with TestClient(self.gateway(worker_status=503)) as client:
