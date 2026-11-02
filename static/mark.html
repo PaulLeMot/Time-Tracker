@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Маркировка</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
+    <link rel="stylesheet" href="/static/camera-scanner.css?v=1.0.0">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
@@ -581,7 +582,7 @@
         }
     </style>
 </head>
-<body>
+<body class="tt-camera-mark">
 <div class="container">
     <div class="main-grid">
         <div class="left-col">
@@ -601,7 +602,9 @@
                         <div id="markingDropdown" class="marking-dropdown"></div>
                     </span>
                 </div>
+                <button type="button" id="cameraMarkBtn" class="tt-camera-trigger" aria-label="Сканировать штрихкод камерой"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h5l2-3h4l2 3h5v14H3z"/><circle cx="12" cy="12" r="4"/></svg><span>Камера</span></button>
             </div>
+            <div id="cameraMarkNotice" class="tt-camera-notice" role="status" aria-live="polite"></div>
             <div id="lastScannedCode">
                 <span id="scannedCodeText"></span>
                 <img id="markingLogo" src="" alt="Логотип маркировки">
@@ -620,6 +623,8 @@
     </div>
 </div>
 <div id="toast" class="toast"></div>
+<script src="/static/camera-scanner.js?v=1.0.0"></script>
+<script src="/static/camera-code-search.js?v=1.0.0"></script>
 <script>
     // --- История запросов ---
     let searchHistory = [];
@@ -640,6 +645,22 @@
 
     // --- Фильтр по маркировке ---
     let selectedMarking = ''; // '' = все
+    let scanGeneration = 0;
+    let scanController = null;
+    function invalidateScan() { scanGeneration++; scanController?.abort(); }
+    function markCameraNotice(message = '') { document.getElementById('cameraMarkNotice').textContent = message; }
+    const markCameraButton = document.getElementById('cameraMarkBtn');
+    const markScanner = window.TTCamera?.create();
+    window.addEventListener('pagehide', () => { markScanner?.close('pagehide'); invalidateScan(); });
+    markCameraButton.onclick = () => {
+        if (!markScanner || !window.TTCodeSearch) { markCameraNotice('Сканер не загрузился. Обновите страницу или введите код вручную.'); return; }
+        closeDropdownHistory();
+        markScanner.open({returnFocusTo: markCameraButton, onError: markCameraNotice,
+            onDecoded: decoded => {
+                try { const raw = TTCodeSearch.validate(decoded); return performScan(raw, true); }
+                catch (error) { markCameraNotice(error.message); }
+            }});
+    };
     const markingDisplay = document.getElementById('markingDisplay');
     const markingLabelText = document.getElementById('markingLabelText');
     const markingDropdown = document.getElementById('markingDropdown');
@@ -691,6 +712,7 @@
             item.addEventListener('click', function(e) {
                 e.stopPropagation();
                 const val = opt.value;
+                invalidateScan();
                 if (val === selectedMarking) {
                     // Повторный клик на ту же маркировку – сброс
                     selectedMarking = '';
@@ -1183,13 +1205,37 @@
         return /^[A-Za-zА-Яа-я0-9_-]+$/.test(code);
     }
 
-    async function performScan(code) {
+    async function performScan(code, fromCamera = false) {
         if (!code || code.trim() === '') return;
         code = code.trim();
-        addToHistory(code);
+        invalidateScan();
+        const generation = scanGeneration;
+        const controller = scanController = new AbortController();
+        const marking = selectedMarking;
+        if (!fromCamera) { addToHistory(code); markCameraNotice(); }
 
         if (!isValidBarcode(code)) {
             showError('Некорректный штрих-код. Допустимы только буквы, цифры, дефис и подчёркивание (минимум 5 символов).');
+            return;
+        }
+
+        if (fromCamera) {
+            markCameraNotice('Штрихкод считан. Поиск товара…');
+            try {
+                const result = await TTCodeSearch.lookupMark(code, marking, {signal: controller.signal});
+                if (generation !== scanGeneration) return;
+                const item = await TTCodeSearch.choose(result.items, markCameraButton, controller.signal);
+                if (generation !== scanGeneration) return;
+                if (!item) { markCameraNotice(result.items.length ? 'Выбор отменён. Предыдущий результат сохранён.' : 'Товар не найден для выбранной маркировки. Проверьте код или выберите другую маркировку.'); return; }
+                addToHistory(code);
+                document.getElementById('scanInput').value = '';
+                document.getElementById('lastScannedCode').style.display = 'flex';
+                lastScannedCode = code;
+                renderResults([item, ...result.related]);
+                markCameraNotice();
+            } catch (error) {
+                if (generation === scanGeneration && error.name !== 'AbortError') markCameraNotice(error.message);
+            }
             return;
         }
 
@@ -1200,17 +1246,20 @@
 
         showLoading();
         try {
-            const resp = await fetch(`/api/mark/${encodeURIComponent(code)}`, { credentials: 'include' });
+            const resp = await fetch(`/api/mark/${encodeURIComponent(code)}`, { credentials: 'include', signal: controller.signal });
+            if (generation !== scanGeneration) return;
             if (!resp.ok) {
                 let errorMsg = `Ошибка ${resp.status}`;
                 try {
                     const err = await resp.json();
+                    if (generation !== scanGeneration) return;
                     errorMsg = err.detail || errorMsg;
                 } catch(e) {}
                 showError(errorMsg);
                 return;
             }
             const data = await resp.json();
+            if (generation !== scanGeneration) return;
 
             if (selectedMarking) {
                 const product = data[0];
@@ -1233,6 +1282,7 @@
             document.getElementById('lastScannedCode').style.display = 'flex';
             renderResults(data);
         } catch (err) {
+            if (generation !== scanGeneration || err.name === 'AbortError') return;
             showError('Ошибка соединения с сервером');
             console.error(err);
         }
@@ -1264,6 +1314,7 @@
     }
 
     async function refreshData() {
+        invalidateScan();
         const btn = document.getElementById('refreshDataBtn');
         btn.disabled = true;
         btn.textContent = '⏳';
@@ -1391,6 +1442,7 @@
         });
 
         input.addEventListener('input', function() {
+            invalidateScan();
             if (!this.value.trim()) {
                 if (searchHistory.length > 0) {
                     historyIndex = -1;

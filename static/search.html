@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Поиск товаров</title>
     <link rel="icon" type="image/png" href="/static/ttr.png">
+    <link rel="stylesheet" href="/static/camera-scanner.css?v=1.0.0">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -219,7 +220,7 @@
         }
     </style>
 </head>
-<body>
+<body class="tt-camera-search">
 <div class="container">
     <div class="search-panel">
         <div class="search-row-top">
@@ -232,6 +233,7 @@
                     <button class="clear-btn" id="clearCode">✕</button>
                 </div>
             </div>
+            <button type="button" id="cameraSearchBtn" class="tt-camera-trigger" aria-label="Сканировать штрихкод камерой"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h5l2-3h4l2 3h5v14H3z"/><circle cx="12" cy="12" r="4"/></svg><span>Камера</span></button>
             <div class="field field-type" id="typeField">
                 <div class="input-wrapper">
                     <input type="text" id="typeInput" placeholder="Вид товара" autocomplete="off">
@@ -253,10 +255,14 @@
         </div>
     </div>
 
+    <div id="cameraSearchNotice" class="tt-camera-notice" role="status" aria-live="polite"></div>
+
     <div class="products-grid" id="productsGrid"></div>
     <div class="loader" id="loader">Загрузка...</div>
 </div>
 
+<script src="/static/camera-scanner.js?v=1.0.0"></script>
+<script src="/static/camera-code-search.js?v=1.0.0"></script>
 <script>
     // (Ваш существующий JS без изменений)
     const limit = 30;
@@ -268,6 +274,11 @@
     let totalProducts = 0;
     let isLoading = false;
     let hasMore = true;
+    let searchGeneration = 0;
+    let loadController = null;
+    let cameraController = null;
+    let exactCameraProduct = null;
+    let cameraResolving = false;
 
     const codeInput = document.getElementById('codeInput');
     const typeInput = document.getElementById('typeInput');
@@ -391,7 +402,7 @@
         resetAndLoad();
     }
 
-    clearCode.onclick = () => clearField(codeInput, clearCode, () => {});
+    clearCode.onclick = () => clearField(codeInput, clearCode, () => { exactCameraProduct = null; });
     clearTypeBtn.onclick = (e) => {
         e.stopPropagation();
         clearField(typeInput, clearTypeBtn, () => {
@@ -409,6 +420,9 @@
 
     codeInput.addEventListener('input', () => {
         updateClearButton(codeInput, clearCode);
+        exactCameraProduct = null;
+        invalidateRequests();
+        cameraNotice();
     });
 
     let searchTimer;
@@ -416,8 +430,65 @@
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => resetAndLoad(), 400);
     });
+    codeInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); clearTimeout(searchTimer); resetAndLoad(); }
+    });
+
+    function invalidateRequests() {
+        searchGeneration++;
+        loadController?.abort(); cameraController?.abort();
+        isLoading = false; cameraResolving = false;
+    }
+
+    function cameraNotice(message = '', action) {
+        const notice = document.getElementById('cameraSearchNotice');
+        notice.replaceChildren();
+        notice.textContent = message;
+        if (action) {
+            const button = document.createElement('button'); button.type = 'button';
+            button.textContent = 'Снять мешающие фильтры'; button.onclick = action; notice.append(button);
+        }
+    }
+
+    const cameraButton = document.getElementById('cameraSearchBtn');
+    const imageScanner = window.TTCamera?.create();
+    window.addEventListener('pagehide', () => { imageScanner?.close('pagehide'); invalidateRequests(); });
+    cameraButton.onclick = () => {
+        if (!imageScanner || !window.TTCodeSearch) { cameraNotice('Сканер не загрузился. Обновите страницу или введите код вручную.'); return; }
+        closeAllDropdowns();
+        imageScanner.open({returnFocusTo: cameraButton, onError: message => cameraNotice(message), onDecoded: findCameraImage});
+    };
+
+    async function findCameraImage(decoded) {
+        clearTimeout(searchTimer);
+        invalidateRequests();
+        const generation = searchGeneration;
+        const controller = cameraController = new AbortController();
+        cameraResolving = true;
+        cameraNotice('Штрихкод считан. Поиск товара…');
+        try {
+            const items = await TTCodeSearch.resolveImage(decoded, {signal: controller.signal});
+            if (generation !== searchGeneration) return;
+            const item = await TTCodeSearch.choose(items, cameraButton, controller.signal);
+            if (generation !== searchGeneration) return;
+            if (!item) { cameraNotice(items.length ? 'Выбор отменён. Предыдущий поиск сохранён.' : 'Товар по этому штрихкоду не найден. Проверьте таблицу сопоставлений или введите код вручную.'); return; }
+            const product = item.product || await TTCodeSearch.request('/api/products/' + encodeURIComponent(item.code), {signal: controller.signal});
+            if (generation !== searchGeneration) return;
+            if (!product) { cameraNotice('Соответствие найдено, но изображения товара нет в каталоге.'); return; }
+            exactCameraProduct = product;
+            codeInput.value = product.code; updateClearButton(codeInput, clearCode);
+            cameraNotice(); resetAndLoad();
+        } catch (error) {
+            if (generation === searchGeneration && error.name !== 'AbortError') cameraNotice(error.message);
+        } finally {
+            if (generation === searchGeneration) { cameraResolving = false; loader.style.display = 'none'; }
+        }
+    }
 
     function resetAndLoad() {
+        clearTimeout(searchTimer);
+        invalidateRequests();
+        cameraNotice();
         currentOffset = 0;
         hasMore = true;
         grid.innerHTML = '';
@@ -425,9 +496,11 @@
     }
 
     async function loadProducts() {
-        if (isLoading || !hasMore) return;
+        if (isLoading || !hasMore || cameraResolving) return;
         isLoading = true;
         loader.style.display = 'block';
+        const generation = searchGeneration;
+        const controller = loadController = new AbortController();
 
         const code = codeInput.value.trim();
         let url = `/api/products/filtered?limit=${limit}&offset=${currentOffset}`;
@@ -435,22 +508,40 @@
         if (selectedType) url += `&product_type=${encodeURIComponent(selectedType)}`;
         if (selectedFandom) url += `&fandom=${encodeURIComponent(selectedFandom)}`;
 
-        const resp = await fetch(url);
-        const data = await resp.json();
+        try {
+        let data;
+        if (exactCameraProduct) {
+            const p = exactCameraProduct;
+            const hiddenType = selectedType && selectedType !== p.product_type;
+            const hiddenFandom = selectedFandom && selectedFandom !== p.fandom;
+            data = {items: hiddenType || hiddenFandom ? [] : [p], total: hiddenType || hiddenFandom ? 0 : 1};
+            if (hiddenType || hiddenFandom) cameraNotice('Товар найден, но скрыт фильтром: ' + [hiddenType ? 'вид товара' : '', hiddenFandom ? 'фандом' : ''].filter(Boolean).join(', ') + '.', () => {
+                if (hiddenType) { selectedType = ''; typeInput.value = ''; updateClearButton(typeInput, clearTypeBtn); }
+                if (hiddenFandom) { selectedFandom = ''; fandomInput.value = ''; updateClearButton(fandomInput, clearFandomBtn); }
+                updateDropdowns(); cameraNotice(); resetAndLoad();
+            });
+            else cameraNotice('Найден товар по точному коду ' + p.code + '.');
+        } else {
+            const resp = await fetch(url, {signal: controller.signal});
+            if (!resp.ok) throw new Error('Не удалось загрузить товары. Повторите поиск.');
+            data = await resp.json();
+        }
+        if (generation !== searchGeneration) return;
         totalCountSpan.textContent = data.total;
         totalProducts = data.total;
 
         if (data.items.length === 0 && currentOffset === 0) {
-            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px;">Ничего не найдено</div>';
+            grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px;">' + (exactCameraProduct ? 'Товар скрыт фильтром' : 'Ничего не найдено') + '</div>';
         } else {
             data.items.forEach(p => {
                 const card = document.createElement('div');
                 card.className = 'product-card';
-                card.innerHTML = `
-                    <img src="${p.image_url}" alt="${p.name}" onerror="this.src='/static/ttr.png'">
-                    <div class="name">${escapeHtml(p.name)}</div>
-                    <div class="code">${p.code}</div>
-                `;
+                const image = document.createElement('img');
+                image.src = p.image_url; image.alt = p.name;
+                image.onerror = () => { image.onerror = null; image.src = '/static/ttr.png'; };
+                const name = document.createElement('div'); name.className = 'name'; name.textContent = p.name;
+                const codeLabel = document.createElement('div'); codeLabel.className = 'code'; codeLabel.textContent = p.code;
+                card.append(image, name, codeLabel);
                 grid.appendChild(card);
             });
         }
@@ -458,7 +549,13 @@
         currentOffset += data.items.length;
         hasMore = currentOffset < totalProducts;
         loader.style.display = hasMore ? 'block' : 'none';
-        isLoading = false;
+        } catch (error) {
+            if (generation === searchGeneration && error.name !== 'AbortError') {
+                cameraNotice(error.message); hasMore = false;
+            }
+        } finally {
+            if (generation === searchGeneration) { isLoading = false; loader.style.display = 'none'; }
+        }
     }
 
     const sentinel = document.createElement('div');
