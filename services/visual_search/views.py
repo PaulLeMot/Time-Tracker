@@ -71,9 +71,13 @@ def read_source(path):
     return image, hashlib.sha256(body).hexdigest(), pixels
 
 
-def representations(image, settings=None):
+def representations(image, settings=None, product_type=None):
     p = profile(settings); w, h = image.size
+    from .product_profiles import transforms
+    recipe = transforms(product_type, p)
     yield {'role':'whole', 'region':[0,0,1,1], 'transform':'identity'}, image.copy()
+    if recipe.get('mirror'):
+        yield {'role':'fragment','region':[0,0,1,1],'transform':'mirror','mirrored':True}, ImageOps.mirror(image)
     boxes = p['regions']; m = p['margin']
     if not boxes and p['layout'] == 'left_right': boxes = [[m,m,.5-m,1-m],[.5+m,m,1-m,1-m]]
     if not boxes and p['layout'] == 'top_bottom': boxes = [[m,m,1-m,.5-m],[m,.5+m,1-m,1-m]]
@@ -82,7 +86,13 @@ def representations(image, settings=None):
     for n, box in enumerate(boxes):
         crop = image.crop(tuple(round(v * (w if i % 2 == 0 else h)) for i,v in enumerate(box)))
         if min(crop.size) >= 16:
-            yield {'role':'side' if p['layout'] in ('left_right','top_bottom') else 'fragment', 'region':box, 'transform':'crop', 'ordinal':n}, crop
+            view = {'role':'side' if p['layout'] in ('left_right','top_bottom') else 'fragment', 'region':box, 'transform':'crop', 'ordinal':n}
+            if recipe.get('rotation'):
+                crop = crop.rotate(recipe['rotation'], expand=True)
+                view.update(transform='crop_rotate',rotation_ccw=recipe['rotation'])
+            yield view, crop
+            if recipe.get('mirror'):
+                yield {**view,'transform':'crop_mirror','mirrored':True}, ImageOps.mirror(crop)
     # Only explicit full circumference profiles permit cylindrical projection.
     if p['layout'] == 'cylinder' and p['full_wrap'] and not p['regions']:
         import cv2

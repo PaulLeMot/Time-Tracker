@@ -32,7 +32,7 @@ def install(app,config,runner):
                 'counts':{k:meta.get(k) for k in ('products','unique_products','source_images','unique_images','kit_links')},'model_hash':meta.get('model_hash'),
                 'namespaces':meta.get('namespaces',{}),'view_count':meta.get('view_count'),
                 'model':{'name':'facebook/dinov2-small','revision':'ed25f3a31f01632728cabb09d1542f84ab7b0056','license':'Apache-2.0','source':'https://github.com/facebookresearch/dinov2','update_policy':'separate_verified_release'},
-                'views_version':meta.get('views_version'),'created_epoch':meta.get('created_epoch'),'skipped':meta.get('skipped',[])[:100],
+                'views_version':meta.get('views_version'),'recipes_version':meta.get('recipes_version'),'created_epoch':meta.get('created_epoch'),'skipped':meta.get('skipped',[])[:100],
                 'jobs':[manager.public(x) for x in await asyncio.to_thread(manager.all)]}
 
     @app.post('/v2/manage/check')

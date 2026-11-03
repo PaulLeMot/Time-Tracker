@@ -50,7 +50,7 @@ def build(rows, roots, index_root, model_root, profiles=None, *, progress=lambda
                 image,sha,pixels=read_source(path)
                 if asset.get('sha256') and sha!=asset['sha256']:raise ValueError('source_changed')
                 selected=profile(asset.get('profile',settings));count=0
-                for view,derived in representations(image,selected):
+                for view,derived in representations(image,selected,row['product_type']):
                     count+=1
                     if count>9:raise ValueError('view_budget')
                     key=view_key(sha,view,selected,embed.model_hash)
@@ -99,7 +99,8 @@ def build(rows, roots, index_root, model_root, profiles=None, *, progress=lambda
                   'views':sum(r['feature']>=0 for r in flat if r['namespace']==scope),
                   'features':len({r['feature'] for r in flat if r['namespace']==scope and r['feature']>=0}),
                   'kit_links':sum(len(r.get('components') or []) for r in rows if r.get('namespace','portal')==scope)} for scope in ('portal','operkontur')}
-    meta={'version':VERSION,'schema':2,'views_version':VIEWS_VERSION,'model_hash':embed.model_hash,'dimension':384,'products':len(flat),'unique_images':len(features),
+    from .product_profiles import VERSION as RECIPES_VERSION
+    meta={'version':VERSION,'schema':2,'views_version':VIEWS_VERSION,'recipes_version':RECIPES_VERSION,'model_hash':embed.model_hash,'dimension':384,'products':len(flat),'unique_images':len(features),
           'unique_products':len({(r['namespace'],r['code']) for r in flat}),'source_images':len({r.get('asset_id') for r in flat if r['feature']>=0}),'asset_associations':assets_count,'view_count':sum(r['feature']>=0 for r in flat),'namespaces':scopes,'kit_links':sum(len(r.get('components') or []) for r in rows),'skipped':skipped,
           'catalogue_hash':hashlib.sha256(json.dumps(rows,sort_keys=True,ensure_ascii=False).encode()).hexdigest(),'created_epoch':time.time(),
           'files':{p.name:digest(p) for p in out.iterdir() if p.is_file()}}

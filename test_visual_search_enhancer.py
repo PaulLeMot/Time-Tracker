@@ -82,8 +82,8 @@ class EnhancerTests(unittest.TestCase):
         from services.visual_search.views import representations
         image=Image.new('RGB',(500,500),'white')
         for label in ('Пенал','Минидак','Кружка','Обложка на паспорт','Набор значков (6шт)','Брелок Набор 2+1'):
-            settings=preset(label);views=list(representations(image,settings))
-            self.assertLessEqual(len(views),9);self.assertEqual(settings['revision'],2)
+            settings=preset(label);views=list(representations(image,settings,label))
+            self.assertLessEqual(len(views),9);self.assertEqual(settings['revision'],3)
             self.assertEqual(views[0][0]['role'],'whole');self.assertEqual(views[0][1].tobytes(),image.tobytes())
         self.assertIsNone(preset('UNKNOWN_KIND'))
 
@@ -164,5 +164,72 @@ class EnhancerTests(unittest.TestCase):
     def test_preview_has_no_results_cursor_and_disabled_rejects(self):
         response,calls=self.worker_case(preview=True);self.assertEqual(calls,['enhance']);self.assertNotIn('cursor',response.json())
         response,calls=self.worker_case(preview=True,enabled=False);self.assertEqual(response.status_code,503);self.assertEqual(calls,[])
+
+class FastRefineTests(unittest.TestCase):
+    def test_artwork_pixels_front_rotation_mirror_quarters_and_seam(self):
+        import numpy as np
+        from PIL import ImageOps
+        from services.visual_search.product_profiles import preset
+        from services.visual_search.views import representations
+        source=Image.fromarray(np.random.default_rng(73).integers(0,256,(200,300,3),dtype='uint8'))
+        def views(label,p=None):return list(representations(source,p or preset(label),label))
+        student=views('Обложка на студенческий')
+        self.assertEqual(student[1][0]['rotation_ccw'],90)
+        self.assertEqual(student[1][1].tobytes(),source.crop((0,0,300,100)).rotate(90,expand=True).tobytes())
+        for label in ('Пенал','Пенал Большой','Пенал-косметичка','Монетница'):
+            self.assertEqual(views(label)[2][1].tobytes(),source.crop((30,10,270,90)).tobytes())
+        for label in ('Дневник','Дневник Т','Обложка на паспорт','Обложка на военник'):
+            self.assertEqual(views(label)[1][1].tobytes(),source.crop((150,0,300,200)).tobytes())
+            self.assertEqual(views(label)[2][1].tobytes(),source.crop((0,0,156,200)).tobytes())
+        for label in ('Брелок Акрил','БрелокС Акрил','Фигурка Акрил'):
+            self.assertEqual(views(label)[1][1].tobytes(),ImageOps.mirror(source).tobytes())
+            self.assertTrue(views(label)[1][0]['mirrored']);self.assertLessEqual(len(views(label)),9)
+        for label in ('Стикерпак','Тетрадь Набор 4+1'):
+            self.assertEqual(len(views(label)),5)
+            self.assertEqual(views(label)[4][1].tobytes(),source.crop((150,100,300,200)).tobytes())
+        custom={**preset('Обложка на студенческий'),'regions':[[.1,.1,.9,.9]]}
+        self.assertEqual(views('Обложка на студенческий',custom)[1][0]['transform'],'crop')
+        custom={**preset('Брелок Акрил'),'revision':4}
+        self.assertEqual(len(views('Брелок Акрил',custom)),1)
+
+    def test_fast_rejection_does_not_run_geometry_for_ineligible_similarities(self):
+        import numpy as np
+        from services.visual_search.retrieval2 import search
+        body=io.BytesIO();Image.new('RGB',(80,80),'white').save(body,'JPEG')
+        engine=SimpleNamespace(rows=[{'namespace':'portal','code':'00001','product_type':'A','feature':0}],
+            vectors=np.array([[.2,0]],dtype='float32'),points=np.zeros((1,2),'float32'),
+            descriptors=np.zeros((1,128),'uint8'),offsets=np.array([0,1]),
+            embed=lambda image:np.array([1,0],dtype='float32'),index_id='index-SYN')
+        with patch('services.visual_search.engine.geometry',side_effect=AssertionError('rejected candidate must not be matched')):
+            self.assertEqual(search(engine,body.getvalue())['total'],0)
+            self.assertEqual(search(engine,body.getvalue(),mode='rescue')['total'],0)
+
+    def test_refine_reuses_only_same_employee_bytes_kind_and_generation(self):
+        key=bytes(range(32));calls=[]
+        async def start(r):r.ready=True;r.types=['A','B'];r.index='index-123';r.process=SimpleNamespace(is_alive=lambda:True)
+        def stop(r):r.ready=False;r.process=None
+        async def search(r,body,kind,request,namespace='portal',operation_kind='search',check_context=None):
+            calls.append(operation_kind)
+            baseline=result([item('00001',.78)]);baseline['index_version']=r.index
+            if operation_kind=='search':return baseline
+            return {'variants':[],'enhancement':{'operations':[]},'timings_ms':{}}
+        with tempfile.TemporaryDirectory() as root:
+            Path(root,'current.json').write_text('{}')
+            with patch.object(Runner,'start',start),patch.object(Runner,'stop',stop),patch.object(Runner,'search',search):
+                app=create_worker({'key_hex':key.hex(),'index':root,'model':'unused','enhancer_model':root,'enhancer_auto':True})
+                with TestClient(app) as client:
+                    def post(strategy='off',subject='12',body=b'SYNTHETIC',kind='A'):
+                        path='/v1/search?product_type='+kind+'&enhancement='+strategy
+                        response=client.post(path,headers=signed(key,'POST',path,subject,body)|{'Content-Type':'image/jpeg'},content=body)
+                        self.assertEqual(response.status_code,200);return response.json()
+                    fast=post();self.assertEqual(calls,['search']);calls.clear()
+                    refined=post('force');self.assertEqual(calls,['enhance-search']);self.assertEqual(refined['timings_ms']['baseline_cache_hit'],1)
+                    path='/v1/results?cursor='+fast['cursor']
+                    old=client.get(path,headers=signed(key,'GET',path,'12',b'')).json()
+                    self.assertEqual(old['search_mode'],'fast');self.assertEqual(old['enhancement']['status'],'original')
+                    for kwargs in ({'subject':'13'},{'body':b'OTHER SYNTHETIC'},{'kind':'B'}):
+                        calls.clear();self.assertEqual(post('force',**kwargs)['timings_ms']['baseline_cache_hit'],0);self.assertEqual(calls,['search','enhance-search'])
+                    app.state.runner.index='index-456';calls.clear()
+                    self.assertEqual(post('force')['timings_ms']['baseline_cache_hit'],0);self.assertEqual(calls,['search','enhance-search'])
 
 if __name__=='__main__':unittest.main()

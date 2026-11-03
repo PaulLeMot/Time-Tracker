@@ -5,10 +5,10 @@ function create(options){
  let current=null,sequence=0,capabilities=null,user=null,savedKind,mainKind;
  const live=s=>current===s&&s.id===sequence;
  function cameraOff(s){s.stream?.getTracks().forEach(t=>t.stop());s.stream=null;s.video.pause();s.video.srcObject=null;}
- function clearFrame(s){if(s.source){s.source.width=s.source.height=0;}s.source=null;s.blob=null;if(s.processed)s.processed.width=s.processed.height=0;s.processed=null;s.showProcessed=false;s.canvas.width=s.canvas.height=0;s.points.clear();s.transform={zoom:1,angle:0,x:0,y:0};}
+ function clearFrame(s){if(s.source){s.source.width=s.source.height=0;}s.source=null;s.blob=null;s.queryBlob=null;s.queryKind=null;s.refined=false;if(s.processed)s.processed.width=s.processed.height=0;s.processed=null;s.showProcessed=false;s.canvas.width=s.canvas.height=0;s.points.clear();s.transform={zoom:1,angle:0,x:0,y:0};}
  function close(){const s=current;current=null;sequence++;if(!s)return;s.abort?.abort();s.cameraGeneration++;s.resizeObserver?.disconnect();root.removeEventListener('resize',s.fit);cancelAnimationFrame(s.fitFrame);cameraOff(s);clearFrame(s);s.found=null;s.dialog.close();s.dialog.remove();button.focus({preventScroll:true});options.onClose?.();}
  function notice(s,text){if(live(s)){s.notice.textContent=text;s.notice.hidden=!text;s.fit?.();}}
- function mode(s,value){s.mode=value;s.dialog.dataset.mode=value;s.tools.hidden=value!=='frame';if(s.processing){s.processing.hidden=value!=='frame'||!capabilities.enhancement?.available;s.enhance.disabled=s.busy||value!=='frame';s.auto.disabled=s.busy;s.originalButton.hidden=s.processedButton.hidden=!s.processed;s.originalButton.disabled=s.processedButton.disabled=s.busy;}s.results.hidden=value!=='results';s.stage.hidden=!['camera','frame'].includes(value);caption(s.search,value==='camera'?'Снимок':'Найти',value==='camera'?'camera':'search');s.search.disabled=s.busy||(value==='camera'?!s.cameraReady:value!=='frame'||!s.source);s.fit?.();}
+ function mode(s,value){s.mode=value;s.dialog.dataset.mode=value;s.tools.hidden=value!=='frame';s.results.hidden=value!=='results';s.stage.hidden=!['camera','frame'].includes(value);caption(s.search,value==='camera'?'Снимок':value==='results'?'Уточнить':'Найти',value==='camera'?'camera':'search');s.search.disabled=s.busy||(value==='camera'?!s.cameraReady:value==='results'?!s.queryBlob||s.refined||capabilities.enhancement?.available===false:value!=='frame'||!s.source);s.fit?.();}
  const icons={file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>',clipboard:'<rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/>',next:'<path d="M4 12h16M14 6l6 6-6 6"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',camera:'<path d="M3 6h5l2-3h4l2 3h5v14H3z"/><circle cx="12" cy="12" r="4"/>'};
  function caption(b,text,icon){if(icon){b.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icons[icon]+'</svg>';const label=document.createElement('span');label.textContent=text;b.append(label);}else b.textContent=text;}
  function action(text,fn,icon){const b=document.createElement('button');b.type='button';caption(b,text,icon);b.onclick=fn;return b;}
@@ -20,14 +20,14 @@ function create(options){
    return await r.json();
   }finally{clearTimeout(timer);}
  }
- function changed(s){s.found=null;s.rendered=0;s.count.textContent='';s.count.setAttribute('aria-label','Поиск ещё не выполнен');s.operation++;s.busy=false;s.abort?.abort();s.blob=null;s.results.replaceChildren();s.more.hidden=true;mode(s,s.source?'frame':s.stream?'camera':'empty');}
+ function changed(s){s.found=null;s.queryBlob=null;s.queryKind=null;s.refined=false;s.rendered=0;s.count.textContent='';s.count.setAttribute('aria-label','Поиск ещё не выполнен');s.operation++;s.busy=false;s.abort?.abort();s.blob=null;s.results.replaceChildren();s.more.hidden=true;mode(s,s.source?'frame':s.stream?'camera':'empty');}
  function paint(s){
   if(!s.source)return;const c=s.canvas,ctx=c.getContext('2d');c.width=c.height=960;
   const source=s.showProcessed&&s.processed?s.processed:s.source,t=s.showProcessed?{zoom:1,angle:0,x:0,y:0}:s.transform,scale=Math.min(960/source.width,960/source.height)*t.zoom;
   ctx.fillStyle='white';ctx.fillRect(0,0,960,960);ctx.save();ctx.translate(480+t.x,480+t.y);ctx.rotate(t.angle);ctx.scale(scale,scale);ctx.drawImage(source,-source.width/2,-source.height/2);ctx.restore();
   s.range.value=t.zoom;c.hidden=false;s.video.hidden=true;s.range.disabled=s.showProcessed;s.rotate.disabled=s.showProcessed;mode(s,'frame');if(s.originalButton){s.originalButton.setAttribute('aria-pressed',String(!s.showProcessed));s.processedButton.setAttribute('aria-pressed',String(s.showProcessed));}
  }
- function beginFrame(s,source){changed(s);cameraOff(s);clearFrame(s);s.source=source;s.transform={zoom:1,angle:0,x:0,y:0};paint(s);notice(s,'');}
+ function beginFrame(s,source){s.frameGeneration=(s.frameGeneration||0)+1;changed(s);cameraOff(s);clearFrame(s);s.source=source;s.transform={zoom:1,angle:0,x:0,y:0};paint(s);notice(s,'');}
  async function camera(s){
   if(!live(s))return;changed(s);s.frameGeneration=(s.frameGeneration||0)+1;clearFrame(s);cameraOff(s);const generation=++s.cameraGeneration;
   s.cameraReady=false;s.canvas.hidden=true;s.video.hidden=false;s.range.disabled=true;s.rotate.disabled=true;mode(s,'camera');
@@ -96,27 +96,17 @@ function create(options){
   return new Promise(resolve=>c.toBlob(blob=>{c.width=c.height=0;resolve(blob);},'image/jpeg',.90));
  }
  function discardProcessed(s){if(s.processed)s.processed.width=s.processed.height=0;s.processed=null;s.showProcessed=false;}
- async function enhance(s){
-  if(!live(s)||s.busy||!s.source)return;const operation=++s.operation;s.busy=true;mode(s,'frame');notice(s,'Обрабатываю снимок…');
-  try{const blob=await encodeOriginal(s);if(!live(s)||operation!==s.operation)return;if(!blob)throw Error('Не удалось подготовить снимок.');
-   const result=await request(s,'/api/visual-search/enhance',{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});if(!live(s)||operation!==s.operation)return;
-   if(result.content_type!=='image/jpeg'||typeof result.image_base64!=='string'||result.image_base64.length>2800000)throw Error('Не удалось прочитать обработанный снимок.');
-   const image=new Image();try{image.src='data:image/jpeg;base64,'+result.image_base64;await image.decode();if(!live(s)||operation!==s.operation)return;
-    if(image.naturalWidth*image.naturalHeight>1048576)throw Error('Некорректный размер снимка.');const c=document.createElement('canvas');c.width=image.naturalWidth;c.height=image.naturalHeight;c.getContext('2d').drawImage(image,0,0);discardProcessed(s);s.processed=c;s.showProcessed=true;paint(s);
-   }finally{image.src='';}notice(s,result.operations?.length?'Обработка готова. Можно сравнить с исходником.':'Заметных изменений не потребовалось.');
-  }catch(e){if(live(s)&&operation===s.operation)notice(s,e.name==='AbortError'?'Обработка отменена. Исходник сохранён.':e.message);}
-  finally{if(live(s)&&operation===s.operation){s.busy=false;mode(s,s.mode);}}
- }
  async function search(s){
-  if(!live(s)||s.busy||!s.source)return;s.busy=true;s.search.disabled=s.more.disabled=true;const operation=++s.operation,kind=s.kind.value,started=performance.now();s.dialog.dataset.searchEnhancement='pending';s.dialog.dataset.searchReturned='';mode(s,s.mode);notice(s,s.auto.checked||s.showProcessed?'Ищу рисунок… При необходимости обработаю снимок.':'Ищу рисунок…');
+  if(!live(s)||s.busy||!s.source)return;const refining=s.mode==='results';if(refining&&(!s.queryBlob||s.refined))return;s.busy=true;s.search.disabled=s.more.disabled=true;const operation=++s.operation,kind=refining?s.queryKind:s.kind.value,started=performance.now();s.dialog.dataset.searchEnhancement='pending';s.dialog.dataset.searchReturned='';s.dialog.dataset.searchMode=refining?'refine':'fast';mode(s,s.mode);notice(s,refining?'Уточняю рисунок…':'Ищу рисунок…');
   try{
-   let blob=await encodeOriginal(s);if(!blob||blob.size>2*1024*1024)throw Error('Не удалось подготовить снимок.');
+   let blob=refining?s.queryBlob:await encodeOriginal(s);if(!blob||blob.size>2*1024*1024)throw Error('Не удалось подготовить снимок.');
    if(!live(s)||operation!==s.operation)return;
-   const result=await request(s,'/api/visual-search/search?'+new URLSearchParams({product_type:kind,enhancement:s.showProcessed&&s.processed?'force':s.auto.checked?'auto':'off'}),{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});blob=null;
+   if(!refining){s.queryBlob=blob;s.queryKind=kind;}
+   const result=await request(s,'/api/visual-search/search?'+new URLSearchParams({product_type:kind,enhancement:refining?'force':'off'}),{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});blob=null;
    if(!live(s)||operation!==s.operation)return;
    if(!Array.isArray(result.items)||!Number.isInteger(result.total)||result.total<0||result.total>200000)throw Error('Не удалось прочитать выдачу. Повторите поиск.');
    s.dialog.dataset.searchEnhancement=result.enhancement?.status||'original';s.dialog.dataset.searchReturned=String(result.total);s.dialog.dataset.searchIndex=result.index_version||'';
-   if(result.total===0&&['busy_original_used','budget_original_used','unavailable_original_used','index_changed_original_used'].includes(result.enhancement?.status))throw Error('Обработка снимка не завершилась. Снимок сохранён. Повторите поиск через несколько секунд.');
+   if(refining&&result.enhancement?.status!=='processed')throw Error('Уточнение не завершилось. Прежняя выдача и снимок сохранены. Повторите через несколько секунд.');
    const items=new Map(result.items.map(item=>[item.code,item])),seen=new Set(),deadline=performance.now()+8000;let offset=result.next_offset;
    // Fetch metadata before the server cursor expires. Filtering and paging then
    // stay local until Next; query pixels are still discarded after the search.
@@ -128,16 +118,17 @@ function create(options){
     for(const item of page.items)items.set(item.code,item);offset=page.next_offset;
    }
    if(items.size!==result.total)throw Error('Не удалось получить всю выдачу. Повторите поиск.');
-   s.found={items:[...items.values()].filter(item=>!kind||item.product_type===kind),searchedKind:kind};s.dialog.dataset.searchFiltered=String(s.found.items.length);clearFrame(s);s.range.disabled=true;s.rotate.disabled=true;filterFound(s);mode(s,'results');
-   root.dispatchEvent(new CustomEvent('tt-photo-timing',{detail:{elapsed_ms:performance.now()-started,status:result.status}}));
+   s.found={items:[...items.values()].filter(item=>!kind||item.product_type===kind),searchedKind:kind};s.refined=refining&&result.enhancement?.status==='processed';s.dialog.dataset.searchFiltered=String(s.found.items.length);s.range.disabled=true;s.rotate.disabled=true;filterFound(s);mode(s,'results');
+   root.dispatchEvent(new CustomEvent('tt-photo-timing',{detail:{elapsed_ms:performance.now()-started,status:result.status,mode:refining?'refine':'fast'}}));
   }catch(e){if(live(s)&&operation===s.operation)notice(s,e.name==='AbortError'?'Поиск отменён или время ожидания истекло. Можно повторить.':e.message);}
   finally{if(live(s)&&operation===s.operation){s.busy=false;mode(s,s.mode);s.more.disabled=false;}}
  }
  async function paste(s){
+  const generation=s.frameGeneration||0;
   try{if(!navigator.clipboard?.read)throw Error('Выберите файл: чтение буфера недоступно в этом браузере.');
-   for(const item of await navigator.clipboard.read()){const type=item.types.find(t=>['image/png','image/jpeg','image/webp'].includes(t));if(type){await file(s,await item.getType(type));return;}}
-   notice(s,'В буфере нет изображения. Выберите файл.');
-  }catch(e){notice(s,e.message||'Буфер недоступен. Выберите файл.');}
+   for(const item of await navigator.clipboard.read()){const type=item.types.find(t=>['image/png','image/jpeg','image/webp'].includes(t));if(type){const selected=await item.getType(type);if(!live(s)||generation!==(s.frameGeneration||0))return;await file(s,selected);return;}}
+   if(live(s)&&generation===(s.frameGeneration||0))notice(s,'В буфере нет изображения. Выберите файл.');
+  }catch(e){if(live(s)&&generation===(s.frameGeneration||0))notice(s,e.message||'Буфер недоступен. Выберите файл.');}
  }
  function open({withCamera=true}={}){
   if(!capabilities)return null;close();options.beforeOpen?.();const dialog=document.createElement('dialog');dialog.className='tt-photo-dialog';
@@ -153,10 +144,8 @@ function create(options){
   const tools=document.createElement('label');tools.textContent='Масштаб';s.range=document.createElement('input');s.range.type='range';s.range.min='1';s.range.max='4';s.range.step='.01';s.range.value='1';s.range.disabled=true;s.range.oninput=()=>{if(!s.busy){discardProcessed(s);s.transform.zoom=Number(s.range.value);paint(s);}};
   s.rotate=action('Повернуть 90°',()=>{if(!s.busy){discardProcessed(s);s.transform.angle+=Math.PI/2;paint(s);}});s.rotate.disabled=true;
   tools.className='tt-photo-tools';tools.append(s.range,s.rotate);s.tools=tools;
-  s.processing=document.createElement('div');s.processing.className='tt-photo-processing';const autoLabel=document.createElement('label');s.auto=document.createElement('input');s.auto.type='checkbox';s.auto.checked=capabilities.enhancement?.automatic===true;s.auto.setAttribute('aria-label','Автоулучшение');autoLabel.append(s.auto,document.createTextNode('Авто'));autoLabel.title='Обработка при слабом совпадении';
-  s.enhance=action('Улучшить',()=>enhance(s));s.originalButton=action('Исходник',()=>{s.showProcessed=false;paint(s);notice(s,'');});s.processedButton=action('Обработка',()=>{s.showProcessed=true;paint(s);notice(s,'');});s.processing.append(autoLabel,s.enhance,s.originalButton,s.processedButton);s.processing.hidden=!capabilities.enhancement?.available;
   s.notice=document.createElement('p');s.notice.setAttribute('role','status');s.notice.className='tt-photo-notice';s.results=document.createElement('div');s.results.className='tt-photo-results';s.more=action('Ещё товары',()=>filterFound(s,true));s.more.hidden=true;
-  body.append(s.stage,tools,s.processing,s.notice,s.results,s.more);const footer=document.createElement('footer');
+  body.append(s.stage,tools,s.notice,s.results,s.more);const footer=document.createElement('footer');
   s.search=action('Снимок',()=>s.mode==='camera'?capture(s):search(s),'camera');s.search.disabled=true;s.search.className='tt-photo-primary';
   const input=document.createElement('input');input.type='file';input.accept='image/jpeg,image/png,image/webp';input.hidden=true;input.onchange=()=>{const selected=input.files?.[0];input.value='';file(s,selected);};
   const pasteButton=action('Вставить',()=>paste(s),'clipboard');pasteButton.className='tt-photo-paste';footer.append(action('Файл',()=>input.click(),'file'),pasteButton,action('Следующий',()=>camera(s),'next'),s.search,input);dialog.append(header,body,footer);document.body.append(dialog);

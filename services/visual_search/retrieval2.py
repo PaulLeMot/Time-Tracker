@@ -1,11 +1,35 @@
 """Best-view retrieval and confirmed membership expansion; never infer kit contents."""
 import time
+from collections import OrderedDict
 import numpy as np
 
 # Calibration: the tuning set's highest incorrect first result was 0.90399.
 # Leave a margin and require local evidence; this score is not a probability.
 CONFIRMED_SCORE=.92
 VIEW_PENALTY=.03
+
+
+def scope(engine, product_type, namespace):
+    """Bounded catalogue-only lookup, separate for public/private namespaces.
+
+    An Engine owns one immutable generation. This contains no query pixels,
+    embeddings or user data, and avoids rescanning every view on every request.
+    """
+    cache=getattr(engine,'_retrieval_scopes',None)
+    if cache is None:cache=engine._retrieval_scopes=OrderedDict()
+    key=(namespace,product_type)
+    if key in cache:
+        cache.move_to_end(key);return cache[key]
+    rows=[r for r in engine.rows if r.get('namespace','portal')==namespace]
+    products={r['code']:r for r in rows};kits={code:r for code,r in products.items() if r.get('is_kit')}
+    eligible={r['code'] for r in rows if not product_type or r['product_type']==product_type}
+    component_codes={code for kit in kits.values() if kit['code'] in eligible for code in (kit.get('components') or []) if code in products}
+    groups={};matching_codes=eligible|component_codes
+    for row in rows:
+        if row['feature']>=0 and row['code'] in matching_codes:groups.setdefault(row['feature'],[]).append(row)
+    cache[key]=(kits,eligible,groups,np.array(list(groups),dtype='int64'))
+    if len(cache)>8:cache.popitem(last=False)
+    return cache[key]
 
 
 def search(engine,body,product_type='',mode='hybrid',namespace='portal'):
@@ -17,19 +41,14 @@ def search(engine,body,product_type='',mode='hybrid',namespace='portal'):
         keys,descriptors=cv2.SIFT_create(nfeatures=768).detectAndCompute(cv2.cvtColor(np.asarray(image),cv2.COLOR_RGB2GRAY),None)
         qp=np.float32([k.pt for k in keys]).reshape(-1,2);qd=np.zeros((0,128),'uint8') if descriptors is None else descriptors
     vector=engine.embed(image);embedded=time.perf_counter()
-    rows=[r for r in engine.rows if r.get('namespace','portal')==namespace]
-    products={r['code']:r for r in rows};kits={code:r for code,r in products.items() if r.get('is_kit')}
-    eligible={r['code'] for r in rows if not product_type or r['product_type']==product_type}
-    component_codes={code for kit in kits.values() if kit['code'] in eligible for code in (kit.get('components') or []) if code in products}
-    groups={}
-    matching_codes=eligible|component_codes
-    for row in rows:
-        if row['feature']>=0 and row['code'] in matching_codes:groups.setdefault(row['feature'],[]).append(row)
-    candidates=np.array(list(groups),dtype='int64')
+    kits,eligible,groups,candidates=scope(engine,product_type,namespace)
     sims=engine.vectors[candidates]@vector if len(candidates) else np.array([])
     items={}
     for i in np.argsort(-sims,kind='stable')[:128 if mode=='rescue' else 48]:
         feature=int(candidates[i]);sim=float(sims[i]);a,b=engine.offsets[feature:feature+2]
+        # These candidates were unconditionally rejected after geometry before.
+        # Avoid expensive SIFT/RANSAC work without changing acceptance thresholds.
+        if sim < (.35 if mode=='rescue' else .60):continue
         inliers,geo=geometry(qp,qd,engine.points[a:b],engine.descriptors[a:b],strict=True) if mode=='rescue' else geometry(qp,qd,engine.points[a:b],engine.descriptors[a:b]) if mode!='dino' else (0,0.)
         if sim<.60 and not(mode=='rescue' and sim>=.35 and inliers>=18 and geo>=.40):continue
         reciprocal=mode=='rescue'

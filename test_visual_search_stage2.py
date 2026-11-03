@@ -95,6 +95,12 @@ class Stage2Tests(unittest.TestCase):
             self.assertEqual({x['code'] for x in result['items']},{'00001','00002','00003'})
             self.assertEqual(len(result['items']),3)
             self.assertEqual(next(x for x in result['items'] if x['code']=='00002')['relation'],'confirmed_component')
+            private=engine.search((root/'one.jpg').read_bytes(),'A',namespace='operkontur')
+            self.assertEqual({x['code'] for x in private['items']},{'00004'})
+            public_again=engine.search((root/'one.jpg').read_bytes(),'A')
+            self.assertEqual({x['code'] for x in public_again['items']},{'00001','00002','00003'})
+            kits_only=engine.search((root/'one.jpg').read_bytes(),'K')
+            self.assertEqual({x['code'] for x in kits_only['items']},{'00002','00003'})
             cache={p.name:p.stat().st_mtime_ns for p in index.glob('cache-*/*.npz')}
             second=build(rows,{'r':folder},index,'unused',{'stable-kind':{'layout':'left_right'}},embedder=embed)
             self.assertEqual(cache,{p.name:p.stat().st_mtime_ns for p in index.glob('cache-*/*.npz')})

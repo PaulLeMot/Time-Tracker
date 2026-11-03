@@ -1,5 +1,6 @@
 """One warmed compute subprocess; bounded admission and hard execution deadline."""
 import asyncio
+import hashlib
 import ipaddress
 from contextlib import asynccontextmanager
 import multiprocessing as mp
@@ -296,6 +297,7 @@ def create_worker(config):
         if not runner.ready:
             raise HTTPException(503, 'warming_or_unavailable')
         return {'api_version': 1, 'product_types': runner.types, 'index_version': runner.index, 'max_body': 2 * 1024 * 1024,
+                'search_modes':['fast','refine'],
                 'enhancement': {'version':'enhancer-1.1','available':bool(config.get('enhancer_model')),'automatic':config.get('enhancer_auto',False)}}
 
     @app.get('/v1/catalogue/{code}')
@@ -343,7 +345,19 @@ def create_worker(config):
             try:
                 if preview:
                     return await runner.search(body, product_type, request, operation_kind='enhance')
-                result = await runner.search(body, product_type, request)
+                # Reuse metadata only. Never retain query bytes or return another
+                # employee's baseline, another kind, or an obsolete generation.
+                query_hash = hashlib.sha256(body).digest()
+                prior = next((entry[2] for entry in reversed(list(cache.values()))
+                              if enhancement=='force' and len(entry)==5 and entry[0]>time.monotonic()
+                              and entry[1]==subject and entry[3]==query_hash and entry[4]==product_type
+                              and entry[2]['index_version']==runner.index
+                              and entry[2].get('search_mode')=='fast'), None)
+                result = ({**prior,'timings_ms':{'compute':0,'queue':0,
+                           'baseline_compute_saved':prior['timings_ms'].get('compute',0)}} if prior is not None
+                          else await runner.search(body, product_type, request))
+                result['timings_ms']['baseline_cache_hit'] = int(prior is not None)
+                result['search_mode'] = 'refine' if enhancement=='force' else 'fast' if enhancement=='off' else 'auto'
                 from .enhance import needs_fallback,merge
                 enabled = config.get('enhancer_model') and enhancement != 'off' and (config.get('enhancer_auto',False) or enhancement == 'force')
                 fallback = enabled and (enhancement == 'force' or needs_fallback(result))
@@ -376,7 +390,7 @@ def create_worker(config):
             if len(cache) >= 32:
                 del cache[next(iter(cache))]
             cursor = secrets.token_hex(16)
-            cache[cursor] = (now+90, subject, result)  # Metadata only; query bytes never cached.
+            cache[cursor] = (now+90, subject, result, query_hash, product_type)  # Metadata/hash only.
             return page(result, cursor)
         except TimeoutError:
             raise HTTPException(504, 'search_timeout') from None
