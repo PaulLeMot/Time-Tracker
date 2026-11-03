@@ -8,8 +8,10 @@ function create(options){
  function clearFrame(s){if(s.source){s.source.width=s.source.height=0;}s.source=null;s.blob=null;s.canvas.width=s.canvas.height=0;s.points.clear();s.transform={zoom:1,angle:0,x:0,y:0};}
  function close(){const s=current;current=null;sequence++;if(!s)return;s.abort?.abort();s.cameraGeneration++;s.resizeObserver?.disconnect();root.removeEventListener('resize',s.fit);cancelAnimationFrame(s.fitFrame);cameraOff(s);clearFrame(s);s.dialog.close();s.dialog.remove();button.focus({preventScroll:true});options.onClose?.();}
  function notice(s,text){if(live(s)){s.notice.textContent=text;s.notice.hidden=!text;s.fit?.();}}
- function mode(s,value){s.mode=value;s.dialog.dataset.mode=value;s.tools.hidden=value!=='frame';s.results.hidden=value!=='results';s.stage.hidden=!['camera','frame'].includes(value);s.search.textContent=value==='camera'?'Снимок':'Найти';s.search.disabled=s.busy||(value==='camera'?!s.cameraReady:value!=='frame'||!s.source);s.fit?.();}
- function action(text,fn){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=fn;return b;}
+ function mode(s,value){s.mode=value;s.dialog.dataset.mode=value;s.tools.hidden=value!=='frame';s.results.hidden=value!=='results';s.stage.hidden=!['camera','frame'].includes(value);caption(s.search,value==='camera'?'Снимок':'Найти',value==='camera'?'camera':'search');s.search.disabled=s.busy||(value==='camera'?!s.cameraReady:value!=='frame'||!s.source);s.fit?.();}
+ const icons={file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>',clipboard:'<rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/>',next:'<path d="M4 12h16M14 6l6 6-6 6"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',camera:'<path d="M3 6h5l2-3h4l2 3h5v14H3z"/><circle cx="12" cy="12" r="4"/>'};
+ function caption(b,text,icon){if(icon){b.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icons[icon]+'</svg>';const label=document.createElement('span');label.textContent=text;b.append(label);}else b.textContent=text;}
+ function action(text,fn,icon){const b=document.createElement('button');b.type='button';caption(b,text,icon);b.onclick=fn;return b;}
  function remember(value){savedKind=value;if(user)try{sessionStorage.setItem('tt.photo.kind.'+user,value);}catch{}}
  async function request(s,path,settings={}){
   s.abort?.abort();const c=s.abort=new AbortController(),timer=setTimeout(()=>c.abort(),8000);
@@ -119,9 +121,9 @@ function create(options){
   tools.className='tt-photo-tools';tools.append(s.range,s.rotate);s.tools=tools;
   s.notice=document.createElement('p');s.notice.setAttribute('role','status');s.notice.className='tt-photo-notice';s.results=document.createElement('div');s.results.className='tt-photo-results';s.more=action('Ещё товары',()=>search(s,true));s.more.hidden=true;
   body.append(s.stage,tools,s.notice,s.results,s.more);const footer=document.createElement('footer');
-  s.search=action('Снимок',()=>s.mode==='camera'?capture(s):search(s));s.search.disabled=true;s.search.className='tt-photo-primary';
+  s.search=action('Снимок',()=>s.mode==='camera'?capture(s):search(s),'camera');s.search.disabled=true;s.search.className='tt-photo-primary';
   const input=document.createElement('input');input.type='file';input.accept='image/jpeg,image/png,image/webp';input.hidden=true;input.onchange=()=>{const selected=input.files?.[0];input.value='';file(s,selected);};
-  const pasteButton=action('Вставить',()=>paste(s));pasteButton.className='tt-photo-paste';footer.append(action('Файл',()=>input.click()),pasteButton,action('Следующий',()=>camera(s)),s.search,input);dialog.append(header,body,footer);document.body.append(dialog);
+  const pasteButton=action('Вставить',()=>paste(s),'clipboard');pasteButton.className='tt-photo-paste';footer.append(action('Файл',()=>input.click(),'file'),pasteButton,action('Следующий',()=>camera(s),'next'),s.search,input);dialog.append(header,body,footer);document.body.append(dialog);
   s.fit=()=>{cancelAnimationFrame(s.fitFrame);s.fitFrame=requestAnimationFrame(()=>{if(!live(s)||s.stage.hidden)return;const style=getComputedStyle(body),paddingX=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight),paddingY=parseFloat(style.paddingTop)+parseFloat(style.paddingBottom),others=[...body.children].filter(e=>e!==s.stage&&!e.hidden&&getComputedStyle(e).display!=='none'),used=others.reduce((sum,e)=>sum+e.getBoundingClientRect().height,0)+others.length*(parseFloat(style.gap)||0),side=Math.max(1,Math.floor(Math.min(body.clientWidth-paddingX,body.clientHeight-paddingY-used)));s.stage.style.width=s.stage.style.height=side+'px';});};
   s.resizeObserver=new ResizeObserver(s.fit);s.resizeObserver.observe(body);root.addEventListener('resize',s.fit);
   dialog.oncancel=e=>{e.preventDefault();close();};dialog.showModal();if(withCamera)camera(s);else{mode(s,'empty');notice(s,'');}return s;

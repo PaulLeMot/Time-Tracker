@@ -18,7 +18,7 @@
 .tt-photo-stage [hidden], .tt-photo-dialog [hidden], #photoSearchBtn[hidden] { display:none !important; }
 .tt-photo-crop { position:absolute; pointer-events:none; border:3px solid white; outline:100vmax solid rgba(0,0,0,.35); }
 .tt-photo-notice { min-height:2.5em; }
-.tt-photo-results { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.tt-photo-results { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.5fr) minmax(0,1.15fr); gap:8px; }
 .tt-photo-results .product-card { min-width:0; padding:8px; }
 .tt-photo-results .code { overflow-wrap:anywhere; }
 #photoSearchBtn { flex-shrink:0; margin-right:8px; padding:6px 10px; min-height:40px; border:1px solid #cbd5e1; border-radius:20px; background:#eff6ff; color:#0f172a; cursor:pointer; white-space:nowrap; }
@@ -63,7 +63,7 @@
 .tt-photo-notice {flex:0 0 auto; min-height:0; overflow-wrap:anywhere;}
 .tt-photo-body .tt-photo-notice {margin:0;}
 .tt-photo-dialog[data-mode=results] .tt-photo-notice {margin:0 0 8px;}
-.tt-photo-dialog footer {display:grid; grid-template-columns:repeat(4,minmax(0,1fr));}
+.tt-photo-dialog footer {display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1.5fr) minmax(0,1.15fr);}
 .tt-photo-dialog footer .tt-photo-paste {grid-column:auto;}
 .tt-photo-results {grid-template-columns:repeat(2,minmax(0,1fr));}
 .tt-photo-results .product-card img {width:100%; aspect-ratio:1; height:auto; object-fit:contain;}
@@ -79,3 +79,7 @@
 @media(max-width:380px) {.tt-camera-search .search-row-top {gap:4px;} .tt-camera-search .search-row-top .logo-btn {width:36px; height:36px;} .tt-camera-search .total-count {font-size:.9rem;}}
 
 .tt-photo-dialog header .tt-photo-count {flex:0 0 calc(5ch + 1.3em); width:calc(5ch + 1.3em); white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; font-weight:600;}
+.tt-photo-dialog footer button {min-height:53px; display:flex; align-items:center; justify-content:center; gap:5px;}
+.tt-photo-dialog footer button svg {flex:0 0 18px; width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;}
+.tt-photo-dialog footer button span {min-width:0;}
+@media(max-width:520px) {.tt-photo-dialog footer button {flex-direction:column; gap:2px; padding:6px 3px; font-size:.875rem;}}
