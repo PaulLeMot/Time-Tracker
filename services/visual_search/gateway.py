@@ -32,7 +32,7 @@ def create_gateway(config, *, auth_transport=None, worker_transport=None):
     failures, retry_at = 0, 0.
     auth_client = httpx.AsyncClient(transport=auth_transport, trust_env=False, timeout=2, follow_redirects=False)
     verify = ssl.create_default_context(cafile=config['ca_file']) if config.get('ca_file') else True
-    worker_client = httpx.AsyncClient(transport=worker_transport, trust_env=False, verify=verify, timeout=7.5, follow_redirects=False,
+    worker_client = httpx.AsyncClient(transport=worker_transport, trust_env=False, verify=verify, timeout=21, follow_redirects=False,
                                     limits=httpx.Limits(max_connections=maximum, max_keepalive_connections=maximum))
 
     @asynccontextmanager
@@ -118,8 +118,9 @@ def create_gateway(config, *, auth_transport=None, worker_transport=None):
         finally:
             capacity.leave()
 
+    @app.post('/api/visual-search/enhance')
     @app.post('/api/visual-search/search')
-    async def search(request: Request, product_type: str = Query('', max_length=2000)):
+    async def search(request: Request, product_type: str = Query('', max_length=2000), enhancement: str = Query('auto', pattern='^(auto|off|force)$')):
         capacity.enter()
         try:
             # Authenticate before accepting an image body; forward rechecks the current session.
@@ -127,9 +128,13 @@ def create_gateway(config, *, auth_transport=None, worker_transport=None):
             if request.headers.get('content-type') not in ('image/jpeg', 'image/png', 'image/webp'):
                 raise HTTPException(415, 'image_content_type')
             body = await read_body(request)
-            task = asyncio.create_task(forward(request, '/v1/search?' + urlencode({'product_type': product_type}), body))
+            operation='enhance' if request.url.path.endswith('/enhance') else 'search'
+            params={'product_type':product_type}
+            # Preserve the original protocol path for existing clients/tests.
+            if enhancement!='auto':params['enhancement']=enhancement
+            task = asyncio.create_task(forward(request, '/v1/'+operation+'?' + urlencode(params), body))
             try:
-                async with asyncio.timeout(8):
+                async with asyncio.timeout(22):
                     while not task.done():
                         if await request.is_disconnected():
                             raise HTTPException(499, 'cancelled')

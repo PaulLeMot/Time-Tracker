@@ -1,0 +1,25 @@
+{
+  "version": "enhancer-1",
+  "network": "offline-only",
+  "files": {
+    "u2netp.onnx": {
+      "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+      "bytes": 4574861,
+      "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"
+    },
+    "dhan.pth": {
+      "url": "https://github.com/CXH-Research/DHAN-SHR/releases/download/Weight/model.pth",
+      "bytes": 18352330,
+      "sha256": "83f0dfaa68a455e40256fafae0008c29c5ff6d9e3b4d8df584ec96cb8d917fee"
+    }
+  },
+  "licenses": {
+    "U2NetP": "Apache-2.0",
+    "rembg-ONNX-distribution": "MIT",
+    "DHAN-SHR": "MIT",
+    "einops": "MIT"
+  },
+  "dhan_revision": "fc9f43ae1492991c3d8ab7e4ecf772e75b7d2039",
+  "inference_pixels": 256,
+  "weight_load": "torch.load(weights_only=True, map_location=cpu); strict state dict"
+}

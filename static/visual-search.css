@@ -89,3 +89,10 @@
 .tt-photo-kind-clear[hidden] {display:none;}
 .tt-photo-results.tt-photo-no-results {height:100%; display:flex; align-items:center; justify-content:center;}
 .tt-photo-empty {font-size:1.1rem; font-weight:500; color:#64748b; text-align:center;}
+
+/* Enhancer: compact frame-only controls, original remains available. */
+.tt-photo-processing {display:flex; flex:0 0 auto; align-items:center; justify-content:center; flex-wrap:wrap; gap:6px;}
+.tt-photo-body .tt-photo-processing label {display:flex; align-items:center; gap:4px; margin:0; white-space:nowrap;}
+.tt-photo-processing input {width:18px; height:18px; margin:0;}
+.tt-photo-processing button {min-height:36px; padding:5px 7px; font-size:.9rem;}
+.tt-photo-processing button[aria-pressed=true] {border-color:#2563eb; background:#dbeafe;}

@@ -35,6 +35,7 @@ def search(engine,body,product_type='',mode='hybrid',namespace='portal'):
             if old and old['score']>=score:continue
             items[code]={k:row.get(k) for k in ('code','name','product_type','fandom','is_kit','composition_complete')} | {
                 'score':round(score,5),'evidence':'geometry' if status=='confirmed' else 'weak','similarity_status':status,
+                'geometry_inliers':inliers,'geometry_support':round(geo,5),
                 'match_role':row.get('asset_role','catalogue'),'match_view':row.get('view',{'role':'whole'}),
                 'relation':'direct','image_url':'/static/img/'+code+'.jpg','image_500_url':'/api/visual-search/image500/'+code,
                 'asset_id':row.get('asset_id'),'_standalone':row.get('standalone',True)}

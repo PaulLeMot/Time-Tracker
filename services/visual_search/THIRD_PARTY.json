@@ -684,5 +684,17 @@
       "uvicorn-0.38.0.dist-info/licenses/LICENSE.md"
     ],
     "platform": "wheelhouse-gateway-linux"
+  },
+  {
+    "package": "einops",
+    "version": "0.8.1",
+    "wheel": "einops-0.8.1-py3-none-any.whl",
+    "sha256": "919387eb55330f5757c6bea9165c5ff5cfe63a642682ea788a6d472576d81737",
+    "license": "MIT",
+    "license_files": [
+      "einops-0.8.1.dist-info/licenses/LICENSE"
+    ],
+    "platform": "wheelhouse-windows",
+    "source": "https://github.com/arogozhnikov/einops"
   }
 ]

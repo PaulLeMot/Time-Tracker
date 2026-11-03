@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from .protocol import Authentication, Capacity, read_body
 
 
-def compute(connection, index, model, resources):
+def compute(connection, index, model, resources, enhancer_root=None):
     # Prevent diagnostic core dumps on platforms that support resource limits.
     try:
         import resource
@@ -25,6 +25,7 @@ def compute(connection, index, model, resources):
         job_handle = restrict_compute(**resources)
         from .engine import Engine, resolve_index
         engine = Engine(resolve_index(index), model)
+        enhancer = None
         check_sessions = {}
         public_types=sorted({r['product_type'] for r in engine.rows if r.get('namespace','portal')=='portal'})
         public_codes={r['code'] for r in engine.rows if r.get('namespace','portal')=='portal'}
@@ -37,7 +38,16 @@ def compute(connection, index, model, resources):
                 context=message[4] if len(message)>4 else None
                 if len(message)>3 and message[3]=='close-check':
                     check_sessions.pop(context,None);connection.send(('ok',{'closed':True,'timings_ms':{}}));continue
-                result = engine.search(body, kind, namespace=namespace)
+                operation_kind = message[3] if len(message)>3 else 'search'
+                if operation_kind in ('enhance', 'enhance-search'):
+                    if not enhancer_root: raise ValueError('enhancer_disabled')
+                    if enhancer is None:
+                        from .enhance import Enhancer
+                        enhancer = Enhancer(enhancer_root)
+                    result = enhancer.preview(body,engine,kind) if operation_kind == 'enhance' else enhancer.search(engine,body,kind,namespace,baseline=context)
+                    result['timings_ms'] = {'compute': result.get('elapsed_ms',result.get('enhancement',{}).get('elapsed_ms',0))}
+                else:
+                    result = engine.search(body, kind, namespace=namespace)
                 if len(message)>3 and message[3]=='check':
                     import hashlib,io
                     from PIL import Image,ImageOps
@@ -71,6 +81,7 @@ def compute(connection, index, model, resources):
                 connection.send(('error', 'invalid_image_or_type'))
             finally:
                 body = None
+                message = result = None
     except (EOFError, BrokenPipeError):
         pass
     except Exception as error:
@@ -123,7 +134,7 @@ class Runner:
             context.set_executable(str(executable))
         parent, child = context.Pipe()
         self.pipe = parent
-        self.process = context.Process(target=compute, args=(child, self.config['index'], self.config['model'], self.config.get('resources', {})), daemon=True)
+        self.process = context.Process(target=compute, args=(child, self.config['index'], self.config['model'], self.config.get('resources', {}), self.config.get('enhancer_model')), daemon=True)
         self.process.start()
         process = self.process
         child.close()
@@ -144,7 +155,7 @@ class Runner:
 
     async def search(self, body, kind, request, namespace='portal', operation_kind='search', check_context=None):
         started = time.monotonic()
-        async with asyncio.timeout(7):
+        async with asyncio.timeout(12 if operation_kind in ('enhance','enhance-search') else 18):
             async with self.lock:
                 if not self.ready or self.process is None:
                     raise HTTPException(503, 'warming_or_unavailable')
@@ -284,7 +295,8 @@ def create_worker(config):
         auth.check(request, b'')
         if not runner.ready:
             raise HTTPException(503, 'warming_or_unavailable')
-        return {'api_version': 1, 'product_types': runner.types, 'index_version': runner.index, 'max_body': 2 * 1024 * 1024}
+        return {'api_version': 1, 'product_types': runner.types, 'index_version': runner.index, 'max_body': 2 * 1024 * 1024,
+                'enhancement': {'version':'enhancer-1','available':bool(config.get('enhancer_model')),'automatic':config.get('enhancer_auto',False)}}
 
     @app.get('/v1/catalogue/{code}')
     async def catalogue_code(code: str, request: Request):
@@ -305,8 +317,9 @@ def create_worker(config):
         return result | {'items': result['items'][offset:offset+30], 'cursor': cursor,
                          'next_offset': offset+30 if offset+30 < result['total'] else None}
 
+    @app.post('/v1/enhance')
     @app.post('/v1/search')
-    async def search(request: Request, product_type: str = Query('', max_length=2000)):
+    async def search(request: Request, product_type: str = Query('', max_length=2000), enhancement: str = Query('auto', pattern='^(auto|off|force)$')):
         nonlocal recovery
         runner.capacity.enter()
         try:
@@ -320,11 +333,36 @@ def create_worker(config):
                 raise HTTPException(415, 'image_content_type')
             if product_type and product_type not in runner.types:
                 raise HTTPException(422, 'unknown_product_type')
+            preview = request.url.path == '/v1/enhance'
+            if preview and not config.get('enhancer_model'): raise HTTPException(503,'enhancer_disabled')
+            if preview and runner.lock.locked(): raise HTTPException(429,'search_busy')
             active_subjects.add(subject)
             busy = Path(config['jobs']) / 'query-active' if config.get('jobs') else None
             if busy: busy.touch()
             try:
+                if preview:
+                    return await runner.search(body, product_type, request, operation_kind='enhance')
                 result = await runner.search(body, product_type, request)
+                from .enhance import needs_fallback,merge
+                enabled = config.get('enhancer_model') and enhancement != 'off' and (config.get('enhancer_auto',False) or enhancement == 'force')
+                fallback = enabled and (enhancement == 'force' or needs_fallback(result))
+                result['enhancement']={'version':'enhancer-1','status':'original','automatic':bool(config.get('enhancer_auto',False))}
+                # Do not start expensive optional work ahead of another employee.
+                if fallback and runner.capacity.active == 1 and not runner.lock.locked():
+                    started_enhance=time.monotonic()
+                    try:
+                        processed=await runner.search(body,product_type,request,operation_kind='enhance-search',check_context=result|{'enhancement_force':enhancement=='force'})
+                        if all(v['index_version']==result['index_version'] for _,v in processed['variants']):
+                            result=merge(result,processed['variants'])
+                            result['enhancement']=dict(processed['enhancement'],status='processed',automatic=bool(config.get('enhancer_auto',False)))
+                        else:result['enhancement']['status']='index_changed_original_used'
+                    except (TimeoutError,BrokenPipeError,EOFError,RuntimeError):
+                        result['enhancement']['status']='unavailable_original_used'
+                    except HTTPException as error:
+                        if error.status_code==499:raise
+                        result['enhancement']['status']='unavailable_original_used'
+                    result['timings_ms']['enhancement_total']=(time.monotonic()-started_enhance)*1000
+                elif fallback:result['enhancement']['status']='busy_original_used'
             finally:
                 active_subjects.discard(subject)
                 if busy and not active_subjects:

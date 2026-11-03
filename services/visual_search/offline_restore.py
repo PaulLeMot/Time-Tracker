@@ -20,6 +20,15 @@ def prepare(root):
     if not (root/'dependencies.ready').exists():
         run([venv/'Scripts/python.exe','-m','pip','install','--no-index','--disable-pip-version-check','--find-links',root/'wheels','--require-hashes','-r',root/'source/services/visual_search/requirements-windows.lock'])
         (root/'dependencies.ready').write_text('hash-locked local wheels only\n',encoding='ascii')
+    enhancer_lock=root/'source/services/visual_search/requirements-enhancer.lock'
+    if (root/'enhancer-model').is_dir():
+        if not enhancer_lock.is_file():raise ValueError('enhancer_hash_lock_required')
+        import hashlib
+        expected=hashlib.sha256(enhancer_lock.read_bytes()).hexdigest()
+        marker=root/'enhancer-dependencies.ready'
+        if not marker.exists() or marker.read_text('ascii').strip()!=expected:
+            run([venv/'Scripts/python.exe','-m','pip','install','--no-index','--disable-pip-version-check','--find-links',root/'wheels','--require-hashes','-r',enhancer_lock])
+            marker.write_text(expected+'\n',encoding='ascii')
     return {'status':'OFFLINE_DEPENDENCIES_READY','production_tasks_registered':False,'production_sync':False}
 
 
@@ -31,9 +40,17 @@ def check(root):
     body=(root/'images500'/(selected['code']+'.jpg')).read_bytes();result=engine.search(body,selected['product_type'])
     if not any(r['code']==selected['code'] for r in result['items'][:5]):raise ValueError('restored_search_not_correct')
     private=engine.search(body,'',namespace='operkontur') if engine.meta.get('schema')==2 else None
+    enhancement=None
+    if (root/'enhancer-model').is_dir():
+        from .enhance import Enhancer,merge
+        enhancer=Enhancer(root/'enhancer-model')
+        processed=enhancer.search(engine,body,selected['product_type'],baseline=result)
+        combined=merge(result,processed['variants'])
+        if not any(r['code']==selected['code'] for r in combined['items'][:5]):raise ValueError('restored_enhancer_search_not_correct')
+        enhancement={'status':'OFFLINE_ENHANCER_PASS','version':'enhancer-1','operations':processed['enhancement']['operations']}
     engine.close()
     return {'status':'OFFLINE_MODEL_INDEX_SEARCH_PASS','cold_seconds':round(cold,3),'index_version':result['index_version'],'catalogue_query_top5':True,
-            'admin_namespace_search':private is not None,'query_photos_saved':False,'production_tasks_registered':False,'production_sync':False}
+            'admin_namespace_search':private is not None,'enhancement':enhancement,'query_photos_saved':False,'production_tasks_registered':False,'production_sync':False}
 
 
 def main():
