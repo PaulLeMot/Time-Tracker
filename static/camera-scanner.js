@@ -1,7 +1,7 @@
-/* TimeTracker camera1.1.2: rear-only, bounded asynchronous decoding, RAM-only frames. */
+/* TimeTracker camera1.1.5: visible-square decoding, rear-only, RAM-only frames. */
 (function (root) {
     'use strict';
-    const VERSION = '1.1.2';
+    const VERSION = '1.1.5';
     let enginePromise, activeScanner, preferredRear = '';
     function loadEngine() {
         if (root.TTCameraEngine) return Promise.resolve(root.TTCameraEngine);
@@ -37,6 +37,7 @@
         function current(s) { return !disposed && session === s && s.id === generation; }
         function release(s) {
             clearTimeout(s.timer); clearTimeout(s.timeout); clearTimeout(s.focusTimer);
+            cancelAnimationFrame(s.fitFrame); s.resizeObserver?.disconnect();
             if (s.frameCallback != null) s.video.cancelVideoFrameCallback?.(s.frameCallback);
             s.frameCallback = null; s.abort.abort();
             s.streamListeners.forEach(remove => remove()); s.streamListeners = [];
@@ -63,7 +64,18 @@
             s.status.textContent = message; s.retry.hidden = false; s.options.onError?.(message);
         }
         function status(s, message) {
-            if (current(s) && s.status.textContent !== message) s.status.textContent = message;
+            if (current(s) && s.status.textContent !== message) { s.status.textContent = message; fit(s); }
+        }
+        function fit(s) {
+            cancelAnimationFrame(s.fitFrame);
+            s.fitFrame = requestAnimationFrame(() => {
+                if (!current(s) || s.state === 'error') return;
+                const style = getComputedStyle(s.dialog), preview = s.dialog.querySelector('.tt-camera-preview');
+                const others = [...s.dialog.children].filter(e => e !== preview && !e.hidden && getComputedStyle(e).display !== 'none');
+                const used = others.reduce((sum, e) => { const st = getComputedStyle(e); return sum + e.getBoundingClientRect().height + parseFloat(st.marginTop) + parseFloat(st.marginBottom); }, 0);
+                const side = Math.max(1, Math.floor(Math.min(s.dialog.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight), s.dialog.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - used)));
+                preview.style.width = preview.style.height = side + 'px';
+            });
         }
         async function adjust(s, constraints) {
             if (!current(s) || !s.track?.applyConstraints) return false;
@@ -125,7 +137,7 @@
             const canPoint = media.getSupportedConstraints?.().pointsOfInterest && caps.focusMode?.includes('single-shot');
             if (canPoint) s.video.onclick = async event => {
                 const rect = s.video.getBoundingClientRect();
-                const ratio = Math.min(rect.width / s.video.videoWidth, rect.height / s.video.videoHeight);
+                const ratio = Math.max(rect.width / s.video.videoWidth, rect.height / s.video.videoHeight);
                 const width = s.video.videoWidth * ratio, height = s.video.videoHeight * ratio;
                 if (!width || !height) return;
                 const left = rect.left + (rect.width - width) / 2, top = rect.top + (rect.height - height) / 2;
@@ -137,22 +149,10 @@
                 s.focusTimer = setTimeout(() => { if (caps.focusMode.includes('continuous')) adjust(s, {advanced: [{focusMode: 'continuous'}]}); }, 700);
             };
         }
-        function frame(s, full) {
+        function frame(s) {
             const vw = s.video.videoWidth, vh = s.video.videoHeight;
             if (!vw || !vh) return false;
-            let x = 0, y = 0, width = vw, height = vh;
-            if (!full) {
-                const box = s.video.getBoundingClientRect(), target = s.frame.getBoundingClientRect();
-                const ratio = Math.min(box.width / vw, box.height / vh);
-                if (ratio > 0) {
-                    const left = box.left + (box.width - vw * ratio) / 2, top = box.top + (box.height - vh * ratio) / 2;
-                    x = Math.max(0, Math.floor((target.left - left) / ratio));
-                    y = Math.max(0, Math.floor((target.top - top) / ratio));
-                    width = Math.min(vw - x, Math.ceil(target.width / ratio));
-                    height = Math.min(vh - y, Math.ceil(target.height / ratio));
-                    if (width < 16 || height < 16) { x = y = 0; width = vw; height = vh; }
-                }
-            }
+            const width = Math.min(vw, vh), height = width, x = (vw - width) / 2, y = (vh - height) / 2;
             const maxWidth = s.mode === 'text' ? 1600 : (s.frames % 6 === 5 ? 1920 : 1440);
             const scale = Math.min(1, maxWidth / width, 1200 / height);
             const w = Math.max(1, Math.round(width * scale)), h = Math.max(1, Math.round(height * scale));
@@ -174,7 +174,7 @@
             if (!current(s) || s.state !== 'scanning') return;
             const started = performance.now();
             try {
-                if (s.video.readyState >= 2 && frame(s, s.frames % 4 === 3)) {
+                if (s.video.readyState >= 2 && frame(s)) {
                     const result = await s.decoder.decode(s.canvas, {harder: s.frames % 3 === 2});
                     if (!current(s) || s.state !== 'scanning') return;
                     s.frames++;
@@ -226,6 +226,7 @@
                 status: dialog.querySelector('[role=status]'), retry: dialog.querySelector('.tt-camera-retry'), controls: dialog.querySelector('.tt-camera-controls'),
                 streamListeners: [], removeListeners: [], frames: 0, lastHint: performance.now(), frameCallback: null};
             session = s; dialog.classList.toggle('tt-camera-text-mode', mode === 'text');
+            s.resizeObserver = new ResizeObserver(() => fit(s)); s.resizeObserver.observe(dialog);
             const listen = (target, type, fn) => { target.addEventListener(type, fn); s.removeListeners.push(() => target.removeEventListener(type, fn)); };
             listen(dialog.querySelector('.tt-camera-close'), 'click', () => close());
             listen(dialog.querySelector('.tt-camera-cancel'), 'click', () => close());

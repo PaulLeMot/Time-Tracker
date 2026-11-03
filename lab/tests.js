@@ -22,14 +22,22 @@ function fakeVideo() {
     }
     const videoProto = HTMLVideoElement.prototype;
     const size = {};
-    for (const [key, value] of Object.entries({videoWidth: 1000, videoHeight: 440})) {
+    for (const [key, value] of Object.entries({videoWidth: 1000, videoHeight: 1000})) {
         size[key] = Object.getOwnPropertyDescriptor(videoProto, key);
         Object.defineProperty(videoProto, key, {get: () => value, configurable: true});
     }
     const draw = CanvasRenderingContext2D.prototype.drawImage;
     CanvasRenderingContext2D.prototype.drawImage = function(source, ...args) {
         if (source instanceof HTMLVideoElement) {
-            if (window.testLabel) return draw.call(this, window.testLabel, ...args);
+            if (window.testLabel) {
+                // Keep the whole independent label inside the visible square.
+                const square=document.createElement('canvas');square.width=square.height=1000;
+                const ctx=square.getContext('2d'), image=window.testLabel;
+                ctx.fillStyle='white';ctx.fillRect(0,0,1000,1000);
+                const scale=Math.min(1000/image.naturalWidth,1000/image.naturalHeight),w=image.naturalWidth*scale,h=image.naturalHeight*scale;
+                draw.call(ctx,image,(1000-w)/2,(1000-h)/2,w,h);
+                return draw.call(this,square,...args);
+            }
             this.fillStyle = 'white'; this.fillRect(0, 0, this.canvas.width, this.canvas.height); return;
         }
         return draw.call(this, source, ...args);
@@ -304,6 +312,7 @@ document.getElementById('run').onclick = async function() {
         assert(doc.querySelectorAll('.product-card').length === 3 && doc.getElementById('codeInput').value === '');
         const accepted = win.findCameraImage({rawValue: 'SKU O90001', format: 'OCR_TEXT'});
         await until(() => doc.querySelector('.tt-camera-choice')); doc.querySelector('.tt-camera-choice').click(); await accepted;
+        await until(() => doc.querySelectorAll('.product-card').length === 1);
         assert(doc.querySelectorAll('.product-card').length === 1 && doc.querySelector('.code').textContent === '90001');
     });
     await test('OCR marking confirmation, no full label in history, manual input cancels stale choice', async () => {

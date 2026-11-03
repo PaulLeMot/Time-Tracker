@@ -113,9 +113,9 @@ document.getElementById('run').onclick = async function () {
             check(!doc.querySelector('.tt-camera-hint'),'Removed caption still present');
             check(cancel.bottom<=height && cancel.top>=0,'Cancel outside viewport');
             check(dialog.scrollHeight<=dialog.clientHeight+1,'Camera dialog scrolls');
-            check(video.height>30,'Preview collapsed');
+            check(video.height>30,'Preview collapsed');check(Math.abs(video.width-video.height)<1,'Preview is not square');
             const scanline=iframe.contentWindow.getComputedStyle(doc.querySelector('.tt-camera-frame'),'::after');
-            check(scanline.content==='""' && scanline.height==='2px' && scanline.pointerEvents==='none','Decorative barcode scanline missing');
+            check(scanline.content==='""' && scanline.height==='1px' && scanline.pointerEvents==='none','Decorative barcode scanline missing');
             check(scanline.animationName===(iframe.contentWindow.matchMedia('(prefers-reduced-motion: reduce)').matches?'none':'tt-camera-scan-glow'),'Scanline motion preference ignored');
             const torch=doc.querySelector('.tt-camera-torch'),zoom=doc.querySelector('.tt-camera-zoom');
             const label=torch.textContent,buttonWidth=torch.getBoundingClientRect().width,zoomTop=zoom.getBoundingClientRect().top;
