@@ -109,7 +109,7 @@ function create(options){
     for(const item of page.items)items.set(item.code,item);offset=page.next_offset;
    }
    if(items.size!==result.total)throw Error('Не удалось получить всю выдачу. Повторите поиск.');
-   s.found={items:[...items.values()],searchedKind:kind};clearFrame(s);s.range.disabled=true;s.rotate.disabled=true;filterFound(s);mode(s,'results');
+   s.found={items:[...items.values()].filter(item=>!kind||item.product_type===kind),searchedKind:kind};clearFrame(s);s.range.disabled=true;s.rotate.disabled=true;filterFound(s);mode(s,'results');
    root.dispatchEvent(new CustomEvent('tt-photo-timing',{detail:{elapsed_ms:performance.now()-started,status:result.status}}));
   }catch(e){if(live(s)&&operation===s.operation)notice(s,e.name==='AbortError'?'Поиск отменён или время ожидания истекло. Можно повторить.':e.message);}
   finally{if(live(s)&&operation===s.operation){s.busy=false;mode(s,s.mode);s.more.disabled=false;}}
