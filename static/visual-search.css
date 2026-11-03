@@ -78,8 +78,14 @@
 .tt-camera-search .product-card .code {font-size:calc(1.2rem + 1px); color:#0759e6; font-weight:700;}
 @media(max-width:380px) {.tt-camera-search .search-row-top {gap:4px;} .tt-camera-search .search-row-top .logo-btn {width:36px; height:36px;} .tt-camera-search .total-count {font-size:.9rem;}}
 
-.tt-photo-dialog header .tt-photo-count {flex:0 0 calc(5ch + 1.3em); width:calc(5ch + 1.3em); white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; font-weight:600;}
+.tt-photo-dialog header .tt-photo-count {flex:0 0 calc(5ch + 1.3em); width:calc(5ch + 1.3em); white-space:nowrap; text-align:left; font-variant-numeric:tabular-nums; font-weight:600;}
 .tt-photo-dialog footer button {min-height:53px; display:flex; align-items:center; justify-content:center; gap:5px;}
 .tt-photo-dialog footer button svg {flex:0 0 18px; width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;}
 .tt-photo-dialog footer button span {min-width:0;}
-@media(max-width:520px) {.tt-photo-dialog footer button {flex-direction:column; gap:2px; padding:6px 3px; font-size:.875rem;}}
+@media(max-width:520px) {.tt-photo-dialog footer button {flex-direction:column; gap:2px; padding:6px 3px; font-size:.875rem;}}.tt-photo-dialog header .tt-photo-kind {position:relative; display:flex; flex:1; min-width:0;}
+.tt-photo-dialog header .tt-photo-kind select {padding-right:62px;}
+.tt-photo-dialog .tt-photo-kind-clear {position:absolute; right:28px; top:50%; transform:translateY(-50%); width:28px; height:28px; min-height:28px; padding:4px; border:0; background:transparent; display:flex; align-items:center; justify-content:center;}
+.tt-photo-kind-clear svg {width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round;}
+.tt-photo-kind-clear[hidden] {display:none;}
+.tt-photo-results.tt-photo-no-results {height:100%; display:flex; align-items:center; justify-content:center;}
+.tt-photo-empty {font-size:1.1rem; font-weight:500; color:#64748b; text-align:center;}

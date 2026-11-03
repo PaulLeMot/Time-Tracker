@@ -20,7 +20,7 @@ function create(options){
    return await r.json();
   }finally{clearTimeout(timer);}
  }
- function changed(s){s.count.textContent='Σ —';s.count.setAttribute('aria-label','Поиск ещё не выполнен');s.operation++;s.busy=false;s.abort?.abort();s.blob=null;s.results.replaceChildren();s.more.hidden=true;mode(s,s.source?'frame':s.stream?'camera':'empty');}
+ function changed(s){s.count.textContent='';s.count.setAttribute('aria-label','Поиск ещё не выполнен');s.operation++;s.busy=false;s.abort?.abort();s.blob=null;s.results.replaceChildren();s.more.hidden=true;mode(s,s.source?'frame':s.stream?'camera':'empty');}
  function paint(s){
   if(!s.source)return;const c=s.canvas,ctx=c.getContext('2d');c.width=c.height=960;
   const t=s.transform,scale=Math.min(960/s.source.width,960/s.source.height)*t.zoom;
@@ -72,7 +72,7 @@ function create(options){
   s.canvas.onwheel=e=>{if(!s.source||s.busy)return;e.preventDefault();s.transform.zoom=Math.min(4,Math.max(1,s.transform.zoom*Math.exp(-e.deltaY*.001)));paint(s);};
  }
  function render(s,result,append){
-  if(!append)s.results.replaceChildren();
+  if(!append)s.results.replaceChildren();s.results.classList.toggle('tt-photo-no-results',result.total===0);if(result.total===0){const empty=document.createElement('p');empty.className='tt-photo-empty';empty.textContent='Не найдено';empty.setAttribute('role','status');s.results.append(empty);}
   const roles={whole:'Изображение целиком',side:'Сторона',fragment:'Фрагмент',projection:'Проекция'};
   for(const item of result.items){
    const card=document.createElement('article');card.className='product-card tt-match-'+(item.similarity_status||'weak');
@@ -84,7 +84,7 @@ function create(options){
    card.setAttribute('aria-description',relation.textContent);card.append(img,name,code);s.results.append(card);
   }
   s.cursor=result.cursor;s.offset=result.next_offset;s.more.hidden=s.offset==null;
-  s.count.textContent='Σ '+result.total;s.count.setAttribute('aria-label','Найдено товаров: '+result.total);notice(s,'');
+  s.count.textContent=result.total>0?'Σ '+result.total:'';s.count.setAttribute('aria-label','Найдено товаров: '+result.total);notice(s,'');
  }
  async function search(s,more=false){
   if(!live(s)||s.busy||(!more&&!s.source))return;s.busy=true;s.search.disabled=s.more.disabled=true;const operation=++s.operation,kind=s.kind.value,started=performance.now();notice(s,'Ищу рисунок…');
@@ -113,8 +113,8 @@ function create(options){
   s.kind=document.createElement('select');s.kind.setAttribute('aria-label','Вид товара');s.kind.append(new Option('Все виды',''));for(const k of capabilities.product_types)s.kind.append(new Option(k,k));
   const main=options.selectedType?.()||'';if(mainKind!==undefined&&mainKind!==main)savedKind=main;mainKind=main;
   if(savedKind===undefined&&user)try{savedKind=sessionStorage.getItem('tt.photo.kind.'+user)??undefined;}catch{}
-  if(savedKind===undefined)savedKind=main;s.kind.value=capabilities.product_types.includes(savedKind)?savedKind:'';s.count=document.createElement('span');s.count.className='tt-photo-count';s.count.textContent='Σ —';s.count.setAttribute('role','status');s.count.setAttribute('aria-label','Поиск ещё не выполнен');header.append(s.kind,s.count,closeButton);
-  s.kind.onchange=()=>{remember(s.kind.value);changed(s);notice(s,'');};
+  if(savedKind===undefined)savedKind=main;s.kind.value=capabilities.product_types.includes(savedKind)?savedKind:'';s.count=document.createElement('span');s.count.className='tt-photo-count';s.count.textContent='';s.count.setAttribute('role','status');s.count.setAttribute('aria-label','Поиск ещё не выполнен');const kindWrap=document.createElement('div');kindWrap.className='tt-photo-kind';s.kindClear=action('',()=>{s.kind.value='';s.kind.dispatchEvent(new Event('change',{bubbles:true}));});s.kindClear.className='tt-photo-kind-clear';s.kindClear.setAttribute('aria-label','Сбросить вид товара');s.kindClear.innerHTML=closeButton.innerHTML;s.kindClear.hidden=!s.kind.value;kindWrap.append(s.kind,s.kindClear);header.append(kindWrap,s.count,closeButton);
+  s.kind.onchange=()=>{s.kindClear.hidden=!s.kind.value;remember(s.kind.value);changed(s);notice(s,'');};
   s.stage=document.createElement('div');s.stage.className='tt-photo-stage';s.video=document.createElement('video');s.video.muted=true;s.video.playsInline=true;s.canvas=document.createElement('canvas');s.canvas.hidden=true;s.stage.append(s.video,s.canvas);gestures(s);
   const tools=document.createElement('label');tools.textContent='Масштаб';s.range=document.createElement('input');s.range.type='range';s.range.min='1';s.range.max='4';s.range.step='.01';s.range.value='1';s.range.disabled=true;s.range.oninput=()=>{if(!s.busy){s.transform.zoom=Number(s.range.value);paint(s);}};
   s.rotate=action('Повернуть 90°',()=>{if(!s.busy){s.transform.angle+=Math.PI/2;paint(s);}});s.rotate.disabled=true;
