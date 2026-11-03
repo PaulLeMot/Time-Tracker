@@ -108,13 +108,15 @@ function create(options){
   finally{if(live(s)&&operation===s.operation){s.busy=false;mode(s,s.mode);}}
  }
  async function search(s){
-  if(!live(s)||s.busy||!s.source)return;s.busy=true;s.search.disabled=s.more.disabled=true;const operation=++s.operation,kind=s.kind.value,started=performance.now();mode(s,s.mode);notice(s,s.auto.checked||s.showProcessed?'Ищу рисунок… При необходимости обработаю снимок.':'Ищу рисунок…');
+  if(!live(s)||s.busy||!s.source)return;s.busy=true;s.search.disabled=s.more.disabled=true;const operation=++s.operation,kind=s.kind.value,started=performance.now();s.dialog.dataset.searchEnhancement='pending';s.dialog.dataset.searchReturned='';mode(s,s.mode);notice(s,s.auto.checked||s.showProcessed?'Ищу рисунок… При необходимости обработаю снимок.':'Ищу рисунок…');
   try{
    let blob=await encodeOriginal(s);if(!blob||blob.size>2*1024*1024)throw Error('Не удалось подготовить снимок.');
    if(!live(s)||operation!==s.operation)return;
    const result=await request(s,'/api/visual-search/search?'+new URLSearchParams({product_type:kind,enhancement:s.showProcessed&&s.processed?'force':s.auto.checked?'auto':'off'}),{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});blob=null;
    if(!live(s)||operation!==s.operation)return;
    if(!Array.isArray(result.items)||!Number.isInteger(result.total)||result.total<0||result.total>200000)throw Error('Не удалось прочитать выдачу. Повторите поиск.');
+   s.dialog.dataset.searchEnhancement=result.enhancement?.status||'original';s.dialog.dataset.searchReturned=String(result.total);s.dialog.dataset.searchIndex=result.index_version||'';
+   if(result.total===0&&['busy_original_used','budget_original_used','unavailable_original_used','index_changed_original_used'].includes(result.enhancement?.status))throw Error('Обработка снимка не завершилась. Снимок сохранён. Повторите поиск через несколько секунд.');
    const items=new Map(result.items.map(item=>[item.code,item])),seen=new Set(),deadline=performance.now()+8000;let offset=result.next_offset;
    // Fetch metadata before the server cursor expires. Filtering and paging then
    // stay local until Next; query pixels are still discarded after the search.
@@ -126,7 +128,7 @@ function create(options){
     for(const item of page.items)items.set(item.code,item);offset=page.next_offset;
    }
    if(items.size!==result.total)throw Error('Не удалось получить всю выдачу. Повторите поиск.');
-   s.found={items:[...items.values()].filter(item=>!kind||item.product_type===kind),searchedKind:kind};clearFrame(s);s.range.disabled=true;s.rotate.disabled=true;filterFound(s);mode(s,'results');
+   s.found={items:[...items.values()].filter(item=>!kind||item.product_type===kind),searchedKind:kind};s.dialog.dataset.searchFiltered=String(s.found.items.length);clearFrame(s);s.range.disabled=true;s.rotate.disabled=true;filterFound(s);mode(s,'results');
    root.dispatchEvent(new CustomEvent('tt-photo-timing',{detail:{elapsed_ms:performance.now()-started,status:result.status}}));
   }catch(e){if(live(s)&&operation===s.operation)notice(s,e.name==='AbortError'?'Поиск отменён или время ожидания истекло. Можно повторить.':e.message);}
   finally{if(live(s)&&operation===s.operation){s.busy=false;mode(s,s.mode);s.more.disabled=false;}}
