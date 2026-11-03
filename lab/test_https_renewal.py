@@ -66,6 +66,20 @@ class CleanupTests(unittest.TestCase):
 
 @unittest.skipIf(__import__('os').name == 'nt', 'Linux fcntl deployment module')
 class DeployTests(unittest.TestCase):
+    def test_timeout_stops_only_our_labelled_certbot_container(self):
+        renew = load('renew_https')
+        inspected = subprocess.CompletedProcess([], 0, 'operportal-dns01-renewal\n', '')
+        with patch.object(renew, 'command', side_effect=subprocess.TimeoutExpired('docker', 1800)), patch.object(renew.subprocess, 'run', return_value=inspected) as run:
+            with self.assertRaises(subprocess.TimeoutExpired): renew.docker(['renew'])
+            self.assertEqual(run.call_args_list[-1].args[0], ['docker', 'stop', '--time', '10', 'operportal-certbot-renewal'])
+
+    def test_timeout_never_stops_foreign_label(self):
+        renew = load('renew_https')
+        inspected = subprocess.CompletedProcess([], 0, 'someone-elses-container\n', '')
+        with patch.object(renew, 'command', side_effect=subprocess.TimeoutExpired('docker', 1800)), patch.object(renew.subprocess, 'run', return_value=inspected) as run:
+            with self.assertRaises(subprocess.TimeoutExpired): renew.docker(['renew'])
+            self.assertEqual(run.call_count, 1)
+
     def test_nginx_failure_restores_both_files(self):
         renew = load('renew_https')
         with tempfile.TemporaryDirectory() as tmp:

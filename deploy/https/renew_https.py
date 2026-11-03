@@ -26,12 +26,22 @@ def command(args, **kwargs):
 
 
 def docker(args, *, entrypoint=None):
-    cmd = ['docker', 'run', '--rm', '--user', f'{os.getuid()}:{os.getgid()}', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges']
+    name = 'operportal-certbot-renewal'
+    purpose = 'operportal-dns01-renewal'
+    cmd = ['docker', 'run', '--rm', '--name', name, '--label', 'com.fandocraft.purpose=' + purpose, '--user', f'{os.getuid()}:{os.getgid()}', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges']
     for host, target, readonly in [('certs', '/etc/letsencrypt', False), ('certbot-work', '/var/lib/letsencrypt', False), ('certbot-logs', '/var/log/letsencrypt', False), (str(Path(__file__).resolve().parent), '/hooks', True), ('private', '/private', True), ('renewal-state', '/dns-state', False)]:
         cmd += ['-v', f'{ROOT / host}:{target}' + (':ro' if readonly else '')]
     if entrypoint:
         cmd += ['--entrypoint', entrypoint]
-    return command(cmd + [IMAGE] + args)
+    try:
+        return command(cmd + [IMAGE] + args)
+    except subprocess.TimeoutExpired:
+        # Killing a docker CLI does not stop its container. Keep the host lock
+        # until our labelled container is stopped; never stop an unrelated name.
+        inspect = subprocess.run(['docker', 'inspect', '--format', '{{index .Config.Labels "com.fandocraft.purpose"}}', name], capture_output=True, text=True, timeout=15)
+        if inspect.returncode == 0 and inspect.stdout.strip() == purpose:
+            subprocess.run(['docker', 'stop', '--time', '10', name], check=True, timeout=30)
+        raise
 
 
 def atomic(path, data, permissions=0o600):
