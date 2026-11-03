@@ -46,7 +46,7 @@ def atomic(path, data, permissions=0o600):
 
 def served_fingerprint():
     context = ssl.create_default_context()
-    with socket.create_connection(('127.0.0.1', 8443), timeout=10) as raw:
+    with socket.create_connection((DOMAIN, 8443), timeout=10) as raw:
         with context.wrap_socket(raw, server_hostname=DOMAIN) as connection:
             return hashlib.sha256(connection.getpeercert(binary_form=True)).hexdigest()
 

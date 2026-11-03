@@ -18,7 +18,7 @@ function create(options){
    return await r.json();
   }finally{clearTimeout(timer);}
  }
- function changed(s){s.operation++;s.busy=false;s.abort?.abort();s.blob=null;s.results.replaceChildren();s.more.hidden=true;mode(s,s.source?'frame':s.stream?'camera':'empty');}
+ function changed(s){s.count.textContent='Σ —';s.count.setAttribute('aria-label','Поиск ещё не выполнен');s.operation++;s.busy=false;s.abort?.abort();s.blob=null;s.results.replaceChildren();s.more.hidden=true;mode(s,s.source?'frame':s.stream?'camera':'empty');}
  function paint(s){
   if(!s.source)return;const c=s.canvas,ctx=c.getContext('2d');c.width=c.height=960;
   const t=s.transform,scale=Math.min(960/s.source.width,960/s.source.height)*t.zoom;
@@ -82,7 +82,7 @@ function create(options){
    card.setAttribute('aria-description',relation.textContent);card.append(img,name,code);s.results.append(card);
   }
   s.cursor=result.cursor;s.offset=result.next_offset;s.more.hidden=s.offset==null;
-  notice(s,`Найдено товаров: ${result.total}`);
+  s.count.textContent='Σ '+result.total;s.count.setAttribute('aria-label','Найдено товаров: '+result.total);notice(s,'');
  }
  async function search(s,more=false){
   if(!live(s)||s.busy||(!more&&!s.source))return;s.busy=true;s.search.disabled=s.more.disabled=true;const operation=++s.operation,kind=s.kind.value,started=performance.now();notice(s,'Ищу рисунок…');
@@ -111,7 +111,7 @@ function create(options){
   s.kind=document.createElement('select');s.kind.setAttribute('aria-label','Вид товара');s.kind.append(new Option('Все виды',''));for(const k of capabilities.product_types)s.kind.append(new Option(k,k));
   const main=options.selectedType?.()||'';if(mainKind!==undefined&&mainKind!==main)savedKind=main;mainKind=main;
   if(savedKind===undefined&&user)try{savedKind=sessionStorage.getItem('tt.photo.kind.'+user)??undefined;}catch{}
-  if(savedKind===undefined)savedKind=main;s.kind.value=capabilities.product_types.includes(savedKind)?savedKind:'';header.append(s.kind,closeButton);
+  if(savedKind===undefined)savedKind=main;s.kind.value=capabilities.product_types.includes(savedKind)?savedKind:'';s.count=document.createElement('span');s.count.className='tt-photo-count';s.count.textContent='Σ —';s.count.setAttribute('role','status');s.count.setAttribute('aria-label','Поиск ещё не выполнен');header.append(s.kind,s.count,closeButton);
   s.kind.onchange=()=>{remember(s.kind.value);changed(s);notice(s,'');};
   s.stage=document.createElement('div');s.stage.className='tt-photo-stage';s.video=document.createElement('video');s.video.muted=true;s.video.playsInline=true;s.canvas=document.createElement('canvas');s.canvas.hidden=true;s.stage.append(s.video,s.canvas);gestures(s);
   const tools=document.createElement('label');tools.textContent='Масштаб';s.range=document.createElement('input');s.range.type='range';s.range.min='1';s.range.max='4';s.range.step='.01';s.range.value='1';s.range.disabled=true;s.range.oninput=()=>{if(!s.busy){s.transform.zoom=Number(s.range.value);paint(s);}};
@@ -121,7 +121,7 @@ function create(options){
   body.append(s.stage,tools,s.notice,s.results,s.more);const footer=document.createElement('footer');
   s.search=action('Снимок',()=>s.mode==='camera'?capture(s):search(s));s.search.disabled=true;s.search.className='tt-photo-primary';
   const input=document.createElement('input');input.type='file';input.accept='image/jpeg,image/png,image/webp';input.hidden=true;input.onchange=()=>{const selected=input.files?.[0];input.value='';file(s,selected);};
-  const pasteButton=action('Вставить',()=>paste(s));pasteButton.className='tt-photo-paste';footer.append(action('Файл',()=>input.click()),action('Следующий',()=>camera(s)),s.search,pasteButton,input);dialog.append(header,body,footer);document.body.append(dialog);
+  const pasteButton=action('Вставить',()=>paste(s));pasteButton.className='tt-photo-paste';footer.append(action('Файл',()=>input.click()),pasteButton,action('Следующий',()=>camera(s)),s.search,input);dialog.append(header,body,footer);document.body.append(dialog);
   s.fit=()=>{cancelAnimationFrame(s.fitFrame);s.fitFrame=requestAnimationFrame(()=>{if(!live(s)||s.stage.hidden)return;const style=getComputedStyle(body),paddingX=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight),paddingY=parseFloat(style.paddingTop)+parseFloat(style.paddingBottom),others=[...body.children].filter(e=>e!==s.stage&&!e.hidden&&getComputedStyle(e).display!=='none'),used=others.reduce((sum,e)=>sum+e.getBoundingClientRect().height,0)+others.length*(parseFloat(style.gap)||0),side=Math.max(1,Math.floor(Math.min(body.clientWidth-paddingX,body.clientHeight-paddingY-used)));s.stage.style.width=s.stage.style.height=side+'px';});};
   s.resizeObserver=new ResizeObserver(s.fit);s.resizeObserver.observe(body);root.addEventListener('resize',s.fit);
   dialog.oncancel=e=>{e.preventDefault();close();};dialog.showModal();if(withCamera)camera(s);else{mode(s,'empty');notice(s,'');}return s;
