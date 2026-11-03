@@ -25,6 +25,18 @@ class FakeEmbedder:
 
 
 class Stage2Tests(unittest.TestCase):
+    def test_new_feature_batches_are_bounded_and_incremental(self):
+        batches=[]
+        class BatchEmbedder(FakeEmbedder):
+            def batch(self,images):batches.append(len(images));return np.stack([self(image) for image in images])
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);rows=[]
+            for n in range(9):
+                image=Image.new('RGB',(80,80),(20+n*20,20,100));image.save(root/(str(n)+'.png'))
+                rows.append({'code':str(90000+n),'name':'SYN','product_type':'A','assets':[{'root':'r','relative':str(n)+'.png','id':str(n)}]})
+            embed=BatchEmbedder();build(rows,{'r':folder},root/'index','unused',embedder=embed)
+            self.assertEqual(batches,[8,1]);build(rows,{'r':folder},root/'index','unused',embedder=embed);self.assertEqual(batches,[8,1])
+
     def test_runner_transmits_serializable_command_not_async_task(self):
         sent=[]
         class Pipe:

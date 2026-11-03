@@ -60,11 +60,18 @@ def local_features(image):
     return points, descriptors
 
 
-def geometry(qp, qd, points, descriptors):
+def geometry(qp, qd, points, descriptors, strict=False):
     if min(len(qd), len(descriptors)) < 4:
         return 0, 0.0
     pairs = cv2.BFMatcher().knnMatch(qd.astype('float32'), descriptors.astype('float32'), k=2)
     good = [a for pair in pairs if len(pair) == 2 for a, b in [pair] if a.distance < .72 * b.distance]
+    if strict:
+        # Dense query keypoints can otherwise vote hundreds of times for the
+        # same catalogue detail. Require reciprocal, distinct correspondences.
+        reverse = cv2.BFMatcher().knnMatch(descriptors.astype('float32'), qd.astype('float32'), k=2)
+        reciprocal = {(a.trainIdx,a.queryIdx) for pair in reverse if len(pair)==2
+                      for a,b in [pair] if a.distance < .72*b.distance}
+        good = [a for a in good if (a.queryIdx,a.trainIdx) in reciprocal]
     if len(good) < 6:
         return 0, 0.0
     src = np.float32([qp[m.queryIdx] for m in good])
@@ -80,6 +87,11 @@ def geometry(qp, qd, points, descriptors):
     hull = cv2.convexHull(selected)
     extent = np.ptp(qp, axis=0)
     coverage = cv2.contourArea(hull) / max(1., float(extent.prod()))
+    if strict:
+        target = dst[mask.ravel().astype(bool)]
+        ref_coverage = cv2.contourArea(cv2.convexHull(target)) / max(1.,float(np.ptp(points,axis=0).prod()))
+        if coverage < .04 or ref_coverage < .04 or np.linalg.matrix_rank(matrix) < 3:
+            return 0, 0.0
     return count, min(1., count / 24) * min(1., count / len(good)) if coverage >= .025 else 0.0
 
 

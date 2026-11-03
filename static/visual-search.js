@@ -46,11 +46,11 @@ function create(options){
   c.width=c.height=size;c.getContext('2d').drawImage(s.video,(s.video.videoWidth-side)/2,(s.video.videoHeight-side)/2,side,side,0,0,size,size);beginFrame(s,c);
  }
  async function file(s,selected){
-  if(!selected||!live(s))return;if(selected.size>2*1024*1024||!['image/jpeg','image/png','image/webp'].includes(selected.type)){notice(s,'Нужен JPEG, PNG или WebP до 2 МБ и 12 Мп.');return;}
+  if(!selected||!live(s))return;if(selected.size>16*1024*1024||!['image/jpeg','image/png','image/webp'].includes(selected.type)){notice(s,'Нужен JPEG, PNG или WebP до 16 МБ и 12 Мп.');return;}
   changed(s);s.cameraGeneration++;cameraOff(s);const frameGeneration=s.frameGeneration=(s.frameGeneration||0)+1,url=URL.createObjectURL(selected),image=new Image();
   try{image.src=url;await image.decode();if(!live(s)||frameGeneration!==s.frameGeneration)return;
    if(image.naturalWidth*image.naturalHeight>12000000||Math.min(image.naturalWidth,image.naturalHeight)<32)throw Error('Нужен снимок до 12 Мп, не меньше 32 пикселей.');
-   const c=document.createElement('canvas');c.width=image.naturalWidth;c.height=image.naturalHeight;c.getContext('2d').drawImage(image,0,0);beginFrame(s,c);
+   const c=document.createElement('canvas'),scale=Math.min(1,1600/Math.max(image.naturalWidth,image.naturalHeight));c.width=Math.max(1,Math.round(image.naturalWidth*scale));c.height=Math.max(1,Math.round(image.naturalHeight*scale));c.getContext('2d').drawImage(image,0,0,c.width,c.height);beginFrame(s,c);
   }catch(e){notice(s,e.message||'Не удалось прочитать файл.');}finally{URL.revokeObjectURL(url);image.src='';}
  }
  function gestures(s){

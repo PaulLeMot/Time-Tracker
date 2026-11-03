@@ -155,7 +155,7 @@ class Runner:
 
     async def search(self, body, kind, request, namespace='portal', operation_kind='search', check_context=None):
         started = time.monotonic()
-        async with asyncio.timeout(12 if operation_kind in ('enhance','enhance-search') else 18):
+        async with asyncio.timeout(16 if operation_kind in ('enhance','enhance-search') else 18):
             async with self.lock:
                 if not self.ready or self.process is None:
                     raise HTTPException(503, 'warming_or_unavailable')
@@ -296,7 +296,7 @@ def create_worker(config):
         if not runner.ready:
             raise HTTPException(503, 'warming_or_unavailable')
         return {'api_version': 1, 'product_types': runner.types, 'index_version': runner.index, 'max_body': 2 * 1024 * 1024,
-                'enhancement': {'version':'enhancer-1','available':bool(config.get('enhancer_model')),'automatic':config.get('enhancer_auto',False)}}
+                'enhancement': {'version':'enhancer-1.1','available':bool(config.get('enhancer_model')),'automatic':config.get('enhancer_auto',False)}}
 
     @app.get('/v1/catalogue/{code}')
     async def catalogue_code(code: str, request: Request):
@@ -321,6 +321,7 @@ def create_worker(config):
     @app.post('/v1/search')
     async def search(request: Request, product_type: str = Query('', max_length=2000), enhancement: str = Query('auto', pattern='^(auto|off|force)$')):
         nonlocal recovery
+        request_started=time.monotonic()
         runner.capacity.enter()
         try:
             body = await read_body(request)
@@ -346,9 +347,9 @@ def create_worker(config):
                 from .enhance import needs_fallback,merge
                 enabled = config.get('enhancer_model') and enhancement != 'off' and (config.get('enhancer_auto',False) or enhancement == 'force')
                 fallback = enabled and (enhancement == 'force' or needs_fallback(result))
-                result['enhancement']={'version':'enhancer-1','status':'original','automatic':bool(config.get('enhancer_auto',False))}
+                result['enhancement']={'version':'enhancer-1.1','status':'original','automatic':bool(config.get('enhancer_auto',False))}
                 # Do not start expensive optional work ahead of another employee.
-                if fallback and runner.capacity.active == 1 and not runner.lock.locked():
+                if fallback and runner.capacity.active == 1 and not runner.lock.locked() and time.monotonic()-request_started<=4:
                     started_enhance=time.monotonic()
                     try:
                         processed=await runner.search(body,product_type,request,operation_kind='enhance-search',check_context=result|{'enhancement_force':enhancement=='force'})
@@ -362,7 +363,7 @@ def create_worker(config):
                         if error.status_code==499:raise
                         result['enhancement']['status']='unavailable_original_used'
                     result['timings_ms']['enhancement_total']=(time.monotonic()-started_enhance)*1000
-                elif fallback:result['enhancement']['status']='busy_original_used'
+                elif fallback:result['enhancement']['status']='busy_original_used' if runner.capacity.active!=1 or runner.lock.locked() else 'budget_original_used'
             finally:
                 active_subjects.discard(subject)
                 if busy and not active_subjects:

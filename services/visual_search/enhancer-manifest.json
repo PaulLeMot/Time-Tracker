@@ -1,5 +1,5 @@
 {
-  "version": "enhancer-1",
+  "version": "enhancer-1.1",
   "network": "offline-only",
   "files": {
     "u2netp.onnx": {

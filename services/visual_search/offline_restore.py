@@ -47,7 +47,7 @@ def check(root):
         processed=enhancer.search(engine,body,selected['product_type'],baseline=result)
         combined=merge(result,processed['variants'])
         if not any(r['code']==selected['code'] for r in combined['items'][:5]):raise ValueError('restored_enhancer_search_not_correct')
-        enhancement={'status':'OFFLINE_ENHANCER_PASS','version':'enhancer-1','operations':processed['enhancement']['operations']}
+        enhancement={'status':'OFFLINE_ENHANCER_PASS','version':'enhancer-1.1','operations':processed['enhancement']['operations']}
     engine.close()
     return {'status':'OFFLINE_MODEL_INDEX_SEARCH_PASS','cold_seconds':round(cold,3),'index_version':result['index_version'],'catalogue_query_top5':True,
             'admin_namespace_search':private is not None,'enhancement':enhancement,'query_photos_saved':False,'production_tasks_registered':False,'production_sync':False}

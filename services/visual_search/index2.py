@@ -24,6 +24,16 @@ def build(rows, roots, index_root, model_root, profiles=None, *, progress=lambda
     target=Path(index_root);target.mkdir(parents=True,exist_ok=True)
     embed=embedder or Embedder(model_root); cache=target/('cache-'+VIEWS_VERSION);cache.mkdir(exist_ok=True)
     flat=[];features=[];ids={};skipped=[];assets_count=0;seen=set();started=time.monotonic()
+    pending=[]
+    def flush():
+        if not pending:return
+        images=[entry[3] for entry in pending]
+        vectors=embed.batch(images) if hasattr(embed,'batch') else [embed(image) for image in images]
+        for (stored,points,desc,_),vector in zip(pending,vectors):
+            tmp=stored.with_suffix('.tmp')
+            with tmp.open('wb') as output:np.savez(output,points=points,descriptors=desc,vector=vector)
+            os.replace(tmp,stored)
+        pending.clear()
     if not isinstance(rows,list) or len(rows)>100000:raise ValueError('catalogue_limit')
     for number,row in enumerate(rows):
         if cancelled():raise ValueError('cancelled')
@@ -56,10 +66,9 @@ def build(rows, roots, index_root, model_root, profiles=None, *, progress=lambda
                             with np.load(stored,allow_pickle=False) as value:feature=tuple(value[n].copy() for n in ('points','descriptors','vector'))
                         else:
                             throttle()
-                            derived.thumbnail((1024,1024));points,desc=local_features(derived);vector=embed(derived);feature=(points,desc,vector)
-                            tmp=stored.with_suffix('.tmp')
-                            with tmp.open('wb') as output:np.savez(output,points=points,descriptors=desc,vector=vector)
-                            os.replace(tmp,stored)
+                            derived.thumbnail((1024,1024));points,desc=local_features(derived);feature=(points,desc,None)
+                            pending.append((stored,points,desc,derived))
+                            if len(pending)>=8:flush()
                         ids[key]=len(features);features.append((stored,len(feature[0])))
                     flat.append({k:row.get(k) for k in ('code','name','product_type','fandom','kind_key','source_key','record_version','is_kit','standalone','components','composition_complete')} |
                                 {'namespace':namespace,'feature':ids[key],'sha256':sha,'pixel_sha256':pixels,'asset_id':asset.get('id',sha),'asset_role':asset.get('role','catalogue'),
@@ -73,6 +82,8 @@ def build(rows, roots, index_root, model_root, profiles=None, *, progress=lambda
                         {'namespace':namespace,'feature':-1,'sha256':'','source_status':'waiting_for_image'})
         progress({'processed':number+1,'total':len(rows),'assets':assets_count,'views':len(flat),'seconds':round(time.monotonic()-started,2)})
     if not features:raise ValueError('empty_index')
+    if cancelled():raise ValueError('cancelled')
+    flush()
     generation='index-'+str(time.time_ns());out=target/generation;out.mkdir()
     offsets=np.cumsum([0]+[x[1] for x in features],dtype='int64')
     arrays={name:np.lib.format.open_memmap(out/(name+'.npy'),mode='w+',dtype=dtype,shape=shape) for name,dtype,shape in (

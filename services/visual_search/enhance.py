@@ -10,7 +10,7 @@ import io
 from pathlib import Path
 import time
 
-VERSION = 'enhancer-1'
+VERSION = 'enhancer-1.1'
 WEIGHTS = {'u2netp.onnx': '309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8',
            'dhan.pth': '83f0dfaa68a455e40256fafae0008c29c5ff6d9e3b4d8df584ec96cb8d917fee'}
 
@@ -31,8 +31,18 @@ def merge(original, variants):
     anchored=set(protected)
     if original['items']:
         first=original['items'][0]
-        if first.get('geometry_inliers',0)>=12 and first.get('geometry_support',0)>=.30:
+        if first.get('geometry_reciprocal') and first.get('geometry_inliers',0)>=12 and first.get('geometry_support',0)>=.30:
             anchored.add(first['code'])
+        # The same print can be sold as several physical products. If dense
+        # evidence from the UNCHANGED frame also supports its leading product,
+        # a nearly tied fragment must not erase the full-frame distinction.
+        for name,result in variants:
+            if name!='original_details' or not result['items']:continue
+            detail=next((r for r in result['items'] if r['code']==first['code']),None)
+            if (detail and first['score']>=.72 and detail.get('geometry_reciprocal')
+                    and detail.get('geometry_inliers',0)>=18 and detail.get('geometry_support',0)>=.40
+                    and detail['score']>=result['items'][0]['score']-.03):
+                anchored.add(first['code'])
     for branch, result in variants:
         for row in result['items']:
             code = row['code']; score = round(float(row['score']) - .045, 5)
@@ -43,7 +53,7 @@ def merge(original, variants):
     ordered = sorted(items.values(), key=lambda r: (r['code'] not in anchored, -r['score'], r.get('relation') != 'direct', r['code']))
     return dict(original, items=ordered, total=len(ordered),
                 status='similar' if ordered and ordered[0]['code'] in protected else 'weak' if ordered else 'none',
-                ranking_version=original.get('ranking_version', '') + '-enhancer1')
+                ranking_version=original.get('ranking_version', '') + '-enhancer1.1')
 
 
 def needs_fallback(result):
@@ -84,6 +94,10 @@ class Enhancer:
                 if len(rd)<12:continue
                 pairs=cv2.BFMatcher().knnMatch(desc,rd.astype('float32'),k=2)
                 good=[a for pair in pairs if len(pair)==2 for a,b in [pair] if a.distance<.68*b.distance]
+                reverse=cv2.BFMatcher().knnMatch(rd.astype('float32'),desc,k=2)
+                reciprocal={(a.trainIdx,a.queryIdx) for pair in reverse if len(pair)==2
+                            for a,b in [pair] if a.distance<.68*b.distance}
+                good=[a for a in good if (a.queryIdx,a.trainIdx) in reciprocal]
                 if len(good)<12:continue
                 src=np.float32([points[m.queryIdx] for m in good]);dst=np.float32([rp[m.trainIdx] for m in good])
                 matrix,mask=cv2.findHomography(src,dst,cv2.RANSAC,3,maxIters=1000,confidence=.995)
@@ -215,7 +229,20 @@ class Enhancer:
             gain = min(1.2,100/max(1,luminance)); out *= gain; operations.append('exposure_bounded')
         return Image.fromarray(out.clip(0,255).astype('uint8')), operations
 
-    def prepare(self, body, engine=None, baseline=None):
+    @staticmethod
+    def orient(engine,image,kind,namespace):
+        import numpy as np
+        rows=[r for r in engine.rows if r.get('namespace','portal')==namespace]
+        allowed={r['code'] for r in rows if not kind or r['product_type']==kind}
+        allowed|={code for r in rows if r['code'] in allowed for code in (r.get('components') or [])}
+        features=sorted({r['feature'] for r in rows if r['code'] in allowed and r['feature']>=0})
+        if not features:return image,[]
+        images=[image.rotate(angle,expand=True) for angle in (0,90,180,270)]
+        vectors=engine.embed.batch(images);scores=(engine.vectors[features]@vectors.T).max(axis=0);best=int(np.argmax(scores))
+        if best and float(scores[best]-scores[0])>=.04:return images[best],['orientation_'+str((0,90,180,270)[best])]
+        return image,[]
+
+    def prepare(self, body, engine=None, baseline=None,kind='',namespace='portal'):
         from .engine import decode
         original = decode(body)
         # Rectangular print boundaries are more appropriate than salient faces.
@@ -223,10 +250,12 @@ class Enhancer:
         if geometry == 'artwork_not_located':crop,geometry=self.plane(original)
         if geometry == 'plane_not_detected': crop, geometry = self.segment(original)
         crop.thumbnail((1024,1024))
-        return crop,([geometry] if geometry not in ('plane_not_detected','segmentation_rejected') else [])
+        operations=[geometry] if geometry not in ('plane_not_detected','segmentation_rejected') else []
+        if engine is not None:crop,oriented=self.orient(engine,crop,kind,namespace);operations+=oriented
+        return crop,operations
 
-    def process(self, body, engine=None, baseline=None):
-        start=time.perf_counter();crop,geometry=self.prepare(body,engine,baseline)
+    def process(self, body, engine=None, baseline=None,kind=''):
+        start=time.perf_counter();crop,geometry=self.prepare(body,engine,baseline,kind)
         out, operations = self.restore(crop)
         operations = geometry + operations
         return {'image':out,'object_image':crop,'operations':operations,
@@ -234,21 +263,27 @@ class Enhancer:
 
     def preview(self, body, engine=None, kind=''):
         baseline=engine.search(body,kind) if engine is not None else None
-        result = self.process(body,engine,baseline)
+        if engine is not None:
+            baseline=merge(baseline,[('original_details',engine.search(body,kind,mode='rescue'))])
+        result = self.process(body,engine,baseline,kind)
         return {k:v for k,v in result.items() if k not in ('image','object_image')} | {
             'image_base64':base64.b64encode(jpeg(result['image'])).decode('ascii'), 'content_type':'image/jpeg'}
 
     def search(self, engine, body, kind, namespace='portal', baseline=None):
         if baseline is None:baseline=engine.search(body,kind,namespace=namespace)
-        start=time.perf_counter();crop,operations=self.prepare(body,engine,baseline);variants=[]
-        # At most two extra retrievals, using the same pinned index/model.
-        if operations:
-            objects=engine.search(jpeg(crop),kind,namespace=namespace);variants.append(('object',objects))
-            first=objects['items'][0] if objects['items'] else {}
-            # Stop before restoration if real, unpainted detail already provides
-            # strong support. It still cannot create a green original confirmation.
-            if not baseline.get('enhancement_force') and first.get('score',0)>=.92 and first.get('geometry_inliers',0)>=12 and first.get('geometry_support',0)>=.30:
-                return {'variants':variants,'enhancement':{'operations':operations,'version':VERSION,'stage':'object','elapsed_ms':round((time.perf_counter()-start)*1000,2)}}
+        start=time.perf_counter();variants=[('original_details',engine.search(body,kind,namespace=namespace,mode='rescue'))]
+        detail=variants[0][1]['items'][0] if variants[0][1]['items'] else {}
+        if not baseline.get('enhancement_force') and detail.get('score',0)>=.90 and detail.get('geometry_inliers',0)>=18 and detail.get('geometry_support',0)>=.65:
+            return {'variants':variants,'enhancement':{'operations':[],'version':VERSION,'stage':'original_details','elapsed_ms':round((time.perf_counter()-start)*1000,2)}}
+        proposals=merge(baseline,variants)
+        crop,operations=self.prepare(body,engine,proposals,kind,namespace)
+        # At most three extra retrievals, using the same pinned index/model.
+        objects=engine.search(jpeg(crop),kind,namespace=namespace,mode='rescue');variants.append(('object',objects))
+        first=objects['items'][0] if objects['items'] else {}
+        # Stop before restoration if real, unpainted detail already provides
+        # strong support. It still cannot create a green original confirmation.
+        if not baseline.get('enhancement_force') and first.get('score',0)>=.92 and first.get('geometry_inliers',0)>=12 and first.get('geometry_support',0)>=.30:
+            return {'variants':variants,'enhancement':{'operations':operations,'version':VERSION,'stage':'object','elapsed_ms':round((time.perf_counter()-start)*1000,2)}}
         out,restoration=self.restore(crop);operations+=restoration
-        if restoration:variants.append(('processed',engine.search(jpeg(out),kind,namespace=namespace)))
+        if restoration:variants.append(('processed',engine.search(jpeg(out),kind,namespace=namespace,mode='rescue')))
         return {'variants':variants,'enhancement':{'operations':operations,'version':VERSION,'stage':'restoration','elapsed_ms':round((time.perf_counter()-start)*1000,2)}}

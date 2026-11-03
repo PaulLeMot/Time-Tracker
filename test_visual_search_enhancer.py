@@ -42,7 +42,7 @@ class EnhancerTests(unittest.TestCase):
         self.assertEqual(merged['items'][0]['score'],.8);self.assertEqual(merged['total'],1)
 
     def test_original_geometry_anchors_top_without_calling_it_confirmed(self):
-        row=item('00001',.81);row.update(geometry_inliers=18,geometry_support=.6)
+        row=item('00001',.81);row.update(geometry_inliers=18,geometry_support=.6,geometry_reciprocal=True)
         merged=merge(result([row]),[('processed',result([item('00002',.99,'confirmed')]))])
         self.assertEqual(merged['items'][0]['code'],'00001');self.assertEqual(merged['items'][0]['similarity_status'],'uncertain');self.assertEqual(merged['status'],'weak')
 
@@ -50,6 +50,57 @@ class EnhancerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             Path(root,'u2netp.onnx').write_bytes(b'SYNTHETIC corrupt model')
             with self.assertRaisesRegex(ValueError,'checksum'):Enhancer(root)
+
+    def test_unchanged_dense_frame_preserves_product_for_ambiguous_shared_print(self):
+        original=result([item('00001',.79),item('00002',.73)])
+        supported=item('00001',.85);supported.update(geometry_reciprocal=True,geometry_inliers=40,geometry_support=.75)
+        details=result([item('00002',.87),supported])
+        variants=[('original_details',details),('object',result([item('00002',.98)]))]
+        merged=merge(original,variants)
+        self.assertEqual(merged['items'][0]['code'],'00001')
+        self.assertNotEqual(merged['items'][0]['similarity_status'],'confirmed')
+        # Clearly stronger original-frame evidence for another print can win.
+        details['items'][0]['score']=.97
+        self.assertEqual(merge(original,variants)['items'][0]['code'],'00002')
+
+    def test_new_partial_profiles_and_rescue_never_create_green(self):
+        import numpy as np
+        from services.visual_search.retrieval2 import search
+        buffer=io.BytesIO();Image.new('RGB',(80,80),'white').save(buffer,'JPEG')
+        row={'code':'00001','name':'SYN','product_type':'A','feature':0,'namespace':'portal','profile':{'revision':2},'view':{'role':'fragment'}}
+        engine=SimpleNamespace(rows=[row],vectors=np.array([[.99,.01]],dtype='float32'),points=np.zeros((1,2),'float32'),descriptors=np.zeros((1,128),'uint8'),offsets=np.array([0,1]),embed=lambda image:np.array([1,0],dtype='float32'),index_id='index-SYN')
+        with patch('services.visual_search.engine.geometry',lambda *a,**kw:(20,.8)):
+            out=search(engine,buffer.getvalue());self.assertEqual(out['items'][0]['similarity_status'],'uncertain')
+            row['profile']['revision']=1;self.assertEqual(search(engine,buffer.getvalue())['items'][0]['similarity_status'],'confirmed')
+            engine.vectors[0,0]=.4;self.assertEqual(search(engine,buffer.getvalue())['total'],0)
+            out=search(engine,buffer.getvalue(),mode='rescue');self.assertEqual(out['total'],1);self.assertNotEqual(out['items'][0]['similarity_status'],'confirmed')
+        with patch('services.visual_search.engine.geometry',lambda *a,**kw:(4,.1)):
+            self.assertEqual(search(engine,buffer.getvalue(),mode='rescue')['total'],0)
+
+    def test_product_layouts_remain_bounded_and_preserve_whole(self):
+        from services.visual_search.product_profiles import preset
+        from services.visual_search.views import representations
+        image=Image.new('RGB',(500,500),'white')
+        for label in ('Пенал','Минидак','Кружка','Обложка на паспорт','Набор значков (6шт)','Брелок Набор 2+1'):
+            settings=preset(label);views=list(representations(image,settings))
+            self.assertLessEqual(len(views),9);self.assertEqual(settings['revision'],2)
+            self.assertEqual(views[0][0]['role'],'whole');self.assertEqual(views[0][1].tobytes(),image.tobytes())
+        self.assertIsNone(preset('UNKNOWN_KIND'))
+
+    def test_reciprocal_geometry_rejects_repeated_many_to_one_votes(self):
+        import numpy as np
+        from services.visual_search.engine import geometry
+        rng=np.random.default_rng(9128)
+        reference=rng.uniform(0,255,(30,128)).astype('float32')
+        # Many distinct camera positions describing the same tiny printed mark.
+        query=np.tile(reference[0],(80,1))+rng.normal(0,.01,(80,128)).astype('float32')
+        points=rng.uniform(0,500,(30,2)).astype('float32')
+        qp=rng.uniform(0,960,(80,2)).astype('float32')
+        self.assertEqual(geometry(qp,query,points,reference,strict=True),(0,0.0))
+        # Distinct real correspondences survive translation and scale.
+        qp=points*1.4+20
+        count,support=geometry(qp,reference,points,reference,strict=True)
+        self.assertGreaterEqual(count,25);self.assertGreater(support,.8)
 
     def test_plane_does_not_transform_blank_frame(self):
         image=Image.new('RGB',(300,300),'white');out,reason=Enhancer.plane(image)
